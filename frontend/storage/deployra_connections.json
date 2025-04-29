@@ -1,0 +1,11 @@
+{
+    "dab5e82d-0a28-4f5f-805b-3d15a68a252f": {
+        "url": "127.0.0.1:2750",
+        "name": "local",
+        "shared": 68,
+        "access_key": "V62An1NLYcqk5xQiAhYMEmXqn21o5TUQtIEGurJ8D65eQKPr",
+        "cpu_cores": 6,
+        "ram": "16GB",
+        "rawram": 17106071552
+    }
+}
