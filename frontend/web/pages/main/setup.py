@@ -2,7 +2,7 @@ from fastapi import Request
 
 import statics
 from utils.managers import users
-from utils import settingsgen
+from utils import backend_wrapper, settingsgen
 from utils import webpageutils
 from utils import checksql
 from utils import diffiehellman
@@ -61,10 +61,28 @@ def setup(request: Request) -> None:
 
             users.save_user(user=email.value, password=password.value, name=name.value, surname=surname.value, permissions="0", undeletable=True)
             settingsgen.get_language.cache_clear()
-            logger.success("Zapisałem ustawienia")
+            logger.success("Saved settings")
+            
+            logger.info("Checking if there is a local backend")
+            if(backend_wrapper.check_backend("127.0.0.1:" + str(statics.default_backend_port)) is None):
+                logger.error("There is no local backend, user will add everything themself")
+            else:
+                logger.info("There is a local backend, trying to exchange keys")
+                temp = backend_wrapper.exchange_dh("127.0.0.1:" + str(statics.default_backend_port))
+                shared = temp[0]
+                access = temp[1]
+                if(statics.debug):
+                    backend_wrapper.exchange_dh.cache_clear()
+                if not(shared is None):
+                    back = backend_wrapper.save_backend("127.0.0.1:" + str(statics.default_backend_port), "local", shared, access)
+                    if(back):
+                        logger.success("Saved local backend")
+                    else:
+                        logger.error("It is wrong, keys where secured and doesn't want to give vitals for saving?")
+                else:
+                    logger.error("Roadblock, Backend doesn't accept new keys, it's already added somewhere.")
 
-            webpageutils.redirect(ui, '/')
-            return
+            return webpageutils.html_mid_response('/')
 
         def hide_dns(dnsemail: ui.input, dnsapi: ui.input) -> None:
             dnsemail.value = ""

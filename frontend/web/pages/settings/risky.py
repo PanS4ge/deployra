@@ -21,7 +21,7 @@ from utils import webpageutils
 def settings(request: Request) -> None:
     def handle_factory_reset():
         session = jwthandle.decode_jwt(request.cookies.get('jwt_token'))
-        if session is None or not users.has_permission(session["email"], Permission.ALLOW_FULL_RISKY_SETTINGS):
+        if session is None or not users.has_permission(session["email"], Permission.ALLOW_RISKY_SETTINGS):
             return
 
         for db in settingsgen.get_storage_type().get_all_databases():

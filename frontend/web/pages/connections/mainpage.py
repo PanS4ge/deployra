@@ -26,13 +26,18 @@ def main_page(request: Request) -> None:
                 if(keys is not None):
                     for l in settingsgen.get_storage_type().list_keys(statics.db_name + "_connections"):
                         online = backend_wrapper.connect_to_backend(l) != False
+                        if(online):
+                            try:
+                                got_vitals = json.loads(backend_wrapper.get_vitals(l))
+                            except:
+                                online = False
                         active = "bg-green-500" if online else "bg-red-500"
                         with ui.row().classes('rounded-2xl border-4 border-solid border-black ' + active + ' shadow-l ps-4'):
                             with ui.row().classes('rounded-2xl bg-white shadow-l p-4'):
                                 with ui.column().classes("p-0"):
-                                    ui.label(l).classes('text-h6')
+                                    ui.label(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", l, "name")).classes('text-h6')
                                     if online:
-                                        ui.label(backend_wrapper.connect_to_backend(l).json()["id"])
+                                        ui.label(l)
                                         ui.label(settingsgen.get_language().ramusage + ": " + str(json.loads(backend_wrapper.get_vitals(l))["ram"]) + "%")
                                     else:
                                         ui.label(settingsgen.get_language().offline)
@@ -43,9 +48,7 @@ def main_page(request: Request) -> None:
                                         backend_wrapper.get_available_vitals.cache_clear()
                                 with ui.row().classes('items-center gap-4 inset-y-0 right-0 pr-2'):
                                     with ui.button().classes("p-1 rounded flex items-center justify-center ml-auto").on("click", lambda _, l=l: webpageutils.redirect(ui, '/connections/' + l)):
-                                        ui.html('<i class="bi bi-search text-[24px]"></i>')
-                                    with ui.button().classes("p-1 rounded flex items-center justify-center ml-auto").on("click", lambda _, l=l: webpageutils.redirect(ui, '/connections/' + l + '/delete')):
-                                        ui.html('<i class="bi bi-trash text-[24px]"></i>')
+                                        ui.html('<i class="bi bi-arrow-up-right-circle text-[24px]"></i>')
             
             if(users.has_permission(session["email"], Permission.ALLOW_ADD_DOCKERS)):
                 with ui.row().classes('rounded-2xl border-4 border-solid border-black shadow-l grid items-center justify-center bg-white w-[550.64px] h-[183px]'):

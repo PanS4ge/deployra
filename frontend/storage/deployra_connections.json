@@ -1,11 +1,20 @@
 {
-    "dab5e82d-0a28-4f5f-805b-3d15a68a252f": {
-        "url": "127.0.0.1:2750",
-        "name": "local",
-        "shared": 68,
-        "access_key": "V62An1NLYcqk5xQiAhYMEmXqn21o5TUQtIEGurJ8D65eQKPr",
+    "a6fc96c3-2c85-408c-8616-9a1960d571bb": {
+        "url": "frog02.mikr.us:40409",
+        "name": "frog",
+        "shared": 83,
+        "access_key": "bIcEXycSWaxhnAftfsbt50GyvIKxckGwhY8ZVKTgtsLXiNY0",
         "cpu_cores": 6,
-        "ram": "16GB",
-        "rawram": 17106071552
+        "ram": "126GB",
+        "rawram": 134958301184
+    },
+    "38a83b62-2aa4-4a7f-9a3f-adff1d4bab31": {
+        "url": "frog02.mikr.us:40409",
+        "name": "frog",
+        "shared": 34,
+        "access_key": "LVXbp8dhahhKd4QY1BSinV5wcHSZrxXLhmtl76Bc9RF0tTG6",
+        "cpu_cores": 1,
+        "ram": "126GB",
+        "rawram": 134958301184
     }
 }

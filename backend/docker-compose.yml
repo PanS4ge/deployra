@@ -1,0 +1,73 @@
+services:
+  deployra_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: deployra_api
+    ports:
+      - "2750:2750"
+    volumes:
+      # nazwane wolumeny zamiast powtarzanych ścieżek
+      - apps_data:/apps
+      - nginx_data:/etc/nginx
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+
+      # pozostałe bind-mounty zostają bez zmian
+      - /var/lib/deployra_api:/var/lib/deployra_api
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/:/var/lib/docker/
+      - /:/host
+
+    networks:
+      - deployra
+    environment:
+      PYTHONUNBUFFERED: 1
+      uvicorn: true
+      access_key_length: 48
+      cpu_usage_interval: .1
+      ipv6: true
+    restart: always
+
+  nginx:
+    image: nginx:latest
+    container_name: deployra_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - deployra_api
+    volumes:
+      - apps_data:/apps
+      - nginx_data:/etc/nginx
+      - certbot_conf:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    networks:
+      - deployra
+    restart: always
+    command: ["nginx", "-g", "daemon off;"]
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: deployra_certbot
+    volumes:
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    networks:
+      - deployra
+    entrypoint: >
+      /bin/sh -c '
+        trap exit TERM;
+        while :; do
+          certbot renew --webroot -w /var/www/certbot --quiet
+          sleep 168h & wait $${!};
+        done'
+
+networks:
+  deployra:
+
+volumes:
+  apps_data:
+  nginx_data:
+  certbot_conf:
+  certbot_www:

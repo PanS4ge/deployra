@@ -6,7 +6,7 @@ import time
 def add_notification(text : str):
     if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_notifications")):
         settingsgen.get_storage_type().create_db(statics.db_name + "_notifications", text="STRING", created_at="TIMESTAMP CURRENT_TIMESTAMP()")
-    settingsgen.get_storage_type().save_value(statics.db_name + "_notifications", str(time.time()), text, created_at=datetime.now())
+    settingsgen.get_storage_type().save_value(statics.db_name + "_notifications", str(time.time()), text=text, created_at=datetime.now())
 
 def read_notifications() -> list[str]:
     if(not settingsgen.are_there_settings()):

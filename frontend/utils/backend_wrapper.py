@@ -26,11 +26,11 @@ def check_backend(url) -> str:
         #traceback.print_exc()
         return None
 
-def save_backend(url, name, shared, access_key) -> bool:
+def save_backend(url, name, ipad, shared, access_key) -> bool:
     if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
-        settingsgen.get_storage_type().create_db(statics.db_name + "_connections", uuid="STRING", url="STRING", name="TINYSTRING", shared="STRING", access_key="STRING", cpu_cores="INT", ram="TINYSTRING", rawram="BIGINT", created_at="TIMESTAMP CURRENT_TIMESTAMP()")
+        settingsgen.get_storage_type().create_db(statics.db_name + "_connections", uuid="STRING", url="STRING", name="TINYSTRING", ipaddr="STRING", shared="STRING", access_key="STRING", cpu_cores="INT", ram="TINYSTRING", rawram="BIGINT", created_at="TIMESTAMP CURRENT_TIMESTAMP()")
     vitals = json.loads(get_url_vitals(url, shared, access_key))
-    return settingsgen.get_storage_type().save_value(statics.db_name + "_connections", str(uuid.uuid4()), url=url, name=name, shared=shared, access_key=access_key, cpu_cores=int(vitals["cpu"]), ram=vitals["ram"], rawram=int(vitals["rawram"]))
+    return settingsgen.get_storage_type().save_value(statics.db_name + "_connections", str(uuid.uuid4()), url=url, name=name, ipaddr=ipad, shared=shared, access_key=access_key, cpu_cores=int(vitals["cpu"]), ram=vitals["ram"], rawram=int(vitals["rawram"]))
 
 def connect_to_backend(uuid) -> str:
     if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
@@ -41,6 +41,14 @@ def connect_to_backend(uuid) -> str:
         traceback.print_exc()
         return False
 
+def free_connection(uuid) -> bool:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return False
+    r = requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "remove")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))})
+    if(r != 200):
+        return False
+    return settingsgen.get_storage_type().delete_value(statics.db_name + "_connections", uuid)
+
 def get_url_vitals(url, shared, access) -> str:
     if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
         return
@@ -49,7 +57,12 @@ def get_url_vitals(url, shared, access) -> str:
 def get_vitals(uuid) -> str:
     if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
         return
-    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "vitals", "ramusage")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "vitals", "usage")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def get_all_cpu_cores(uuid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "vitals", "cpuusages")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
 
 @cache
 def get_available_vitals(uuid):
@@ -91,7 +104,7 @@ def exchange_dh(url) -> tuple[str, str]:
         "gen": settingsgen.read_cryptography()["diffiehellman_gen"]
     }
     req = requests.post(autofill_http(join_url(url, "back", "exchange")), headers={"Content-Type": "application/json"}, json=dh)
-    if(req.text == "404"):
+    if(req.status_code == 404):
         return None
     pub = req.json()["pub"]
     logger.info(f"Received public key from {url}")

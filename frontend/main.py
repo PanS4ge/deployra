@@ -14,6 +14,6 @@ for mod in [statics, fastapi, nicegui, loguru]:
     logger.opt(colors=True).info(f"Using <yellow>{mod.__name__}</yellow> version {mod.__version__}")
 
 if(statics.uvicorn):
-    uvicorn.run("webpage:app", host="0.0.0.0", port=statics.port, reload=False)
+    uvicorn.run("webpage:app", host=("::" if statics.ipv6 else "0.0.0.0"), port=(0 if statics.randomport else statics.port), reload=statics.reload)
 else:
     import webpage

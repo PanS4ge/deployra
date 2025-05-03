@@ -1,0 +1,4 @@
+frontend/settings.json
+frontend/storage/*.json
+backend/settings.json
+backend/overrides.json

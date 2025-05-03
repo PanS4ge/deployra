@@ -38,6 +38,7 @@ def main_page(request: Request) -> None:
             with ui.card():
                 name = ui.input(label=settingsgen.get_language().c_name, placeholder=settingsgen.get_language().c_name)
                 url = ui.input(label=settingsgen.get_language().c_url, placeholder=settingsgen.get_language().c_url)
+                ipad = ui.input(label=settingsgen.get_language().c_ipad, placeholder=settingsgen.get_language().c_ipad)
                 b = ui.button(text=settingsgen.get_language().c_check)
             with ui.row().classes("items-center"):
                 ui.label(settingsgen.get_language().hostname)
@@ -58,7 +59,7 @@ def main_page(request: Request) -> None:
                         c.text = settingsgen.get_language().save
                         c.enable()
                         c.update()
-                    back = backend_wrapper.save_backend(url.value, name.value, shared, access)
+                    back = backend_wrapper.save_backend(url.value, name.value, ipad.value, shared, access)
                     if(back):
                         ui.notify(settingsgen.get_language().saved, color='positive')
                         ui.run_javascript(' setTimeout(() => { window.location.href = "/connections"; }, 3000);')

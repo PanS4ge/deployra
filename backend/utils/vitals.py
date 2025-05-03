@@ -1,4 +1,6 @@
 import psutil
+import os
+import statics
 
 def get_ram_usage_percentage():
     memory = psutil.virtual_memory()
@@ -15,12 +17,35 @@ def format_memory_size(bytes_size):
         return f"{bytes_size}B"
 
 def get_ram_amount():
-    memory = psutil.virtual_memory()
-    return format_memory_size(memory.total)
+    try:
+        with open("/proc/meminfo", "r") as f:
+            mem_info = f.readlines()
+        total_mem = int([line for line in mem_info if line.startswith("MemTotal")][0].split()[1])
+        return format_memory_size(total_mem * 1024)
+    except Exception as e:
+        print(f"Nie udało się odczytać pamięci z /proc/meminfo: {e}")
+        memory = psutil.virtual_memory()
+        return format_memory_size(memory.total)
 
 def get_raw_ram_amount():
-    memory = psutil.virtual_memory()
-    return memory.total
+    try:
+        with open("/proc/meminfo", "r") as f:
+            mem_info = f.readlines()
+        total_mem = int([line for line in mem_info if line.startswith("MemTotal")][0].split()[1])
+        return total_mem * 1024
+    except Exception as e:
+        print(f"Nie udało się odczytać pamięci z /proc/meminfo: {e}")
+        memory = psutil.virtual_memory()
+        return memory.total
 
 def get_cpu_core_count():
-    return psutil.cpu_count(logical=False)
+    return psutil.cpu_count(logical=True)
+
+def get_cpu_usage_percentage():
+    cpu_usage = psutil.cpu_percent(interval=statics.cpu_usage_interval, percpu=True)
+    average_cpu_usage = sum(cpu_usage) / len(cpu_usage)
+    return average_cpu_usage
+
+def get_cpu_usages_percentage():
+    cpu_usage = psutil.cpu_percent(interval=statics.cpu_usage_interval, percpu=True)
+    return cpu_usage

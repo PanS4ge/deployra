@@ -33,4 +33,7 @@ for f in glob.glob("web/pages/*/*.py", recursive=True):
 
 app.add_static_files('/assets/', 'assets')
 
-ui.run(host="0.0.0.0", port=statics.port)
+if(statics.randomport):
+    ui.run(host="0.0.0.0")
+else:
+    ui.run(host="0.0.0.0", port=statics.port)

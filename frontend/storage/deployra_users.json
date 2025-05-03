@@ -1,8 +1,8 @@
 {
     "admin@deployra.local": {
         "password": "38bd2647c3559ce272e4a058332d24db084aa1e9c430f0ffc82ee41d8fe703ea",
-        "name": "Admin",
-        "surname": "Deployra",
+        "name": "Adam",
+        "surname": "Kalinowski",
         "permissions": "0",
         "undeletable": true
     }

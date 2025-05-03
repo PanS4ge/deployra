@@ -1,8 +1,15 @@
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, APIRouter, Response
 import fastapi
+
+from routes import vitals as vitalsroute
+from routes import auth
+from routes import readdocker
+from routes import psdocker
+from routes import savedocker
+from routes import cnginx
+
 from loguru import logger
 import loguru
-import statics
 import os
 import sys
 from utils import vitals
@@ -14,6 +21,22 @@ import json
 import socket
 import uvicorn
 import base64
+import subprocess
+
+import docker
+
+from docker.models.containers import Container
+from docker.models.volumes import Volume
+from docker.models.networks import Network
+
+logger.opt(colors=True).info("Starting...")
+
+if(len(os.environ.keys()) > 0):
+    logger.info("Environment variables:")
+    for key in os.environ.keys():
+        logger.info(f"{key}: {os.environ[key]}")
+    
+import statics
 
 logger.opt(colors=True).info("cwd: <red>" + os.getcwd() + "</red>")
 
@@ -21,46 +44,75 @@ logger.opt(colors=True).info("Using <yellow>python</yellow> version " + str(sys.
 for mod in [statics, fastapi, loguru]:
     logger.opt(colors=True).info(f"Using <yellow>{mod.__name__}</yellow> version {mod.__version__}")
     
-app = FastAPI()
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
-@app.get("/back/vitals/ramusage")
-def ram(request: fastapi.Request):
-    if(not setting.settings_exists()): return Response(status_code=412)
-    if not("authorization" in request.headers.keys()):
-        return Response(status_code=401)
-    if(diffiehellman.decrypt_message_delivery(setting.read_settings()["shared"], request.headers.get("authorization")) != setting.read_settings()["access_key"]):
-        return Response(status_code=404)
-    return diffiehellman.encrypt_message_delivery(setting.read_settings()["shared"], json.dumps({"ram": vitals.get_ram_usage_percentage()}))
+app.include_router(vitalsroute.router)
+app.include_router(auth.router)
+app.include_router(readdocker.router)
+app.include_router(psdocker.router)
+app.include_router(savedocker.router)
+app.include_router(cnginx.router)
 
-@app.get("/back/vitals/amount")
-def maxvitals(request: fastapi.Request):
-    if(not setting.settings_exists()): return Response(status_code=412)
-    if not("authorization" in request.headers.keys()):
-        return Response(status_code=401)
-    if(diffiehellman.decrypt_message_delivery(setting.read_settings()["shared"], request.headers.get("authorization")) != setting.read_settings()["access_key"]):
-        return Response(status_code=404)
-    return diffiehellman.encrypt_message_delivery(setting.read_settings()["shared"], json.dumps({"ram": vitals.get_ram_amount(), "cpu": vitals.get_cpu_core_count(), "rawram": vitals.get_raw_ram_amount()}))
+if not(os.path.exists(statics.nginx_conf)):
+    logger.info("Creating nginx.conf")
+    with open(statics.nginx_conf, "w") as f:
+        f.write("""
+user nginx;
+worker_processes 1;
+pid /var/run/nginx.pid;
 
-@app.get("/back/identify")
-def identify(request: fastapi.Request):
-    return {"id": statics.__name__ + " " + statics.__version__, "host": socket.gethostname()}
+error_log /etc/nginx/error.log;
+access_log /etc/nginx/access.log;
 
-@app.post("/back/exchange")
-async def exchange(request: fastapi.Request):
-    if(setting.settings_exists()):
-        return Response(status_code=404)
-    if(request.method != "POST"):
-        return Response(status_code=404)
-    json = await request.json()
-    if("pub" in json.keys() and "prime" in json.keys() and "gen" in json.keys()):
-        priv_key = diffiehellman.generate_private_key(random.randint(json["prime"] * 3, json["prime"] * 10))
-        shared_key = diffiehellman.generate_shared_secret(json["pub"], priv_key, json["prime"])
-        pub_key = diffiehellman.generate_public_key(json["gen"], json["prime"], priv_key)
-        access_key = "".join([random.choice(string.ascii_letters + string.digits) for _ in range(statics.access_key_length)])
-        setting.update_settings(shared=shared_key, priv=priv_key, pub=pub_key, access_key=access_key)
-        return {"pub": pub_key, "access": access_key}
-    return Response(status_code=404)
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    include /etc/nginx/conf.d/*.conf;
+
+    access_log /etc/nginx/access.log;
+    error_log /etc/nginx/error.log warn;
+
+    gzip on;
+    gzip_types text/plain application/xml text/css application/javascript;
+
+    client_max_body_size 10M;
+}                
+""")
+        
+        
+usingport = statics.port
+isport = False
+
+client = docker.from_env()
+idm = os.getenv("HOSTNAME")
+container = client.containers.get(idm)
+for port, bindings in container.ports.items():
+    if bindings:
+        for binding in bindings:
+            public_port = binding.get('HostPort')
+            private_port = port.split('/')[0]
+            if private_port == str(statics.port):
+                usingport = int(public_port)
+                isport = True
+            logger.info(f"Host port {public_port} is redirected to Container port {private_port}")
+
+if not isport:
+    logger.critical("THERE IS NO PORT FROM PORT " + str(statics.port) + ", IT WILL NEVER EVER BE CONNECTED!!!")
+    logger.critical("THERE IS NO PORT FROM PORT " + str(statics.port) + ", IT WILL NEVER EVER BE CONNECTED!!!")
+    logger.critical("THERE IS NO PORT FROM PORT " + str(statics.port) + ", IT WILL NEVER EVER BE CONNECTED!!!")
 
 if(__name__ == "__main__"):
-    logger.success("Starting server, QUICKLY ADD TO " + statics.__name__.upper())
-    uvicorn.run(app, host="0.0.0.0", port=statics.port)
+    logger.success("Starting server on port " + str(usingport) + ((" NOT ON " + str(statics.port) + " YOU HAVE REDIRECTED TO " + str(usingport)) if usingport != statics.port else ""))
+    if(statics.uvicorn):
+        uvicorn.run(app, host=("::" if statics.ipv6 else "0.0.0.0"), port=statics.port)
+    else:
+        cwd = os.path.dirname(__file__)
+        subprocess.run(
+            ["fastapi", "run", "main.py", "--proxy-headers", "--host", ("::" if statics.ipv6 else "0.0.0.0"), "--port", str(statics.port), "--docs-url", "none", "--redoc-url", "none", "--openapi-url", "none"],
+            cwd=cwd
+        )
