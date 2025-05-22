@@ -1,6 +1,6 @@
 from fastapi import FastAPI, APIRouter, Response
 from loguru import logger
-from utils import vitals, setting, diffiehellman
+from utils import vitals, setting, diffiehellman, allowed
 import json
 import os
 import fastapi
@@ -14,24 +14,18 @@ client = docker.from_env()
 router = APIRouter()
 
 @router.post("/back/docker/image/pull")
-def images(request: fastapi.Request):
-    if(not setting.settings_exists()): return Response(status_code=412)
-    if not("authorization" in request.headers.keys()):
+async def images(request: fastapi.Request):
+    if(allowed.is_request_allowed(request) == False):
         return Response(status_code=401)
-    if(diffiehellman.decrypt_message_delivery(setting.read_settings()["shared"], request.headers.get("authorization")) != setting.read_settings()["access_key"]):
-        return Response(status_code=404)
-    r = request.json()
+    r = await request.json()
     image = client.images.pull(**r)
     return diffiehellman.encrypt_message_delivery(setting.read_settings()["shared"], json.dumps({image.id: image.tags[0]}))
 
 @router.post("/back/docker/image/prune")
-def images(request: fastapi.Request):
-    if(not setting.settings_exists()): return Response(status_code=412)
-    if not("authorization" in request.headers.keys()):
+async def imagespurne(request: fastapi.Request):
+    if(allowed.is_request_allowed(request) == False):
         return Response(status_code=401)
-    if(diffiehellman.decrypt_message_delivery(setting.read_settings()["shared"], request.headers.get("authorization")) != setting.read_settings()["access_key"]):
-        return Response(status_code=404)
-    r = request.json()
+    r = await request.json()
     
     #Remove an image. Similar to the docker rmi command.
     #Parameters:
@@ -42,52 +36,50 @@ def images(request: fastapi.Request):
     image = client.images.remove(**r)
     return diffiehellman.encrypt_message_delivery(setting.read_settings()["shared"], json.dumps({image.id: image.tags[0]}))
 
-@router.post("/back/docker/container/deploy")
-def container_deploy(request: fastapi.Request):
-    if(not setting.settings_exists()): return Response(status_code=412)
-    if not("authorization" in request.headers.keys()):
+@router.post("/back/docker/image/remove")
+async def imagespurne(request: fastapi.Request):
+    if(allowed.is_request_allowed(request) == False):
         return Response(status_code=401)
-    if(diffiehellman.decrypt_message_delivery(setting.read_settings()["shared"], request.headers.get("authorization")) != setting.read_settings()["access_key"]):
-        return Response(status_code=404)
-    container : Container = client.containers.run(**request.json())
+    r = await request.json()
+    image = client.images.remove(**r)
+    return diffiehellman.encrypt_message_delivery(setting.read_settings()["shared"], "yes")
+
+@router.post("/back/docker/container/deploy")
+async def container_deploy(request: fastapi.Request):
+    if(allowed.is_request_allowed(request) == False):
+        return Response(status_code=401)
+    r = await request.json()
+    container : Container = client.containers.run(**r)
     return diffiehellman.encrypt_message_delivery(setting.read_settings()["shared"], container.id)
 
 @router.post("/back/docker/volume/create")
-def volcreate(request: fastapi.Request):
-    if(not setting.settings_exists()): return Response(status_code=412)
-    if not("authorization" in request.headers.keys()):
+async def volcreate(request: fastapi.Request):
+    if(allowed.is_request_allowed(request) == False):
         return Response(status_code=401)
-    if(diffiehellman.decrypt_message_delivery(setting.read_settings()["shared"], request.headers.get("authorization")) != setting.read_settings()["access_key"]):
-        return Response(status_code=404)
-    volume : Volume = client.volumes.create(**request.json())
+    r = await request.json()
+    volume : Volume = client.volumes.create(**r)
     return diffiehellman.encrypt_message_delivery(setting.read_settings()["shared"], volume.id)
 
 @router.post("/back/docker/volume/remove")
-def volremove(request: fastapi.Request):
-    if(not setting.settings_exists()): return Response(status_code=412)
-    if not("authorization" in request.headers.keys()):
+async def volremove(request: fastapi.Request):
+    if(allowed.is_request_allowed(request) == False):
         return Response(status_code=401)
-    if(diffiehellman.decrypt_message_delivery(setting.read_settings()["shared"], request.headers.get("authorization")) != setting.read_settings()["access_key"]):
-        return Response(status_code=404)
-    volume : Volume = client.volumes.remove(**request.json())
+    r = await request.json()
+    volume : Volume = client.volumes.prune(**r)
     return diffiehellman.encrypt_message_delivery(setting.read_settings()["shared"], volume.id)
 
 @router.post("/back/docker/network/create")
-def netcreate(request: fastapi.Request):
-    if(not setting.settings_exists()): return Response(status_code=412)
-    if not("authorization" in request.headers.keys()):
+async def netcreate(request: fastapi.Request):
+    if(allowed.is_request_allowed(request) == False):
         return Response(status_code=401)
-    if(diffiehellman.decrypt_message_delivery(setting.read_settings()["shared"], request.headers.get("authorization")) != setting.read_settings()["access_key"]):
-        return Response(status_code=404)
-    network : Network = client.networks.create(**request.json())
-    return diffiehellman.encrypt_message_delivery(setting.read_settings()["shared"], network.id)
+    r = await request.json()
+    network : Network = client.networks.create(**r)
+    return diffiehellman.encrypt_message_delivery(setting.read_sttings()["shared"], network.id)
 
 @router.post("/back/docker/network/remove")
-def netremove(request: fastapi.Request):
-    if(not setting.settings_exists()): return Response(status_code=412)
-    if not("authorization" in request.headers.keys()):
+async def netremove(request: fastapi.Request):
+    if(allowed.is_request_allowed(request) == False):
         return Response(status_code=401)
-    if(diffiehellman.decrypt_message_delivery(setting.read_settings()["shared"], request.headers.get("authorization")) != setting.read_settings()["access_key"]):
-        return Response(status_code=404)
-    network : Network = client.networks.remove(**request.json())
+    r = await request.json()
+    network : Network = client.networks.prune(**r)
     return diffiehellman.encrypt_message_delivery(setting.read_settings()["shared"], network.id)

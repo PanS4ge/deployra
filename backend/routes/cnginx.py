@@ -1,5 +1,6 @@
 from fastapi import FastAPI, APIRouter, Response
 from loguru import logger
+from utils import allowed
 from utils import vitals, setting, diffiehellman
 import json
 import os
@@ -51,30 +52,25 @@ def get_certbot_docker() -> Container | None:
 
 @router.get("/back/nginx")
 def nginx(request: fastapi.Request):
-    if not(setting.settings_exists()): return Response(status_code=412)
-    if not("authorization" in request.headers.keys()):
+    if(allowed.is_request_allowed(request) == False):
         return Response(status_code=401)
-    if(diffiehellman.decrypt_message_delivery(setting.read_settings()["shared"], request.headers.get("authorization")) != setting.read_settings()["access_key"]):
-        return Response(status_code=404)
     ng = get_nginx_docker()
     if(ng == None):
         return Response(status_code=401)
     return diffiehellman.encrypt_message_delivery(setting.read_settings()["shared"], ng.id)
 
 @router.post("/back/nginx/create")
-def create_nginx(request : fastapi.Request):
-    if not(setting.settings_exists()): return Response(status_code=412)
-    if not("authorization" in request.headers.keys()):
+async def create_nginx(request : fastapi.Request):
+    if(allowed.is_request_allowed(request) == False):
         return Response(status_code=401)
-    if(diffiehellman.decrypt_message_delivery(setting.read_settings()["shared"], request.headers.get("authorization")) != setting.read_settings()["access_key"]):
-        return Response(status_code=404)
     try:
-        domain = request.json()["domain"]
-        target_container_name = request.json()["target_container_name"]
-        target_container_port = request.json()["target_container_port"]
-        ssl = request.json()["ssl"]
+        r = await request.json()
+        domain = r["domain"]
+        target_container_name = r["target_container_name"]
+        target_container_port = r["target_container_port"]
+        ssl = r["ssl"]
         if(ssl):
-            ssl_email = request.json()["ssl_email"]
+            ssl_email = r["ssl_email"]
         else:
             ssl_email = ""
         ssl_done = False
@@ -132,11 +128,8 @@ def create_nginx(request : fastapi.Request):
     
 @router.post("/back/nginx/delete")
 def delete_nginx(request : fastapi.Request):
-    if not(setting.settings_exists()): return Response(status_code=412)
-    if not("authorization" in request.headers.keys()):
+    if(allowed.is_request_allowed(request) == False):
         return Response(status_code=401)
-    if(diffiehellman.decrypt_message_delivery(setting.read_settings()["shared"], request.headers.get("authorization")) != setting.read_settings()["access_key"]):
-        return Response(status_code=404)
     try:
         domain = request.json()["domain"]
         ng = get_nginx_docker()

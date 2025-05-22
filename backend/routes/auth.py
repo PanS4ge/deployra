@@ -1,6 +1,6 @@
-from fastapi import FastAPI, APIRouter, Response
+from fastapi import FastAPI, APIRouter, Request, Response
 from loguru import logger
-from utils import vitals, setting, diffiehellman
+from utils import vitals, setting, diffiehellman, allowed
 import json
 import os
 import fastapi
@@ -33,11 +33,8 @@ async def exchange(request: fastapi.Request):
 
 @router.get("/back/remove")
 def remove(request: fastapi.Request):
-    if(not setting.settings_exists()): return Response(status_code=412)
-    if not("authorization" in request.headers.keys()):
+    if(allowed.is_request_allowed(request) == False):
         return Response(status_code=401)
-    if(diffiehellman.decrypt_message_delivery(setting.read_settings()["shared"], request.headers.get("authorization")) != setting.read_settings()["access_key"]):
-        return Response(status_code=404)
     logger.info("Removing settings.json")
     os.remove(os.path.join(os.getcwd(), "settings.json"))
     if(os.path.exists(os.path.join(os.getcwd(), "settings.json"))):
@@ -45,11 +42,11 @@ def remove(request: fastapi.Request):
     return Response(status_code=200)
 
 @router.post("/back/saveip")
-def saveip(request: fastapi.Request):
-    if(not setting.settings_exists()): return Response(status_code=412)
-    if not("authorization" in request.headers.keys()):
+async def saveip(request: Request):
+    if(allowed.is_request_allowed(request) == False):
         return Response(status_code=401)
-    if(diffiehellman.decrypt_message_delivery(setting.read_settings()["shared"], request.headers.get("authorization")) != setting.read_settings()["access_key"]):
-        return Response(status_code=404)
-    setting.update_settings(ip=request.json()["ip"])
+    
+    body = await request.json()
+    setting.update_settings(ip=body["ip"])
+    
     return Response(status_code=200)

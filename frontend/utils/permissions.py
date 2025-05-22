@@ -14,6 +14,7 @@ class Permission(Enum):
     ALLOW_CREATING_USERS_SETTING = "9"
     ALLOW_MODIFYING_USERS = "A"
     ALLOW_DELETING_USERS = "B"
+    ALLOW_PULL_IMAGES = "D"
     ALLOW_RISKY_PERMISSIONS = "C"
 
 risky_permissions = [

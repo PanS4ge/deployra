@@ -1,5 +1,6 @@
 from fastapi import Request
 
+from utils.managers import notifications
 from utils.encryption import jwthandle
 import statics
 
@@ -9,6 +10,7 @@ import web.layout as layout
 from nicegui import ui
 from nicegui import APIRouter
 import traceback
+from loguru import logger
 from utils import webpageutils
 @ui.page('/connections/create')
 def main_page(request: Request) -> None:
@@ -60,14 +62,16 @@ def main_page(request: Request) -> None:
                         c.enable()
                         c.update()
                     back = backend_wrapper.save_backend(url.value, name.value, ipad.value, shared, access)
-                    if(back):
-                        ui.notify(settingsgen.get_language().saved, color='positive')
-                        ui.run_javascript(' setTimeout(() => { window.location.href = "/connections"; }, 3000);')
-                    else:
+                    if(back == "False"):
+                        logger.error("Failed to save backend")
                         ui.notify(settingsgen.get_language().something_went_wrong, color='negative')
                         c.text = settingsgen.get_language().save
                         c.enable()
                         c.update()
+                    sip = backend_wrapper.save_ip(back, ipad.value)
+                    ui.notify(settingsgen.get_language().saved, color='positive')
+                    webpageutils.redirect(ui, '/connections')
+                    notifications.add_notification(settingsgen.get_language().saved_connection_noti.replace("{VER}", settingsgen.get_storage_type().get_value(statics.db_name + "_connections", back, "servername") + " " + settingsgen.get_storage_type().get_value(statics.db_name + "_connections", back, "serverversion")).replace("{NAME}", name.value))
                 except Exception as e:
                     traceback.print_exc()
                     ui.notify(settingsgen.get_language().notfoundbackend, color='negative')

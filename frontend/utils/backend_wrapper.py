@@ -28,9 +28,16 @@ def check_backend(url) -> str:
 
 def save_backend(url, name, ipad, shared, access_key) -> bool:
     if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
-        settingsgen.get_storage_type().create_db(statics.db_name + "_connections", uuid="STRING", url="STRING", name="TINYSTRING", ipaddr="STRING", shared="STRING", access_key="STRING", cpu_cores="INT", ram="TINYSTRING", rawram="BIGINT", created_at="TIMESTAMP CURRENT_TIMESTAMP()")
+        settingsgen.get_storage_type().create_db(statics.db_name + "_connections", uuid="STRING", url="STRING", name="TINYSTRING", ipaddr="STRING", shared="STRING", access_key="STRING", cpu_cores="INT", ram="TINYSTRING", rawram="BIGINT", servername="TINYSTRING", serverversion="TINYSTRING", hostname="TINYSTRING", created_at="TIMESTAMP CURRENT_TIMESTAMP()")
     vitals = json.loads(get_url_vitals(url, shared, access_key))
-    return settingsgen.get_storage_type().save_value(statics.db_name + "_connections", str(uuid.uuid4()), url=url, name=name, ipaddr=ipad, shared=shared, access_key=access_key, cpu_cores=int(vitals["cpu"]), ram=vitals["ram"], rawram=int(vitals["rawram"]))
+    ident = check_backend(url).json()
+    if(ident is None):
+        return False
+    sname = ident["id"].split(" ")[0]
+    sver = ident["id"].split(" ")[1]
+    host = ident["host"]
+    uuidd = str(uuid.uuid4())
+    return uuidd if settingsgen.get_storage_type().save_value(statics.db_name + "_connections", uuidd, url=url, name=name, ipaddr=ipad, shared=shared, access_key=access_key, cpu_cores=int(vitals["cpu"]), ram=vitals["ram"], rawram=int(vitals["rawram"]), servername=sname, serverversion=sver, hostname=host) else "False"
 
 def connect_to_backend(uuid) -> str:
     if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
@@ -41,7 +48,7 @@ def connect_to_backend(uuid) -> str:
         traceback.print_exc()
         return False
 
-def free_connection(uuid) -> bool:
+def free_connection(uuid) -> bool:    
     if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
         return False
     r = requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "remove")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))})
@@ -111,3 +118,164 @@ def exchange_dh(url) -> tuple[str, str]:
     shared = diffiehellman.generate_shared_secret(pub, settingsgen.read_cryptography()["diffiehellman_priv"], settingsgen.read_cryptography()["diffiehellman_prime"])
     logger.info(f"Finished exchange with {url}")
     return (shared, req.json()["access"])
+
+def save_ip(uuid, ip):
+    r = requests.post(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "saveip")), json={"ip": ip}, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))})
+    if(r != 200):
+        return False
+    else:
+        return True
+
+
+
+
+
+def get_images(uuid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "images")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def get_containers(uuid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "containers")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def get_container_statuses(uuid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "containers", "statuses")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def get_volumes(uuid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "volumes")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def get_networks(uuid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "networks")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+
+
+def container_info(uuid, containerid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "container", containerid, "info")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def container_logs(uuid, containerid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "container", containerid, "logs")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def container_top(uuid, containerid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "container", containerid, "top")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def container_stats(uuid, containerid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "container", containerid, "stats")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def container_start(uuid, containerid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "container", containerid, "start")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def container_stop(uuid, containerid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "container", containerid, "stop")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def container_restart(uuid, containerid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "container", containerid, "restart")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def container_remove(uuid, containerid, image) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "container", containerid, "restart")), json={"image": image}, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def volume_info(uuid, volumeid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "volume", volumeid, "info")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def network_info(uuid, networkid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "network", networkid, "info")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def containers_by_network(uuid, networkid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "network", networkid, "containers")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+
+
+def pull_image(uuid, **pullargs) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "image", "pull")), json=pullargs, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def prune_image(uuid, **pullargs) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "image", "prune")), json=pullargs, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def container_deploy(uuid, **deployargs) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "container", "deploy")), json=deployargs, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def volume_create(uuid, **volargs) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "volume", "create")), json=volargs, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def volume_remove(uuid, **volargs) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "volume", "remove")), json=volargs, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def network_create(uuid, **netargs) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "network", "create")), json=netargs, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def network_remove(uuid, **netargs) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "network", "remove")), json=netargs, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def image_remove(uuid, **imageargs) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "image", "remove")), json=imageargs, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+
+def get_nginx(uuid) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "nginx")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def create_nginx(uuid, domain, target_container_name, target_container_port, ssl, ssl_email) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    nginxd = {
+        "domain": domain,
+        "target_container_name": target_container_name,
+        "target_container_port": target_container_port,
+        "ssl": ssl,
+        "ssl_email": ssl_email
+    }
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "nginx", "create")), json=nginxd, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def delete_nginx(uuid, domain) -> str:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    nginxd = {
+        "domain": domain
+    }
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "nginx", "delete")), json=nginxd, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)

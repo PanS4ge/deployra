@@ -101,18 +101,27 @@ for port, bindings in container.ports.items():
                 isport = True
             logger.info(f"Host port {public_port} is redirected to Container port {private_port}")
 
+logger.info(f"Physical CPU core count: {vitals.get_cpu_core_count()}")
+logger.info(f"Logical CPU core count: {vitals.get_logical_cpu_count()}")
+logger.info(f"Average CPU usage: {vitals.get_cpu_usage_percentage()}%")
+logger.info(f"CPU usage per core: {', '.join(f'{x:.1f}%' for x in vitals.get_cpu_usages_percentage())}")
+logger.info(f"RAM usage: {vitals.get_ram_usage_percentage()}%")
+logger.info(f"Total RAM: {vitals.get_ram_amount()}")
+logger.info(f"Total RAM (in bytes): {vitals.get_raw_ram_amount()} bytes")
+    
 if not isport:
     logger.critical("THERE IS NO PORT FROM PORT " + str(statics.port) + ", IT WILL NEVER EVER BE CONNECTED!!!")
     logger.critical("THERE IS NO PORT FROM PORT " + str(statics.port) + ", IT WILL NEVER EVER BE CONNECTED!!!")
     logger.critical("THERE IS NO PORT FROM PORT " + str(statics.port) + ", IT WILL NEVER EVER BE CONNECTED!!!")
 
 if(__name__ == "__main__"):
-    logger.success("Starting server on port " + str(usingport) + ((" NOT ON " + str(statics.port) + " YOU HAVE REDIRECTED TO " + str(usingport)) if usingport != statics.port else ""))
+    logger.success("Starting server on port " + str(usingport) + ((" NOT ON " + str(statics.port) + " YOU HAE REDIRECTED TO " + str(usingport)) if usingport != statics.port else ""))
+    logger.info("There is no documentation, don't worry :)")
     if(statics.uvicorn):
         uvicorn.run(app, host=("::" if statics.ipv6 else "0.0.0.0"), port=statics.port)
     else:
         cwd = os.path.dirname(__file__)
         subprocess.run(
-            ["fastapi", "run", "main.py", "--proxy-headers", "--host", ("::" if statics.ipv6 else "0.0.0.0"), "--port", str(statics.port), "--docs-url", "none", "--redoc-url", "none", "--openapi-url", "none"],
+            ["fastapi", "run", "main.py", "--proxy-headers", "--host", ("::" if statics.ipv6 else "0.0.0.0"), "--port", str(statics.port)],
             cwd=cwd
         )

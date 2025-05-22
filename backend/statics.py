@@ -4,7 +4,7 @@ import random
 import os
 
 __name__ = "DeployraAPI"
-__version__ = "0.0.2"
+__version__ = "0.0.4"
 secret = hashlib.sha256(("".join([random.choice(string.hexdigits) for _ in range(24)])).encode()).hexdigest()
 
 port = 2750
@@ -20,7 +20,6 @@ try:
 except ValueError:
     cpu_usage_interval = 0.1
     print("Invalid value for cpu_usage_interval, using default: 0.1")
-
 
 apps_folder   = "/apps"
 letsencrypt   = "/etc/letsencrypt"
