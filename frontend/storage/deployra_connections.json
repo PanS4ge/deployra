@@ -1,15 +1,15 @@
 {
-    "7103a3b2-b52c-43d2-b23b-012a75b44b0a": {
-        "url": "frog02.mikr.us:40409",
+    "b7da2689-acb6-4d2c-9d6c-8c45f9f1a65f": {
+        "url": "frog02.mikr.us:30409",
         "name": "frog",
         "ipaddr": "2a01:4f9:6b:47e9::409",
-        "shared": 3,
-        "access_key": "69Zgn1tKB9U97eNxfmGL91Yd849JxrJ32QOMCR4I3RGylhRY",
+        "shared": 16,
+        "access_key": "uznXEFlbKwBqm90f8mF6CrP5e7h3boGcAyhDCrAcVAuLNbhd",
         "cpu_cores": 6,
         "ram": "126GB",
         "rawram": 134958301184,
         "servername": "DeployraAPI",
         "serverversion": "0.0.4",
-        "hostname": "14b59e391402"
+        "hostname": "353264d44652"
     }
 }

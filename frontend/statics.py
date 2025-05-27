@@ -22,7 +22,8 @@ noti_flag = os.path.join(os.getcwd(), "storage", "notifications.flag")
 example_domain = "deployra.local"
 debug = True
 
-uvicorn = True
+uvicorn = False
+openwebbrowser = True
 
 ipv6 = False
 reload = False

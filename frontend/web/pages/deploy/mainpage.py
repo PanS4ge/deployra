@@ -33,7 +33,8 @@ def main_page(request: Request) -> None:
                         ui.label(settingsgen.get_language().uuid).classes("w-1/13 text-center")
                         ui.label(settingsgen.get_language().deploytype).classes("w-1/13 text-center")
                         ui.label(settingsgen.get_language().table_actions).classes("w-1/13 text-center")
-                    deployments = settingsgen.get_storage_type().list_keys(statics.db_name + "_deploys")
+                    _deployments = settingsgen.get_storage_type().list_keys(statics.db_name + "_deploys")
+                    deployments = [] if _deployments is None else _deployments
                     for deploynum in range(len(deployments)):
                         with ui.row("justifybetween"):
                             ui.label(str(deploynum)).classes("w-1/13 text-center " + settingsgen.get_storage_type().get_value(statics.db_name + "_deploys", deployments[deploynum], "uuid"))

@@ -45,6 +45,7 @@ def main_page(request: Request, id: str) -> None:
             with ui.row().classes("w-full items-center border-b border-solid border-black justify-between py-2"):
                 ui.label("#").classes("w-1/13 text-center")
                 ui.label(settingsgen.get_language().table_name).classes("w-1/13 text-center")
+                ui.label(settingsgen.get_language().table_actions).classes("w-1/13 text-center")
             for networks in range(len(c_id.keys())):
                 with ui.row().classes("w-full items-center border-b border-solid border-black justify-between py-2"):
                     ui.label(str(networks + 1) + ".").classes("w-1/13 text-center " + list(c_id.keys())[networks])
