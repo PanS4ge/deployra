@@ -63,6 +63,8 @@ def main_page(request: Request, id: str) -> None:
                     ui.label(imagesha).classes("w-6/13 text-center " + list(c_id.keys())[containers])
                     ui.label(c_st[list(c_id.keys())[containers]]).classes("w-6/13 text-center " + list(c_id.keys())[containers])
                     with ui.column().classes("text-center flex flex-row"):
+                        with ui.button("", on_click=lambda con=containers: webpageutils.redirect(ui, f'/connections/{id}/seek/{list(c_id.keys())[con]}')).classes("w-[16px]"):
+                            ui.html('<i class="bi bi-info-square text-[24px]"></i>')
                         if(info["State"]["Running"]):
                             with ui.button("", on_click=lambda con=containers: container_stop(list(c_id.keys())[con])).classes("w-[16px]"):
                                 ui.html('<i class="bi bi-stop-circle text-[24px]"></i>')

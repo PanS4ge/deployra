@@ -126,3 +126,4 @@ class Polish(Language):
     goback = "Powrót"
     deploytype = "Typ deploya"
     address = "Adres"
+    dev_container_info = "Szczegółowe informacje o kontenerze"

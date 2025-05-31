@@ -9,7 +9,8 @@ import traceback
 import uuid
 import urllib
 import json
-from utils.ttl_cache import ttl_cache
+from utils.caching.ttl_cache import ttl_cache
+from utils.caching.local_cache import local_cache
 from loguru import logger
 
 def join_url(*segments) -> str:
@@ -168,7 +169,7 @@ def get_networks(uuid) -> str:
     return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.get(autofill_and_log_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "docker", "networks")), headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
 
 
-@ttl_cache(ttl=60*5)
+@local_cache
 def container_info(uuid, containerid) -> str:
     if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
         return
