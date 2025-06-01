@@ -43,7 +43,6 @@ def main_page(request: Request, id: str) -> None:
         c = backend_wrapper.pull_image(id, repository=ih.value, tag=it.value)
         try:
             ret : dict = json.loads(c)
-            print(ret)
             notifications.add_notification(settingsgen.get_language().image_pull_success.replace("{IMAGE}", list(ret.values())[0]).replace("{DOCKER}", settingsgen.get_storage_type().get_value(statics.db_name + "_connections", id, "name")))
             ui.notify(settingsgen.get_language().image_pull_success.replace("{IMAGE}", list(ret.values())[0]).replace("{DOCKER}", settingsgen.get_storage_type().get_value(statics.db_name + "_connections", id, "name")))
         except:

@@ -15,7 +15,8 @@ class Permission(Enum):
     ALLOW_MODIFYING_USERS = "A"
     ALLOW_DELETING_USERS = "B"
     ALLOW_PULL_IMAGES = "D"
-    ALLOW_RISKY_PERMISSIONS = "C"
+    ALLOW_SEEKING_CONTAINER = "E"
+    ALLOW_RISKY_PERMISSIONS = "C" # przeskok bo mi sie nie chce zmieniać.
 
 risky_permissions = [
     Permission.ALLOW_DEPLOYMENT_DELETE,

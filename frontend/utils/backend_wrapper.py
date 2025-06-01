@@ -27,7 +27,7 @@ def autofill_and_log_http(*segments) -> str:
     elif("info" in url):
         color = colorama.Fore.LIGHTCYAN_EX
     logger.debug(f"{colorama.Fore.YELLOW}Sending request to {color}{url}{colorama.Fore.RESET}")
-    
+
     if url.startswith("http"):
         return url
     return "http://" + url
@@ -51,6 +51,11 @@ def save_backend(url, name, ipad, shared, access_key) -> bool:
     host = ident["host"]
     uuidd = str(uuid.uuid4())
     return uuidd if settingsgen.get_storage_type().save_value(statics.db_name + "_connections", uuidd, url=url, name=name, ipaddr=ipad, shared=shared, access_key=access_key, cpu_cores=int(vitals["cpu"]), ram=vitals["ram"], rawram=int(vitals["rawram"]), servername=sname, serverversion=sver, hostname=host) else "False"
+
+def get_all_connections() -> list:
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return []
+    return settingsgen.get_storage_type().list_keys(statics.db_name + "_connections")
 
 def connect_to_backend(uuid) -> str:
     if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):

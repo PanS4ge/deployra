@@ -44,7 +44,11 @@ def main_page(request: Request) -> None:
                             ui.label(settingsgen.get_storage_type().get_value(statics.db_name + "_deploys", deployments[deploynum], "uuid")).classes("w-6/13 text-center " + settingsgen.get_storage_type().get_value(statics.db_name + "_deploys", deployments[deploynum], "uuid"))
                             ui.label(settingsgen.get_storage_type().get_value(statics.db_name + "_deploys", deployments[deploynum], "deploytype")).classes("w-6/13 text-center " + settingsgen.get_storage_type().get_value(statics.db_name + "_deploys", deployments[deploynum], "uuid"))
                             with ui.row():
-                                ui.button()
+                                if(users.has_permission(session, Permission.ALLOW_DEPLOYMENT)):
+                                    if(len(backend_wrapper.get_all_connections()) > 0):
+                                        ui.button(settingsgen.get_language().new_deploy, on_click=webpageutils.redirect(ui, '/deploy/new')).classes("w-full text-center")
+                                    else:
+                                        ui.button(settingsgen.get_language().add_at_least_one_connection, on_click=webpageutils.redirect(ui, '/connections')).classes("w-full text-center")
             
     if not webpageutils.is_authenticated(request):
         return webpageutils.redirect(ui, '/login')
