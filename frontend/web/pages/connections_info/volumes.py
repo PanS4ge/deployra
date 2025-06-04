@@ -55,6 +55,12 @@ def main_page(request: Request, id: str) -> None:
                             ui.html('<i class="bi bi-trash text-[24px]"></i>')
                             
     def volume_remove(volumeid):
+        session = jwthandle.decode_jwt(request.cookies.get('jwt_token'))
+        if(session is None):
+            ui.run_javascript(' window.cookies.jwt_token = ""; window.location.href = "/login";')
+            return
+        if(not users.has_permission(session, Permission.ALLOW_DELETING_VOLUMES)):
+            return
         backend_wrapper.volume_remove(id, volume=volumeid, force=True)
         ui.run_javascript('window.location.reload();')
     

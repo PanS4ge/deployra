@@ -16,12 +16,18 @@ class Permission(Enum):
     ALLOW_DELETING_USERS = "B"
     ALLOW_PULL_IMAGES = "D"
     ALLOW_SEEKING_CONTAINER = "E"
+    ALLOW_CREATING_VOLUMES = "F"
+    ALLOW_CREATING_NETWORKS = "G"
+    ALLOW_DELETING_VOLUMES = "H"
+    ALLOW_DELETING_NETWORKS = "I"
     ALLOW_RISKY_PERMISSIONS = "C" # przeskok bo mi sie nie chce zmieniać.
 
 risky_permissions = [
     Permission.ALLOW_DEPLOYMENT_DELETE,
     Permission.ALLOW_DELETING_USERS,
     Permission.ALLOW_DELETE_DOCKERS,
+    Permission.ALLOW_DELETING_VOLUMES,
+    Permission.ALLOW_DELETING_NETWORKS,
     Permission.ALLOW_RISKY_PERMISSIONS,
     Permission.ALLOW_RISKY_SETTINGS
 ]

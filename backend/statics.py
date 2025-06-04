@@ -4,7 +4,7 @@ import random
 import os
 
 __name__ = "DeployraAPI"
-__version__ = "0.0.4"
+__version__ = "0.0.5"
 secret = hashlib.sha256(("".join([random.choice(string.hexdigits) for _ in range(24)])).encode()).hexdigest()
 
 port = 2750

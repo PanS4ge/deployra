@@ -73,6 +73,11 @@ async def netcreate(request: fastapi.Request):
     if(allowed.is_request_allowed(request) == False):
         return Response(status_code=401)
     r = await request.json()
+    if("ipam_subnet" in r and "ipam_gateway" in r):
+        ipam_pool = docker.types.IPAMPool(subnet=r["ipam_subnet"], gateway=r["ipam_gateway"])
+        r["ipam"] = docker.types.IPAMConfig(pool_configs=[ipam_pool])
+        del r["ipam_subnet"]
+        del r["ipam_gateway"]
     network : Network = client.networks.create(**r)
     return diffiehellman.encrypt_message_delivery(setting.read_sttings()["shared"], network.id)
 
