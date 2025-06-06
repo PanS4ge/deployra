@@ -1,11 +1,12 @@
 services:
-  deployra_api:
+  api:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: deployra_api
     ports:
       - "2750:2750"
+      - "6000:6000"
     volumes:
       # nazwane wolumeny zamiast powtarzanych ścieżek
       - apps_data:/apps
@@ -27,6 +28,7 @@ services:
       access_key_length: 48
       cpu_usage_interval: .1
       ipv6: true
+    oom_score_adj: 250
     restart: always
 
   nginx:
@@ -36,7 +38,7 @@ services:
       - "80:80"
       - "443:443"
     depends_on:
-      - deployra_api
+      - api
     volumes:
       - apps_data:/apps
       - nginx_data:/etc/nginx
@@ -62,7 +64,10 @@ services:
           certbot renew --webroot -w /var/www/certbot --quiet
           sleep 168h & wait $${!};
         done'
+    oom_score_adj: 750
+    restart: unless-stopped
 
+  
 networks:
   deployra:
 

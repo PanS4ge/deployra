@@ -7,6 +7,8 @@ from routes import readdocker
 from routes import psdocker
 from routes import savedocker
 from routes import cnginx
+from routes import ftpserver
+from routes import statuses
 
 from loguru import logger
 import loguru
@@ -52,6 +54,8 @@ app.include_router(readdocker.router)
 app.include_router(psdocker.router)
 app.include_router(savedocker.router)
 app.include_router(cnginx.router)
+app.include_router(ftpserver.router)
+app.include_router(statuses.router)
 
 if not(os.path.exists(statics.nginx_conf)):
     logger.info("Creating nginx.conf")

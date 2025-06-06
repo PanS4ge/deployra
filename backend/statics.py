@@ -4,7 +4,7 @@ import random
 import os
 
 __name__ = "DeployraAPI"
-__version__ = "0.0.5"
+__version__ = "0.1.0"
 secret = hashlib.sha256(("".join([random.choice(string.hexdigits) for _ in range(24)])).encode()).hexdigest()
 
 port = 2750
@@ -26,6 +26,8 @@ letsencrypt   = "/etc/letsencrypt"
 certbot       = "/var/www/certbot"
 nginx_conf    = "/etc/nginx/nginx.conf"
 nginx_conf_d  = "/etc/nginx/conf.d"
+
+ftp_image = 'delfer/alpine-ftp-server'
 
 if(not os.path.exists(apps_folder)): os.mkdir(apps_folder)
 if(not os.path.exists(letsencrypt)): os.mkdir(letsencrypt)

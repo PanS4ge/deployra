@@ -1,15 +1,1 @@
-{
-    "b7da2689-acb6-4d2c-9d6c-8c45f9f1a65f": {
-        "url": "frog02.mikr.us:30409",
-        "name": "frog",
-        "ipaddr": "2a01:4f9:6b:47e9::409",
-        "shared": 16,
-        "access_key": "uznXEFlbKwBqm90f8mF6CrP5e7h3boGcAyhDCrAcVAuLNbhd",
-        "cpu_cores": 6,
-        "ram": "126GB",
-        "rawram": 134958301184,
-        "servername": "DeployraAPI",
-        "serverversion": "0.0.4",
-        "hostname": "353264d44652"
-    }
-}
+{}

@@ -1,6 +1,8 @@
 from fastapi import FastAPI, APIRouter, Request, Response
 from loguru import logger
 from utils import vitals, setting, diffiehellman, allowed
+from utils import ftp as ftpserver
+from utils.reader import read_file
 import json
 import os
 import fastapi
@@ -13,7 +15,7 @@ router = APIRouter()
 
 @router.get("/back/identify")
 def identify(request: fastapi.Request):
-    return {"id": statics.__name__ + " " + statics.__version__, "host": socket.gethostname()}
+    return {"ver": statics.__name__ + " " + statics.__version__, "host": read_file("/proc/sys/kernel/ostype") + " " + read_file("/proc/sys/kernel/osrelease") + " " + read_file("/proc/sys/kernel/version")}
 
 @router.post("/back/exchange")
 async def exchange(request: fastapi.Request):

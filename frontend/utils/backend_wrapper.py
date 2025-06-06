@@ -297,3 +297,9 @@ def delete_nginx(uuid, domain) -> str:
         "domain": domain
     }
     return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_and_log_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "nginx", "delete")), json=nginxd, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+
+def create_ftp(uuid, **kwargs):
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_and_log_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "nginx", "delete")), json=kwargs, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+ 
