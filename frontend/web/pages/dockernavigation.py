@@ -6,6 +6,9 @@ from utils import webpageutils
 from utils import permissions
 from utils.encryption import jwthandle
 from utils.managers import users
+from requests.exceptions import ConnectionError
+from json.decoder import JSONDecodeError
+import traceback
 
 def create_layout(page_title: str, request: Request, id : str, content_function):
     def add_navigation():
@@ -28,7 +31,20 @@ def create_layout(page_title: str, request: Request, id : str, content_function)
                     getattr(settingsgen.get_language(), f"connections_{page}"),
                     on_click=lambda _, p=page: webpageutils.redirect(ui, f'/connections/{id}/{p}')
                 ).props(props)
-
-        content_function()
+        
+        try:
+            content_function()
+        except ConnectionError as e:
+            traceback.print_exc()
+            with ui.row().classes("inline-grid absolute-center items-center"):
+                with ui.row():
+                    with ui.column():
+                        ui.label(settingsgen.get_language().no_connection).classes('text-h3')
+        except JSONDecodeError as e:
+            traceback.print_exc()
+            with ui.row().classes("inline-grid absolute-center items-center"):
+                with ui.row():
+                    with ui.column():
+                        ui.label(settingsgen.get_language().no_connection).classes('text-h3')
 
     layout.create_layout(page_title, request, add_navigation)

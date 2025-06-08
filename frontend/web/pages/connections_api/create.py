@@ -12,6 +12,8 @@ from nicegui import APIRouter
 import traceback
 from loguru import logger
 from utils import webpageutils
+import threading
+
 @ui.page('/connections/create')
 def main_page(request: Request) -> None:
     def check_connection(url, b, foundversion, hostname):
@@ -20,7 +22,7 @@ def main_page(request: Request) -> None:
         b.update()
         out = backend_wrapper.check_backend(url.value)
         if out is not None:
-            ui.notify(settingsgen.get_language().found + " " + out.json()["id"], color='positive')
+            ui.notify(settingsgen.get_language().found + " " + out.json()["ver"], color='positive')
             foundversion.value = out.json()["ver"]
             foundversion.update()
             hostname.value = out.json()["host"]
@@ -46,14 +48,14 @@ def main_page(request: Request) -> None:
                         name = ui.input(label=settingsgen.get_language().c_name, placeholder=settingsgen.get_language().c_name).classes('w-[100%]')
                         url = ui.input(label=settingsgen.get_language().c_url, placeholder=settingsgen.get_language().c_url).classes('w-[100%]')
                         ipad = ui.input(label=settingsgen.get_language().c_ipad, placeholder=settingsgen.get_language().c_ipad).classes('w-[100%]')
-                        b = ui.button(text=settingsgen.get_language().c_check).classes('w-[100%]')
+                        b = ui.button(text=settingsgen.get_language().c_check).classes('w-full')
                         with ui.row().classes("items-center flex-nowrap"):
                             ui.button(settingsgen.get_language().foundversion)
-                            foundversion = ui.input().classes('w-[100%]')
+                            foundversion = ui.input().classes('w-full')
                             foundversion.set_enabled(False)
                         with ui.row().classes("items-center flex-nowrap"):
                             ui.button(settingsgen.get_language().hostname)
-                            hostname = ui.input().classes('w-[100%]')
+                            hostname = ui.input().classes('w-full')
                             hostname.set_enabled(False)
                         b.on_click(lambda url=url, b=b, foundversion=foundversion, hostname=hostname: check_connection(url, b, foundversion, hostname))
                     with ui.card().classes("items-center w-[50%]"):
@@ -90,8 +92,10 @@ def main_page(request: Request) -> None:
                             c.update()
                         sip = backend_wrapper.save_ip(back, ipad.value)
                         if(ftison.value):
-                            backend_wrapper.create_ftp(back, ftuser.value, ftpass.value, ftdoma.value, ftport.value, ftpavs.value, frpave.value, ftssle.value)
-                        ui.notify(settingsgen.get_language().saved, color='positive')
+                            threading.Thread(target=backend_wrapper.create_ftp, args=(back), kwargs={"username": ftuser.value, "password": ftpass.value, "domain": ftdoma.value, "port": int(ftport.value), "ssl_enabled": True, "start_pasv_port": int(ftpavs.value), "end_pasv_port": int(frpave.value), "ssl_email": ftssle.value})
+                            ui.notify(settingsgen.get_language().saved_ftp_queued, color='positive')
+                        else:
+                            ui.notify(settingsgen.get_language().saved, color='positive')
                         webpageutils.redirect(ui, '/connections')
                         notifications.add_notification(settingsgen.get_language().saved_connection_noti.replace("{VER}", settingsgen.get_storage_type().get_value(statics.db_name + "_connections", back, "servername") + " " + settingsgen.get_storage_type().get_value(statics.db_name + "_connections", back, "serverversion")).replace("{NAME}", name.value))
                     except Exception as e:

@@ -12,6 +12,7 @@ import json
 from utils.caching.ttl_cache import ttl_cache
 from utils.caching.local_cache import local_cache
 from loguru import logger
+from utils.managers import notifications
 
 def join_url(*segments) -> str:
     return '/'.join(segment.strip('/') for segment in segments)
@@ -46,8 +47,8 @@ def save_backend(url, name, ipad, shared, access_key) -> bool:
     ident = check_backend(url).json()
     if(ident is None):
         return False
-    sname = ident["id"].split(" ")[0]
-    sver = ident["id"].split(" ")[1]
+    sname = ident["ver"].split(" ")[0]
+    sver = ident["ver"].split(" ")[1]
     host = ident["host"]
     uuidd = str(uuid.uuid4())
     return uuidd if settingsgen.get_storage_type().save_value(statics.db_name + "_connections", uuidd, url=url, name=name, ipaddr=ipad, shared=shared, access_key=access_key, cpu_cores=int(vitals["cpu"]), ram=vitals["ram"], rawram=int(vitals["rawram"]), servername=sname, serverversion=sver, hostname=host) else "False"
@@ -298,8 +299,15 @@ def delete_nginx(uuid, domain) -> str:
     }
     return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_and_log_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "nginx", "delete")), json=nginxd, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
 
+def play_rps(uuid, **kwargs):
+    if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
+        return
+    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_and_log_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "play", "rps")), json=kwargs, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+ 
 def create_ftp(uuid, **kwargs):
     if(not settingsgen.get_storage_type().does_db_exist(statics.db_name + "_connections")):
         return
-    return diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_and_log_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "nginx", "delete")), json=kwargs, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
- 
+    c = diffiehellman.decrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), requests.post(autofill_and_log_http(join_url(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "url"), "back", "createftp")), json=kwargs, headers={"Authorization": diffiehellman.encrypt_message_delivery(settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "shared"), settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "access_key"))}).text)
+    notifications.add_notification(settingsgen.get_language().ftp_created.replace("{DOCKER}", settingsgen.get_storage_type().get_value(statics.db_name + "_connections", uuid, "name")))
+    return c
+
