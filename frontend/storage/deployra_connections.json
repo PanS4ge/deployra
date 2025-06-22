@@ -1,15 +1,1 @@
-{
-    "6c2abd45-e566-457f-b4e5-a1f6d4096b36": {
-        "url": "frog02.mikr.us:40409",
-        "name": "frog",
-        "ipaddr": "2a01:4f9:6b:47e9::409",
-        "shared": 15,
-        "access_key": "VUFdhTPuVJHXUC0bSMzzVoh2GF6b9fvIh5MjcCNC7hKqKchw",
-        "cpu_cores": 6,
-        "ram": "126GB",
-        "rawram": 134958301184,
-        "servername": "DeployraAPI",
-        "serverversion": "0.1.0",
-        "hostname": "Linux\n 5.15.158-2-pve\n #1 SMP PVE 5.15.158-2 (2024-07-26T13:11Z)\n"
-    }
-}
+{}
