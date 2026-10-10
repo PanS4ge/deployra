@@ -3,7 +3,18 @@
 # nginx działa obok, w oficjalnym obrazie nginx:stable-alpine (zob. deploy/gateway.compose.yml).
 FROM python:3.13-alpine
 
-RUN apk add --no-cache bash iproute2 iptables ip6tables wireguard-tools wireguard-go lego ca-certificates
+ARG TARGETARCH
+ARG CLOUDFLARED_VERSION=latest
+
+RUN apk add --no-cache bash iproute2 iptables ip6tables wireguard-tools wireguard-go lego ca-certificates wget
+
+# cloudflared (opcjonalne wejście ruchu przez Cloudflare Tunnel) — statyczna binarka z wydań Cloudflare
+RUN arch="${TARGETARCH:-amd64}"; \
+    if [ "$CLOUDFLARED_VERSION" = "latest" ]; then base="https://github.com/cloudflare/cloudflared/releases/latest/download"; \
+    else base="https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}"; fi; \
+    wget -q -O /usr/local/bin/cloudflared "${base}/cloudflared-linux-${arch}" \
+    && chmod +x /usr/local/bin/cloudflared \
+    && cloudflared --version
 
 WORKDIR /app
 
@@ -14,6 +25,7 @@ RUN apk add --no-cache --virtual .build build-base libffi-dev \
     && apk del .build
 
 COPY gateway/deployra_gateway ./deployra_gateway
+RUN python -m compileall -q /app/deployra_gateway
 
 ENV PYTHONUNBUFFERED=1 \
     DEPLOYRA_DATA=/var/lib/deployra-wg

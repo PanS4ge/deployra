@@ -41,6 +41,9 @@ class Config:
     nginx_reload: bool = field(default_factory=lambda: _flag("DEPLOYRA_NGINX_RELOAD", True))
     ipv6: bool = field(default_factory=lambda: _flag("DEPLOYRA_IPV6", _ipv6_available()))
     reload_timeout: float = field(default_factory=lambda: float(_env("DEPLOYRA_RELOAD_TIMEOUT", "20")))
+    analytics_port: int = field(default_factory=lambda: int(_env("DEPLOYRA_ANALYTICS_PORT", "5140")))
+    analytics: bool = field(default_factory=lambda: _flag("DEPLOYRA_ANALYTICS", True))
+    cloudflared_bin: str = field(default_factory=lambda: _env("DEPLOYRA_CLOUDFLARED", "cloudflared"))
 
     @property
     def hub_address(self) -> str:

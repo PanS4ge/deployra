@@ -1,4 +1,4 @@
-"""Wspólny kontekst aplikacji: konfiguracja, stan, Docker, zadania, podpisy."""
+"""Wspólny kontekst aplikacji: konfiguracja, stan, Docker (endpointy), zadania, podpisy."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from deployra_common.jobs import JobRegistry
 from deployra_common.server import SignatureGuard
 
 from .config import Config
+from .services.endpoints import EndpointRegistry
 from .services.vitals import VitalsSampler
 from .state import State
 
@@ -23,8 +24,19 @@ def _docker_from_env() -> Any:
     return docker.from_env(timeout=120)
 
 
+def _docker_socket(socket: str) -> Any:
+    import docker
+
+    return docker.DockerClient(base_url=f"unix://{socket}", version="auto", timeout=120)
+
+
 class Context:
-    def __init__(self, config: Config, docker_factory: Callable[[], Any] = _docker_from_env) -> None:
+    def __init__(
+        self,
+        config: Config,
+        docker_factory: Callable[[], Any] = _docker_from_env,
+        socket_factory: Callable[[str], Any] = _docker_socket,
+    ) -> None:
         self.config = config
         config.ensure_dirs()
         self.state = State(config.data_dir / "state.json")
@@ -34,6 +46,12 @@ class Context:
         self._docker_factory = docker_factory
         self._docker: Any = None
         self._docker_lock = threading.Lock()
+        self.endpoints = EndpointRegistry(
+            config.proxmox,
+            lambda socket: self.docker if socket is None else socket_factory(socket),
+            proc=config.proc_dir,
+            pve_dir=config.pve_dir,
+        )
         self.deploy_locks: dict[str, threading.Lock] = {}
         self.wait_seconds = 6.0  # ile czekać, czy nowy kontener aplikacji wstał
         self.sftp: Any = None
@@ -46,10 +64,14 @@ class Context:
 
     @property
     def docker(self) -> Any:
+        """Docker hosta (endpoint `local`)."""
         with self._docker_lock:
             if self._docker is None:
                 self._docker = self._docker_factory()
             return self._docker
+
+    def docker_for(self, endpoint: str | None) -> Any:
+        return self.endpoints.client(endpoint)
 
     def deploy_lock(self, slug: str) -> threading.Lock:
         with self._docker_lock:

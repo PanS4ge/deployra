@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 
 def register(app: FastAPI) -> None:
-    from . import apps, auth, certs, dashboard, docker, hooks, import_npm, jobs, nodes, proxy, settings, terminal, tunnel
+    from . import analytics, apps, auth, certs, dashboard, docker, hooks, import_npm, jobs, nodes, proxy, settings, terminal, tunnel, uptime
 
-    for module in (auth, dashboard, jobs, tunnel, nodes, docker, terminal, apps, hooks, proxy, certs, import_npm, settings):
+    for module in (auth, dashboard, analytics, jobs, tunnel, uptime, nodes, docker, terminal, apps, hooks, proxy, certs, import_npm, settings):
         app.include_router(module.router)

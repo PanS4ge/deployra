@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes">Węzły</a> /</div>{% endblock %}
+{% block content %}
+<div class="grid grid-2" x-data="{ mode: '{{ 'tunnel' if gateway else 'direct' }}' }">
+  <div class="stack">
+    <div class="choice" :class="mode === 'tunnel' && 'on'" @click="mode = 'tunnel'">
+      <i class="bi bi-diagram-3"></i>
+      <div><b>Przez tunel Deployra-WG</b><span>Serwer za NAT-em (np. w domu). Węzeł sam zestawi WireGuarda do bramki i będzie osiągalny bez przekierowań portów.</span></div>
+    </div>
+    <div class="choice" :class="mode === 'direct' && 'on'" @click="mode = 'direct'">
+      <i class="bi bi-globe"></i>
+      <div><b>Bezpośrednio</b><span>Serwer z publicznym IP albo w tej samej sieci co panel. Parowanie kodem z logów backendu.</span></div>
+    </div>
+  </div>
+
+  <div class="card glow" x-show="mode === 'tunnel'">
+    <div class="card-head"><h2><i class="bi bi-diagram-3"></i> Nowy węzeł w tunelu</h2></div>
+    {% if not gateway %}
+    <div class="card-body"><div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div>Najpierw <a href="/tunnel">połącz panel z Deployra-WG</a>.</div></div></div>
+    {% else %}
+    <form class="card-body stack" method="post" action="/nodes/invite" hx-push-url="false">
+      <div class="field"><label>Nazwa</label><input class="input" name="name" placeholder="dom" required maxlength="60"></div>
+      <div class="field">
+        <label>Podsieci LAN do udostępnienia (opcjonalnie)</label>
+        <textarea class="textarea" name="lan_subnets" style="min-height: 70px" placeholder="192.168.1.0/24"></textarea>
+        <div class="hint">Jeśli chcesz wystawiać też hosty bez Dockera z domowej sieci (NAS, Home Assistant…) — węzeł zrobi dla nich NAT.</div>
+      </div>
+      <div class="field">
+        <label>Ważność tokenu</label>
+        <select class="select" name="ttl"><option value="60">1 godzina</option><option value="1440">1 dzień</option><option value="10080">7 dni</option></select>
+      </div>
+      <div class="row" style="justify-content: flex-end"><button class="btn primary"><span class="spin"></span><i class="bi bi-key"></i> Generuj token</button></div>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="card glow" x-show="mode === 'direct'" x-cloak>
+    <div class="card-head"><h2><i class="bi bi-globe"></i> Węzeł bezpośredni</h2></div>
+    <form class="card-body stack" hx-post="/nodes/direct" hx-swap="none">
+      <div class="field"><label>Nazwa</label><input class="input" name="name" placeholder="vps-2" maxlength="60"></div>
+      <div class="field"><label>Adres API węzła</label><input class="input" name="url" placeholder="http://203.0.113.5:2750" required></div>
+      <div class="field">
+        <label>Kod parowania</label>
+        <input class="input mono" name="code" placeholder="DPLR-XXXX-XXXX-XXXX" required autocomplete="off">
+        <div class="hint">Pokaże się w <code>docker logs deployra-backend</code> przy pierwszym starcie.</div>
+      </div>
+      <div class="field">
+        <label>Adres widziany przez bramkę</label>
+        <input class="input" name="proxy_address" placeholder="domyślnie host z adresu API">
+        <div class="hint">Pod tym IP nginx bramki połączy się z portami aplikacji na tym węźle.</div>
+      </div>
+      <div class="callout warn"><i class="bi bi-shield-exclamation"></i><div class="small">Ruch API jest podpisany (HMAC), ale nie szyfrowany. Bezpośrednio łącz tylko węzły w zaufanej sieci albo za HTTPS — w pozostałych przypadkach użyj tunelu.</div></div>
+      <div class="row" style="justify-content: flex-end"><button class="btn primary"><span class="spin"></span><i class="bi bi-link"></i> Sparuj</button></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

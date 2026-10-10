@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes">Węzły</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
+{% block heading %}Stacki docker-compose{% endblock %}
+{% block actions %}{% if has(user, P.ALLOW_DEPLOYMENT) %}<a class="btn primary" href="/nodes/{{ node.id }}/stacks/new{{ epq }}"><i class="bi bi-plus-lg"></i> Nowy stack</a>{% endif %}{% endblock %}
+{% block content %}
+{% include "nodes/_tabs.html" %}
+{% if items %}
+<div class="grid grid-auto">
+  {% for s in items %}
+  <div class="card">
+    <div class="card-head">
+      <i class="bi bi-layers" style="color: var(--violet-2)"></i>
+      <h3>{{ s.name }}</h3>
+      {% if s.name in apps %}<span class="badge violet">aplikacja</span>{% elif not s.managed %}<span class="badge" title="Utworzony poza Deployrą">zewnętrzny</span>{% endif %}
+    </div>
+    <div class="card-body stack" style="gap: 8px">
+      <div class="row small"><span class="dot {{ 'ok' if s.running and s.running == s.containers | length else ('warn' if s.running else 'err') }}"></span>{{ s.running }} / {{ s.containers | length }} działa</div>
+      <div class="small">{% for c in s.containers %}<span class="pill" style="margin: 2px 2px 0 0">{{ c.service or c.name }}</span>{% endfor %}</div>
+      {% if s.managed and s.name not in apps %}
+      <div class="row" style="gap: 6px">
+        <a class="btn sm" href="/nodes/{{ node.id }}/stacks/{{ s.name }}{{ epq }}"><i class="bi bi-pencil"></i> Edytuj</a>
+        <button class="btn sm ghost" hx-post="/nodes/{{ node.id }}/stacks/{{ s.name }}/restart{{ epq }}" hx-swap="none"><i class="bi bi-arrow-clockwise"></i></button>
+        <button class="btn sm ghost" hx-post="/nodes/{{ node.id }}/stacks/{{ s.name }}/pull{{ epq }}" hx-swap="none" title="Pobierz nowe obrazy"><i class="bi bi-cloud-download"></i></button>
+        <button class="btn sm ghost" hx-post="/nodes/{{ node.id }}/stacks/{{ s.name }}/down{{ epq }}" hx-swap="none" hx-confirm="Zatrzymać i usunąć kontenery stacka {{ s.name }}? (pliki zostają)"><i class="bi bi-stop-fill"></i></button>
+        <button class="btn sm ghost" hx-post="/nodes/{{ node.id }}/stacks/{{ s.name }}/remove{{ epq }}" hx-swap="none" hx-confirm="Usunąć stack {{ s.name }} razem z plikiem compose?" data-danger data-math><i class="bi bi-trash"></i></button>
+      </div>
+      {% elif s.name in apps %}
+      <a class="small" href="/apps">Zarządzaj w Aplikacjach →</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">{{ empty("layers", "Brak stacków", "Wklej docker-compose.yml — Deployra zrobi `docker compose up -d` na węźle.") }}</div>
+{% endif %}
+{% if ep != "local" %}
+<div class="callout warn"><i class="bi bi-info-circle"></i><div class="small">Stacki w CT: pliki compose leżą na hoście Proxmoxa, więc montowania ścieżek względnych (<code>./dane:/data</code>) nie zadziałają — używaj wolumenów nazwanych.</div></div>
+{% endif %}
+{% endblock %}

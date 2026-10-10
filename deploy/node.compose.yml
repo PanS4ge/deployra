@@ -1,0 +1,30 @@
+# Deployra Backend — węzeł z Dockerem (np. domowy serwer za NAT-em).
+# Panel generuje gotowe wartości DEPLOYRA_GATEWAY i DEPLOYRA_JOIN w zakładce Węzły → Dodaj węzeł.
+#   DEPLOYRA_GATEWAY=vps.example.com:51821 DEPLOYRA_JOIN=dplr1.… docker compose -f deploy/node.compose.yml up -d --build
+#
+# Bez DEPLOYRA_JOIN węzeł działa w trybie bezpośrednim: kod parowania znajdziesz w `docker logs deployra-backend`.
+name: deployra-node
+
+services:
+  deployra-backend:
+    build: { context: .., dockerfile: backend/Dockerfile }
+    image: deployra-backend:latest
+    container_name: deployra-backend
+    network_mode: host          # wg0 i pula portów aplikacji na hoście
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun]
+    labels:
+      deployra.system: backend
+    environment:
+      DEPLOYRA_NAME: ${DEPLOYRA_NAME:-dom}
+      DEPLOYRA_GATEWAY: ${DEPLOYRA_GATEWAY:-}
+      DEPLOYRA_JOIN: ${DEPLOYRA_JOIN:-}
+      DEPLOYRA_PORT_POOL: ${DEPLOYRA_PORT_POOL:-20000-29999}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/deployra:/var/lib/deployra
+      # ta sama ścieżka w kontenerze i na hoście — compose i strony statyczne montują z niej katalogi
+      - /srv/deployra:/srv/deployra
+    restart: unless-stopped
+    mem_limit: 192m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }

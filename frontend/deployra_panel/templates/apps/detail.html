@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, copy_pill, uptime_badge, heartbeat %}
+{% block crumbs %}<div class="crumbs"><a href="/apps">Aplikacje</a> /</div>{% endblock %}
+{% block actions %}
+{{ status_badge(app.status) }}
+{% if has(user, P.ALLOW_DEPLOYMENT) %}<button class="btn primary" hx-post="/apps/{{ app.id }}/deploy" hx-swap="none"><span class="spin"></span><i class="bi bi-rocket-takeoff"></i> Wdróż ponownie</button>{% endif %}
+{% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}<a class="btn" href="/apps/{{ app.id }}/edit"><i class="bi bi-sliders"></i> Ustawienia</a>{% endif %}
+{% endblock %}
+{% block content %}
+<div class="grid grid-4">
+  <div class="card stat">
+    <div class="label"><i class="bi bi-globe2"></i> Adres</div>
+    {% for d in app.domains or [] %}<a class="mono trunc" href="{{ 'https' if cert else 'http' }}://{{ d }}" target="_blank" rel="noopener">{{ d }} <i class="bi bi-box-arrow-up-right small"></i></a>{% else %}<span class="muted">tylko w tunelu</span>{% endfor %}
+  </div>
+  <div class="card stat">
+    <div class="label"><i class="bi bi-hdd-network"></i> Węzeł</div>
+    <a href="/nodes/{{ node.id }}">{{ node.name }}</a>
+    <div class="small muted">{{ spec.source.kind }}{% if spec.endpoint != "local" %} · {{ spec.endpoint }}{% endif %} · port {{ app.host_port or "—" }}</div>
+  </div>
+  <div class="card stat">
+    <div class="label"><i class="bi bi-heart-pulse"></i> Uptime 24 h / 30 dni</div>
+    {% if monitor_stats %}
+    <div class="row">{{ uptime_badge(monitor_stats.uptime_24h) }} {{ uptime_badge(monitor_stats.uptime_30d) }}</div>
+    {{ heartbeat(monitor_stats.beats[-24:]) }}
+    {% else %}<span class="muted">brak monitora</span>{% endif %}
+  </div>
+  <div class="card stat">
+    <div class="label"><i class="bi bi-shield-lock"></i> Certyfikat</div>
+    {% if cert %}{{ status_badge(cert.status) }}<div class="small muted">do {{ cert.expires_at | dt }}</div>{% elif options.https %}<span class="badge warn">jeszcze nie wystawiony</span>{% else %}<span class="muted">HTTP</span>{% endif %}
+  </div>
+</div>
+
+{% if app.domains %}
+<div class="card" hx-get="/analytics/chart?domains={{ app.domains | join(',') }}" hx-trigger="load" hx-swap="innerHTML" hx-disinherit="*">
+  <div class="card-body muted small">Ładowanie statystyk odwiedzin…</div>
+</div>
+{% endif %}
+
+{% if job %}
+<div class="card" hx-ext="sse" sse-connect="/jobs/{{ job.id }}/stream" sse-close="end">
+  <div class="card-head">
+    <h3><i class="bi bi-terminal"></i> {{ job.title }}</h3>
+    <span class="spacer"></span>
+    <span sse-swap="end" hx-swap="innerHTML" hx-disinherit="*">
+      {% if job.done %}{% if job.status == "ok" %}<span class="badge ok">zakończone</span>{% else %}<span class="badge err">błąd</span>{% endif %}{% else %}<span class="badge info"><span class="spin" style="width: 10px; height: 10px"></span> trwa</span>{% endif %}
+    </span>
+  </div>
+  <div class="card-body">
+    <pre class="log short" sse-swap="line" hx-swap="beforeend"></pre>
+  </div>
+</div>
+{% elif app.last_error %}
+<div class="callout err"><i class="bi bi-x-octagon"></i><div><b>Ostatnie wdrożenie nie powiodło się:</b> {{ app.last_error }}</div></div>
+{% endif %}
+
+<div class="grid grid-2">
+  {% if spec.source.kind in ("static", "git") %}
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-file-earmark-zip"></i> Pliki strony</h3></div>
+    <div class="card-body stack">
+      {% if spec.source.kind == "static" %}
+      <form class="row" hx-post="/apps/{{ app.id }}/upload" hx-encoding="multipart/form-data" hx-swap="none">
+        <input class="input" type="file" name="file" accept=".zip" required style="flex: 1">
+        <button class="btn primary"><span class="spin"></span><i class="bi bi-upload"></i> Publikuj ZIP</button>
+      </form>
+      <div class="small muted">Stara wersja jest podmieniana atomowo. Jeśli wszystko siedzi w jednym folderze (np. <code>dist/</code>), Deployra go spłaszczy.</div>
+      {% endif %}
+      <a class="btn sm" href="/nodes/{{ node.id }}/sftp"><i class="bi bi-folder-symlink"></i> Konta SFTP dla tej strony</a>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if hook_url %}
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-git"></i> Webhook (push → deploy)</h3></div>
+    <div class="card-body stack small">
+      <div class="field"><label>Payload URL</label>{{ copy_pill(hook_url) }}</div>
+      <div class="field"><label>Secret</label>{{ copy_pill(hook_secret) }}</div>
+      <div class="dim">GitHub: Settings → Webhooks → <code>application/json</code>, zdarzenie „push”. Gitea/Forgejo działa tak samo. Wdrażana jest gałąź <code>{{ spec.source.git_branch }}</code>.</div>
+      {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}<button class="btn sm ghost" hx-post="/apps/{{ app.id }}/webhook/rotate" hx-swap="none" hx-confirm="Wygenerować nowy sekret? Stary przestanie działać."><i class="bi bi-arrow-repeat"></i> Nowy sekret</button>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-info-circle"></i> Konfiguracja</h3></div>
+    <div class="card-body">
+      <dl class="kv small">
+        {% if spec.source.image %}<dt>Obraz</dt><dd class="mono">{{ spec.source.image }}</dd>{% endif %}
+        {% if spec.source.git_url %}<dt>Repozytorium</dt><dd class="mono">{{ spec.source.git_url }} @ {{ spec.source.git_branch }}</dd>{% endif %}
+        {% if spec.container_port %}<dt>Port kontenera</dt><dd>{{ spec.container_port }}</dd>{% endif %}
+        <dt>Zmienne</dt><dd>{{ spec.env | length }}</dd>
+        <dt>Wolumeny</dt><dd class="mono">{% for v in spec.volumes %}{{ v.source }} → {{ v.target }}<br>{% else %}—{% endfor %}</dd>
+        <dt>Limity</dt><dd>{{ (spec.memory_mb ~ " MB") if spec.memory_mb else "RAM bez limitu" }} · {{ (spec.cpus ~ " CPU") if spec.cpus else "CPU bez limitu" }}</dd>
+        <dt>Ostatni deploy</dt><dd>{{ app.last_deploy_at | ago }}</dd>
+        {% if site %}<dt>Host proxy</dt><dd><a href="/proxy/hosts/{{ site.id }}">#{{ site.id }}</a></dd>{% endif %}
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-tools"></i> Akcje</h3></div>
+    <div class="card-body stack">
+      {% if spec.source.kind in ("image", "git") and has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
+      <div class="row between"><span class="small dim">Wróć do poprzedniego obrazu (bez buildu).</span>
+        <button class="btn sm" hx-post="/apps/{{ app.id }}/rollback" hx-swap="none" hx-confirm="Przywrócić poprzednią wersję?"><i class="bi bi-skip-backward"></i> Rollback</button></div>
+      {% endif %}
+      <div class="row between"><span class="small dim">Kontenery, logi i terminal tej aplikacji.</span>
+        <a class="btn sm" href="/nodes/{{ node.id }}/containers{{ '' if spec.endpoint == 'local' else '?ep=' ~ spec.endpoint }}"><i class="bi bi-box"></i> Kontenery</a></div>
+      {% if has(user, P.ALLOW_DEPLOYMENT_DELETE) %}
+      <form class="row between" hx-post="/apps/{{ app.id }}/remove" hx-swap="none" hx-confirm="Usunąć aplikację {{ app.slug }}? Host proxy i rekordy DNS też znikną." data-danger data-math>
+        <label class="check small"><input type="checkbox" name="delete_data" value="1"><span class="sw"></span><span>usuń też dane (wolumeny, pliki)</span></label>
+        <button class="btn sm danger"><i class="bi bi-trash"></i> Usuń aplikację</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -78,6 +78,7 @@ def test_full_sync_join_and_proxy_flow(ctx):
     # konfiguracja wg huba zawiera oba peery z właściwymi AllowedIPs
     conf = wg.render_quick(ctx.hub.interface(), ctx.hub.peers())
     assert "AllowedIPs = 10.66.0.3/32, 192.168.1.0/24" in conf and "ListenPort = 51820" in conf
+    assert "PostUp = iptables -I FORWARD -i %i -o %i -j ACCEPT" in conf  # węzły widzą się nawzajem przez hub
 
     # nakładające się podsieci LAN są odrzucane
     t2 = pairing.JoinToken.generate()

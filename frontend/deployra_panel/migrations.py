@@ -71,4 +71,28 @@ def v1(dialect: str) -> list[str]:
     ]
 
 
-MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1)]
+def v2(dialect: str) -> list[str]:
+    """Uptime: monitory, surowe sprawdzenia (48 h) i agregaty godzinowe (90 dni)."""
+    t = _types(dialect)
+    i, s, x, n, r, tail = t["id"], t["str"], t["text"], t["int"], t["real"], t["tail"]
+    return [
+        f"""CREATE TABLE monitors (
+            id {i}, name {s} NOT NULL, kind {s} NOT NULL, target {x}, ref_id {n}, node_id {n},
+            interval_s {n} NOT NULL DEFAULT 60, enabled {n} NOT NULL DEFAULT 1, status {s} NOT NULL DEFAULT 'unknown',
+            last_check {r}, last_change {r}, last_message {x}, created_at {s}
+        ){tail}""",
+        f"CREATE TABLE monitor_checks (id {i}, monitor_id {n} NOT NULL, ts {r} NOT NULL, ok {n} NOT NULL, latency_ms {r}, message {x}){tail}",
+        "CREATE INDEX idx_monitor_checks ON monitor_checks (monitor_id, ts)",
+        f"""CREATE TABLE monitor_hourly (
+            monitor_id {n} NOT NULL, hour {n} NOT NULL, checks {n} NOT NULL DEFAULT 0, ups {n} NOT NULL DEFAULT 0,
+            latency_sum {r} NOT NULL DEFAULT 0, latency_n {n} NOT NULL DEFAULT 0, PRIMARY KEY (monitor_id, hour)
+        ){tail}""",
+    ]
+
+
+def v3(dialect: str) -> list[str]:
+    """Ruch przychodzący per host: publiczne IP bramki albo Cloudflare Tunnel (cloudflared)."""
+    return ["ALTER TABLE sites ADD COLUMN ingress VARCHAR(16) NOT NULL DEFAULT 'public'"]
+
+
+MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1), (2, v2), (3, v3)]

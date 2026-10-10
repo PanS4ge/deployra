@@ -1,7 +1,12 @@
-"""Wdrażanie aplikacji na węźle (obraz / compose / statyczna / Git) z rollbackiem."""
+"""Wdrażanie aplikacji na węźle (obraz / compose / statyczna / Git) z rollbackiem.
+
+Aplikacja może trafić na Docker hosta (`local`) albo — na Proxmoxie — do
+wybranego kontenera LXC (`ct-<vmid>`). Wtedy bramka łączy się z IP tego CT.
+"""
 
 from __future__ import annotations
 
+import shutil
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -58,7 +63,7 @@ def _container_spec(ctx: Any, spec: AppSpec, image: str, host_port: int) -> Cont
 
 def replace_container(ctx: Any, job: Job, spec: AppSpec, image: str, host_port: int) -> str:
     """Zastępuje kontener aplikacji nowym; jeśli nowy nie wstanie, wraca do poprzedniego obrazu."""
-    client = ctx.docker
+    client = ctx.docker_for(spec.endpoint)
     name = container_name(spec.slug)
     previous_image = None
     existing = docker_svc.find_container(client, name)
@@ -66,7 +71,7 @@ def replace_container(ctx: Any, job: Job, spec: AppSpec, image: str, host_port: 
         previous_image = client.api.inspect_container(existing["Id"])["Config"]["Image"]
         job.log(f"Zatrzymuję poprzednią wersję ({previous_image})")
         client.api.remove_container(existing["Id"], force=True)
-    job.log(f"Uruchamiam {name} z {image} (port hosta {host_port} → {spec.container_port})")
+    job.log(f"Uruchamiam {name} z {image} (port {host_port} → {spec.container_port})")
     cid = docker_svc.run_container(client, _container_spec(ctx, spec, image, host_port))
     if _wait_running(client, cid, ctx.wait_seconds):
         job.log("Kontener działa ✔")
@@ -92,8 +97,16 @@ def deploy(ctx: Any, job: Job, spec: AppSpec) -> dict:
 
 
 def _deploy(ctx: Any, job: Job, spec: AppSpec) -> dict:
-    cfg, client, kind = ctx.config, ctx.docker, spec.source.kind
+    cfg, kind = ctx.config, spec.source.kind
+    endpoint = ctx.endpoints.get(spec.endpoint)
+    client = ctx.docker_for(spec.endpoint)
+    docker_env = ctx.endpoints.docker_host_env(spec.endpoint)
     previous = ctx.state.get("apps", {}).get(spec.slug, {})
+    if previous.get("endpoint", "local") != spec.endpoint and previous.get("host_port"):
+        raise JobFailed("aplikacja działa na innym endpoincie — usuń ją i wdroż ponownie, żeby przenieść")
+    base = {"kind": kind, "endpoint": spec.endpoint, "upstream_host": endpoint.ip if endpoint.kind == "lxc" else None}
+    if endpoint.kind == "lxc":
+        job.log(f"Cel: {endpoint.name} (CT {endpoint.vmid}, IP {endpoint.ip or 'nieznane'})")
 
     if kind == "static" or (kind == "git" and spec.source.git_static_dir):
         static_sites.ensure_site_dir(cfg.sites_dir, spec.slug)
@@ -108,22 +121,25 @@ def _deploy(ctx: Any, job: Job, spec: AppSpec) -> dict:
             job.log("Pliki strony zaktualizowane z repozytorium")
         port = static_sites.apply_site(ctx, spec.slug, spec.domains, job)
         job.log(f"Strona statyczna gotowa (serwer stron na porcie {port})")
-        return _record(ctx, spec.slug, kind=kind, host_port=port, sha=sha, domains=spec.domains)
+        return _record(ctx, spec.slug, **base, host_port=port, sha=sha, domains=spec.domains)
 
-    host_port = ports.allocate(ctx.state, client, spec.slug, cfg.port_pool, spec.host_port or previous.get("host_port"))
+    host_port = ports.allocate(
+        ctx.state, client, spec.slug, cfg.port_pool, spec.host_port or previous.get("host_port"), check_host=endpoint.kind == "host"
+    )
 
     if kind == "image":
         image = docker_svc.pull_image(client, job, spec.source.image)
         cid = replace_container(ctx, job, spec, image, host_port)
-        return _record(ctx, spec.slug, kind=kind, host_port=host_port, image=image, previous_image=previous.get("image"), container=cid)
+        return _record(ctx, spec.slug, **base, host_port=host_port, image=image, previous_image=previous.get("image"), container=cid)
 
     if kind == "compose":
         service = spec.source.expose_service or next(iter(compose.parse_compose(spec.source.compose)["services"]))
         compose.parse_compose(spec.source.compose, service)
         override = compose.expose_override(service, host_port, spec.container_port, spec.slug)
-        compose.write_stack(cfg.stacks_dir, spec.slug, spec.source.compose, spec.env, override)
-        compose.up(job, cfg.stacks_dir, spec.slug, pull=True)
-        return _record(ctx, spec.slug, kind=kind, host_port=host_port, service=service)
+        root = compose.stacks_root(cfg.stacks_dir, spec.endpoint)
+        compose.write_stack(root, spec.slug, spec.source.compose, spec.env, override)
+        compose.up(job, root, spec.slug, pull=True, env=docker_env)
+        return _record(ctx, spec.slug, **base, host_port=host_port, service=service)
 
     if kind == "git":
         repo, sha = git_build.checkout(
@@ -131,11 +147,11 @@ def _deploy(ctx: Any, job: Job, spec: AppSpec) -> dict:
             spec.source.git_token, spec.source.git_ssh_key,
         )  # fmt: skip
         tag = f"deployra/{spec.slug}:{sha[:12]}"
-        git_build.build(job, repo, spec.source.dockerfile, spec.source.build_context, tag)
+        git_build.build(job, repo, spec.source.dockerfile, spec.source.build_context, tag, env=docker_env)
         cid = replace_container(ctx, job, spec, tag, host_port)
         _prune_builds(client, spec.slug, keep={tag, previous.get("image")}, job=job)
         return _record(
-            ctx, spec.slug, kind=kind, host_port=host_port, image=tag, previous_image=previous.get("image"), sha=sha, container=cid
+            ctx, spec.slug, **base, host_port=host_port, image=tag, previous_image=previous.get("image"), sha=sha, container=cid
         )
 
     raise JobFailed(f"nieznany rodzaj aplikacji: {kind}")
@@ -163,12 +179,20 @@ def rollback(ctx: Any, job: Job, slug: str, spec: AppSpec) -> dict:
 
 
 def remove(ctx: Any, job: Job, slug: str, delete_data: bool) -> None:
-    cfg, client = ctx.config, ctx.docker
+    cfg = ctx.config
     info = ctx.state.get("apps", {}).get(slug) or {}
+    endpoint = info.get("endpoint", "local")
     kind = info.get("kind")
-    if kind == "compose" or (cfg.stacks_dir / slug / compose.COMPOSE_FILE).exists():
-        compose.remove(job, cfg.stacks_dir, slug, volumes=delete_data)
-    existing = docker_svc.find_container(client, container_name(slug))
+    try:
+        client = ctx.docker_for(endpoint)
+        docker_env = ctx.endpoints.docker_host_env(endpoint)
+    except LookupError:
+        job.log(f"⚠ Endpoint {endpoint} niedostępny (CT wyłączony?) — usuwam tylko zapis aplikacji")
+        client, docker_env = None, {}
+    root = compose.stacks_root(cfg.stacks_dir, endpoint)
+    if client and (kind == "compose" or (root / slug / compose.COMPOSE_FILE).exists()):
+        compose.remove(job, root, slug, volumes=delete_data, env=docker_env)
+    existing = docker_svc.find_container(client, container_name(slug)) if client else None
     if existing:
         client.api.remove_container(existing["Id"], force=True, v=delete_data)
         job.log(f"Usunięto kontener {container_name(slug)}")
@@ -176,8 +200,6 @@ def remove(ctx: Any, job: Job, slug: str, delete_data: bool) -> None:
         static_sites.remove_site(ctx, slug, delete_files=delete_data)
         job.log("Usunięto konfigurację strony")
     if delete_data:
-        import shutil
-
         shutil.rmtree(cfg.builds_dir / slug, ignore_errors=True)
     ports.release(ctx.state, slug)
     ctx.state.mutate("apps", lambda apps: {k: v for k, v in apps.items() if k != slug})

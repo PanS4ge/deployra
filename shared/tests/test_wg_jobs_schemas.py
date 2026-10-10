@@ -75,6 +75,14 @@ async def test_jobs_follow_sync_and_errors():
         job.log("zaczynam")
         raise JobFailed("nie wyszło")
 
+    async def slow(job, value):
+        job.log("czekam")
+        return value * 2
+
+    wrapped = registry.start("test", "Lambda z korutyną", lambda job: slow(job, 21))
+    events = [event async for event in wrapped.follow()]
+    assert wrapped.status == "ok" and wrapped.result == 42 and ("line", "czekam") in events
+
     bad = registry.start("test", "Zły", broken)
     events = [event async for event in bad.follow()]
     assert bad.status == "error" and bad.error == "nie wyszło"

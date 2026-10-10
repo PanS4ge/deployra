@@ -1,11 +1,12 @@
 import io
 import stat
 import zipfile
+from pathlib import Path
 
 import asyncssh
 import pytest
 
-from deployra_backend.services import compose, sftp_server, static_sites, wg_spoke
+from deployra_backend.services import compose, sftp_server, sftp_users, static_sites, wg_spoke
 from deployra_common import wg
 from deployra_common.jobs import JobFailed
 
@@ -85,6 +86,8 @@ def test_wg_spoke_config_with_lan_routing():
     }  # fmt: skip
     text = wg_spoke.build_config(conf, lan_iface="eth0")
     assert "Address = 10.66.0.5/24" in text
+    assert "PostUp = sysctl -w net.ipv4.ip_forward=1 || true" in text
+    assert "PostUp = iptables -A FORWARD -i %i -j ACCEPT" in text and "PostUp = iptables -A FORWARD -o %i -j ACCEPT" in text
     assert "AllowedIPs = 10.66.0.0/24" in text and "PersistentKeepalive = 25" in text
     assert "iptables -t nat -A POSTROUTING -s 10.66.0.0/24 -d 192.168.1.0/24 -o eth0 -j MASQUERADE" in text
     assert "0.0.0.0/0" not in text
@@ -105,9 +108,9 @@ async def test_sftp_chroot_and_auth(tmp_path):
     sites = tmp_path / "sites"
     (sites / "blog").mkdir(parents=True)
     (tmp_path / "sekret.txt").write_text("nie dla ciebie")
-    sftp_server.set_user(state, "blogger", "blog", "tajne-hasło-123", None)
+    sftp_users.set_user(state, "blogger", "blog", "tajne-hasło-123", None)
     with pytest.raises(ValueError):
-        sftp_server.set_user(state, "Zły Login", "blog", "x", None)
+        sftp_users.set_user(state, "Zły Login", "blog", "x", None)
 
     service = sftp_server.SftpService(state, sites, tmp_path / "hostkey")
     await service.start("127.0.0.1", 0)
@@ -131,3 +134,60 @@ async def test_sftp_chroot_and_auth(tmp_path):
         assert service.fingerprint().startswith("SHA256:")
     finally:
         await service.stop()
+
+
+FIB_TRIE = """Main:
+  +-- 0.0.0.0/0 3 0 5
+     |-- 0.0.0.0
+        /0 universe UNICAST
+     +-- 127.0.0.0/8 2 0 2
+        +-- 127.0.0.0/31 1 0 0
+           |-- 127.0.0.1
+              /32 host LOCAL
+     +-- 192.168.1.0/24 2 0 2
+        |-- 192.168.1.0
+           /24 link UNICAST
+        |-- 192.168.1.50
+           /32 host LOCAL
+"""
+
+
+def test_proxmox_discovers_running_cts_with_docker(tmp_path, monkeypatch):
+    from deployra_backend.services import endpoints
+
+    proc, pve = tmp_path / "proc", tmp_path / "pve"
+    pve.mkdir()
+    (pve / "101.conf").write_text("arch: amd64\nhostname: nextcloud\nnet0: name=eth0\n[snap1]\nhostname: stare\n")
+
+    def proc_entry(pid, cgroup, docker=False, fib=None):
+        d = proc / str(pid)
+        (d / "net").mkdir(parents=True)
+        (d / "cgroup").write_text(cgroup)
+        if docker:
+            (d / "root" / "run").mkdir(parents=True)
+            (d / "root" / "run" / "docker.sock").write_text("")
+        if fib:
+            (d / "net" / "fib_trie").write_text(fib)
+
+    proc_entry(1, "0::/init.scope\n")
+    proc_entry(4242, "0::/lxc/101/ns/init.scope\n", docker=True, fib=FIB_TRIE)
+    proc_entry(4300, "0::/lxc/101/ns/system.slice/docker.service\n")
+    proc_entry(5000, "0::/lxc/102/ns/init.scope\n")  # CT bez Dockera
+    proc_entry(6000, "12:pids:/lxc/103/ns\n", docker=True)  # cgroup v1, brak pliku conf
+    (proc / "self").mkdir()
+
+    found = endpoints.discover_lxc(proc, pve, probe=lambda p: p.exists())
+    assert [(e.id, e.name, e.pid, e.ip) for e in found] == [
+        ("ct-101", "nextcloud", 4242, "192.168.1.50"),
+        ("ct-103", "CT 103", 6000, None),
+    ]
+    assert found[0].socket.endswith(str(Path("4242/root/run/docker.sock")))
+
+    registry = endpoints.EndpointRegistry(True, lambda sock: f"klient:{sock}", proc=proc, pve_dir=pve)
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    if not Path("/var/run/docker.sock").exists():
+        assert all(e.id != "local" for e in registry.list(refresh=True))  # Proxmox bez Dockera na hoście
+    monkeypatch.setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
+    assert registry.list(refresh=True)[0].id == "local"
+    with pytest.raises(ValueError):
+        endpoints.check_id("ct-1;rm")

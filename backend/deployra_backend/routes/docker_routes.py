@@ -6,7 +6,9 @@ import asyncio
 import json
 import socket
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel
 
@@ -27,25 +29,30 @@ SHELLS = {
 }
 
 
-def _container(cid: str, ctx: Context = Depends(get_ctx)) -> dict:
+def dk(request: Request, ep: str = "local") -> Any:
+    """Klient Dockera wybranego endpointu (host albo CT na Proxmoxie)."""
+    return request.app.state.ctx.docker_for(ep)
+
+
+def _container(cid: str, client: Any = Depends(dk)) -> dict:
     """Sprawdza istnienie kontenera przed otwarciem strumienia."""
-    return ctx.docker.api.inspect_container(cid)
+    return client.api.inspect_container(cid)
 
 
 # --- kontenery -----------------------------------------------------------------
 
 
 @router.get("/containers")
-def containers(ctx: Context = Depends(get_ctx)) -> list[dict]:
-    return docker_svc.list_containers(ctx.docker)
+def containers(client: Any = Depends(dk)) -> list[dict]:
+    return docker_svc.list_containers(client)
 
 
 @router.post("/containers")
-async def create_container(spec: ContainerSpec, ctx: Context = Depends(get_ctx)) -> dict:
+async def create_container(spec: ContainerSpec, client: Any = Depends(dk), ctx: Context = Depends(get_ctx)) -> dict:
     def work(job):
         if spec.pull:
-            docker_svc.pull_image(ctx.docker, job, spec.image)
-        cid = docker_svc.run_container(ctx.docker, spec)
+            docker_svc.pull_image(client, job, spec.image)
+        cid = docker_svc.run_container(client, spec)
         job.log(f"Uruchomiono {spec.name} ({cid[:12]})")
         return {"id": cid}
 
@@ -58,58 +65,61 @@ def container(info: dict = Depends(_container)) -> dict:
 
 
 @router.post("/containers/{cid}/action/{action}")
-def container_action(cid: str, action: str, ctx: Context = Depends(get_ctx)) -> dict:
-    docker_svc.container_action(ctx.docker, cid, action)
+def container_action(cid: str, action: str, client: Any = Depends(dk)) -> dict:
+    docker_svc.container_action(client, cid, action)
     return {"ok": True}
 
 
 @router.delete("/containers/{cid}")
-def remove_container(cid: str, force: bool = False, volumes: bool = False, ctx: Context = Depends(get_ctx)) -> dict:
-    docker_svc.remove_container(ctx.docker, cid, force=force, volumes=volumes)
+def remove_container(cid: str, force: bool = False, volumes: bool = False, client: Any = Depends(dk)) -> dict:
+    docker_svc.remove_container(client, cid, force=force, volumes=volumes)
     return {"ok": True}
 
 
 @router.get("/containers/{cid}/top")
-def container_top(cid: str, ctx: Context = Depends(get_ctx)) -> dict:
-    return docker_svc.container_top(ctx.docker, cid)
+def container_top(cid: str, client: Any = Depends(dk)) -> dict:
+    return docker_svc.container_top(client, cid)
 
 
 @router.get("/containers/{cid}/stats")
-def container_stats(cid: str, ctx: Context = Depends(get_ctx)) -> dict:
-    return docker_svc.stats_once(ctx.docker, cid)
+def container_stats(cid: str, client: Any = Depends(dk)) -> dict:
+    return docker_svc.stats_once(client, cid)
 
 
 @router.get("/containers/{cid}/stats/stream", response_class=EventSourceResponse)
-async def container_stats_stream(cid: str, info: dict = Depends(_container), ctx: Context = Depends(get_ctx)):
-    async for sample in docker_svc.stats_stream(ctx.docker, cid):
+async def container_stats_stream(cid: str, info: dict = Depends(_container), client: Any = Depends(dk)):
+    async for sample in docker_svc.stats_stream(client, cid):
         yield ServerSentEvent(data=sample, event="stats")
 
 
 @router.get("/containers/{cid}/logs")
-def container_logs(cid: str, tail: int = 300, timestamps: bool = False, ctx: Context = Depends(get_ctx)) -> dict:
-    raw = ctx.docker.api.logs(cid, tail=max(1, min(tail, 5000)), timestamps=timestamps)
+def container_logs(cid: str, tail: int = 300, timestamps: bool = False, client: Any = Depends(dk)) -> dict:
+    raw = client.api.logs(cid, tail=max(1, min(tail, 5000)), timestamps=timestamps)
     return {"lines": raw.decode(errors="replace").splitlines()}
 
 
 @router.get("/containers/{cid}/logs/stream", response_class=EventSourceResponse)
 async def container_logs_stream(
-    cid: str, tail: int = 200, timestamps: bool = False, info: dict = Depends(_container), ctx: Context = Depends(get_ctx)
+    cid: str, tail: int = 200, timestamps: bool = False, info: dict = Depends(_container), client: Any = Depends(dk)
 ):
-    async for line in docker_svc.follow_logs(ctx.docker, cid, tail=max(0, min(tail, 5000)), timestamps=timestamps):
+    async for line in docker_svc.follow_logs(client, cid, tail=max(0, min(tail, 5000)), timestamps=timestamps):
         yield ServerSentEvent(raw_data=line, event="line")
 
 
 @ws_router.websocket("/containers/{cid}/exec")
-async def container_exec(websocket: WebSocket, cid: str, shell: str = "auto", cols: int = 120, rows: int = 32) -> None:
+async def container_exec(
+    websocket: WebSocket, cid: str, shell: str = "auto", cols: int = 120, rows: int = 32, ep: str = "local"
+) -> None:
     """Terminal: bajty binarne = wejście/wyjście PTY, tekst JSON = sterowanie (resize)."""
     ctx: Context = websocket.app.state.ctx
     try:
         ctx.guard.check_websocket(websocket)
-    except (PermissionError, HTTPException):
+        client = ctx.docker_for(ep)
+    except (PermissionError, HTTPException, LookupError, ValueError):
         await websocket.close(code=4401)
         return
     await websocket.accept()
-    api = ctx.docker.api
+    api = client.api
     try:
         exec_id = (
             await asyncio.to_thread(
@@ -188,82 +198,82 @@ class PruneRequest(BaseModel):
 
 
 @router.get("/images")
-def images(ctx: Context = Depends(get_ctx)) -> list[dict]:
-    return docker_svc.list_images(ctx.docker)
+def images(client: Any = Depends(dk)) -> list[dict]:
+    return docker_svc.list_images(client)
 
 
 @router.post("/images/pull")
-async def pull(body: PullRequest, ctx: Context = Depends(get_ctx)) -> dict:
+async def pull(body: PullRequest, client: Any = Depends(dk), ctx: Context = Depends(get_ctx)) -> dict:
     from deployra_common.schemas import check_image
 
     image = check_image(body.image)
-    return job_response(ctx.jobs.start("pull", f"Pobieranie {image}", lambda job: docker_svc.pull_image(ctx.docker, job, image)))
+    return job_response(ctx.jobs.start("pull", f"Pobieranie {image}", lambda job: docker_svc.pull_image(client, job, image)))
 
 
 @router.delete("/images/{image_id:path}")
-def remove_image(image_id: str, force: bool = False, ctx: Context = Depends(get_ctx)) -> dict:
-    docker_svc.remove_image(ctx.docker, image_id, force)
+def remove_image(image_id: str, force: bool = False, client: Any = Depends(dk)) -> dict:
+    docker_svc.remove_image(client, image_id, force)
     return {"ok": True}
 
 
 @router.post("/images/prune")
-def prune_images(body: PruneRequest, ctx: Context = Depends(get_ctx)) -> dict:
-    return docker_svc.prune_images(ctx.docker, body.all)
+def prune_images(body: PruneRequest, client: Any = Depends(dk)) -> dict:
+    return docker_svc.prune_images(client, body.all)
 
 
 # --- wolumeny ------------------------------------------------------------------
 
 
 @router.get("/volumes")
-def volumes(ctx: Context = Depends(get_ctx)) -> list[dict]:
-    return docker_svc.list_volumes(ctx.docker)
+def volumes(client: Any = Depends(dk)) -> list[dict]:
+    return docker_svc.list_volumes(client)
 
 
 @router.post("/volumes")
-def create_volume(spec: VolumeSpec, ctx: Context = Depends(get_ctx)) -> dict:
-    return docker_svc.create_volume(ctx.docker, spec)
+def create_volume(spec: VolumeSpec, client: Any = Depends(dk)) -> dict:
+    return docker_svc.create_volume(client, spec)
 
 
 @router.get("/volumes/{name}")
-def volume(name: str, ctx: Context = Depends(get_ctx)) -> dict:
-    return ctx.docker.api.inspect_volume(name)
+def volume(name: str, client: Any = Depends(dk)) -> dict:
+    return client.api.inspect_volume(name)
 
 
 @router.delete("/volumes/{name}")
-def remove_volume(name: str, force: bool = False, ctx: Context = Depends(get_ctx)) -> dict:
-    ctx.docker.api.remove_volume(name, force=force)
+def remove_volume(name: str, force: bool = False, client: Any = Depends(dk)) -> dict:
+    client.api.remove_volume(name, force=force)
     return {"ok": True}
 
 
 @router.post("/volumes/prune")
-def prune_volumes(ctx: Context = Depends(get_ctx)) -> dict:
-    return ctx.docker.api.prune_volumes()
+def prune_volumes(client: Any = Depends(dk)) -> dict:
+    return client.api.prune_volumes()
 
 
 # --- sieci ---------------------------------------------------------------------
 
 
 @router.get("/networks")
-def networks(ctx: Context = Depends(get_ctx)) -> list[dict]:
-    return docker_svc.list_networks(ctx.docker)
+def networks(client: Any = Depends(dk)) -> list[dict]:
+    return docker_svc.list_networks(client)
 
 
 @router.post("/networks")
-def create_network(spec: NetworkSpec, ctx: Context = Depends(get_ctx)) -> dict:
-    return docker_svc.create_network(ctx.docker, spec)
+def create_network(spec: NetworkSpec, client: Any = Depends(dk)) -> dict:
+    return docker_svc.create_network(client, spec)
 
 
 @router.get("/networks/{network_id}")
-def network(network_id: str, ctx: Context = Depends(get_ctx)) -> dict:
-    return ctx.docker.api.inspect_network(network_id)
+def network(network_id: str, client: Any = Depends(dk)) -> dict:
+    return client.api.inspect_network(network_id)
 
 
 @router.delete("/networks/{network_id}")
-def remove_network(network_id: str, ctx: Context = Depends(get_ctx)) -> dict:
-    docker_svc.remove_network(ctx.docker, network_id)
+def remove_network(network_id: str, client: Any = Depends(dk)) -> dict:
+    docker_svc.remove_network(client, network_id)
     return {"ok": True}
 
 
 @router.post("/networks/prune")
-def prune_networks(ctx: Context = Depends(get_ctx)) -> dict:
-    return ctx.docker.api.prune_networks()
+def prune_networks(client: Any = Depends(dk)) -> dict:
+    return client.api.prune_networks()

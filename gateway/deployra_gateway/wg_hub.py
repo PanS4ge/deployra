@@ -33,7 +33,7 @@ class Hub:
             addresses=[f"{self.config.hub_address}/{prefix}"],
             listen_port=self.config.wg_port,
             post_up=[
-                "sysctl -w net.ipv4.ip_forward=1",
+                "sysctl -w net.ipv4.ip_forward=1 || true",  # w kontenerze /proc/sys bywa tylko do odczytu
                 f"iptables -I FORWARD -i {iface} -o {iface} -j ACCEPT",
             ],
             post_down=[f"iptables -D FORWARD -i {iface} -o {iface} -j ACCEPT"],

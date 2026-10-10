@@ -1,0 +1,33 @@
+{# Pola zależne od rodzaju źródła — wspólne dla kreatora i edycji. `spec` może być None. #}
+{% set src = spec.source if spec else None %}
+<div class="form-grid" x-show="kind === 'image'">
+  <div class="field"><label>Obraz</label><input class="input mono" name="image" value="{{ src.image if src and src.image else '' }}" placeholder="ghcr.io/user/app:latest" :required="kind === 'image'"></div>
+  <div class="field"><label>Port, na którym słucha aplikacja</label><input class="input" name="container_port" type="number" min="1" max="65535" value="{{ spec.container_port if spec and spec.container_port else '' }}" placeholder="80" :disabled="kind !== 'image'" :required="kind === 'image'"></div>
+</div>
+<div class="stack" x-show="kind === 'compose'">
+  <div class="field"><label>docker-compose.yml</label><textarea class="textarea tall" name="compose" spellcheck="false" placeholder="services:&#10;  web:&#10;    image: nginx:alpine">{{ src.compose if src and src.compose else '' }}</textarea></div>
+  <div class="form-grid">
+    <div class="field"><label>Usługa do wystawienia</label><input class="input mono" name="expose_service" value="{{ src.expose_service if src and src.expose_service else '' }}" placeholder="pierwsza z pliku"></div>
+    <div class="field"><label>Jej port w kontenerze</label><input class="input" name="container_port" type="number" min="1" max="65535" value="{{ spec.container_port if spec and spec.container_port else '' }}" placeholder="80" :disabled="kind !== 'compose'" :required="kind === 'compose'"></div>
+  </div>
+  <div class="hint small muted">Deployra sama opublikuje port wybranej usługi z puli węzła (plik nadpisujący) — nie musisz dodawać sekcji <code>ports</code>.</div>
+</div>
+<div class="stack" x-show="kind === 'git'" x-data="{ gstatic: {{ 'true' if src and src.git_static_dir else 'false' }} }">
+  <div class="form-grid">
+    <div class="field full"><label>Repozytorium</label><input class="input mono" name="git_url" value="{{ src.git_url if src and src.git_url else '' }}" placeholder="https://github.com/user/repo.git" :required="kind === 'git'"></div>
+    <div class="field"><label>Gałąź</label><input class="input mono" name="git_branch" value="{{ src.git_branch if src else 'main' }}"></div>
+    <div class="field"><label>Token dostępu (prywatne repo)</label><input class="input" name="git_token" type="password" autocomplete="off" placeholder="{{ 'ustawiony — zostaw puste' if src and src.git_token else 'opcjonalnie' }}"></div>
+    <div class="field full"><label>Klucz SSH (deploy key, opcjonalnie)</label><textarea class="textarea" name="git_ssh_key" style="min-height: 60px" placeholder="{{ 'ustawiony — zostaw puste' if src and src.git_ssh_key else '-----BEGIN OPENSSH PRIVATE KEY-----' }}"></textarea></div>
+  </div>
+  <label class="check"><input type="checkbox" x-model="gstatic"><span class="sw"></span><span>To strona statyczna (bez Dockerfile) — serwuj pliki z repo</span></label>
+  <div class="form-grid" x-show="!gstatic">
+    <div class="field"><label>Dockerfile</label><input class="input mono" name="dockerfile" value="{{ src.dockerfile if src else 'Dockerfile' }}"></div>
+    <div class="field"><label>Kontekst buildu</label><input class="input mono" name="build_context" value="{{ src.build_context if src else '.' }}"></div>
+    <div class="field"><label>Port aplikacji</label><input class="input" name="container_port" type="number" min="1" max="65535" value="{{ spec.container_port if spec and spec.container_port else '' }}" placeholder="3000" :disabled="kind !== 'git' || gstatic"></div>
+  </div>
+  <div class="form-grid" x-show="gstatic">
+    <div class="field"><label>Katalog z plikami strony</label><input class="input mono" name="git_static_dir" value="{{ src.git_static_dir if src and src.git_static_dir else '' }}" placeholder="public albo ." :disabled="!gstatic"></div>
+  </div>
+  <div class="hint small muted">Build idzie przez BuildKit na węźle — na słabych serwerach ustaw limit RAM poniżej.</div>
+</div>
+<div x-show="kind === 'static'" class="callout"><i class="bi bi-file-earmark-zip"></i><div class="small">Po utworzeniu wgrasz pliki jako ZIP albo przez SFTP. Wszystkie strony na węźle serwuje jeden lekki <code>nginx:alpine</code>.</div></div>

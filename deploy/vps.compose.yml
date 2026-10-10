@@ -1,0 +1,7 @@
+# Wszystko na jednym VPS: Deployra-WG + nginx + panel.
+#   DEPLOYRA_PUBLIC_HOST=vps.example.com docker compose -f deploy/vps.compose.yml up -d --build
+# W panelu (http://127.0.0.1:8080 przez tunel SSH albo po wystawieniu hostem proxy) zaznacz
+# „Panel działa na tym samym serwerze co bramka” przy synchronizacji.
+include:
+  - gateway.compose.yml
+  - panel.compose.yml

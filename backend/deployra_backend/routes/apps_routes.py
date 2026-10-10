@@ -13,55 +13,62 @@ from deployra_common.schemas import AppSpec, StackSpec, check_slug
 from deployra_common.server import receive_verified_upload
 
 from ..context import Context, get_ctx
-from ..services import apps, compose, sftp_server, static_sites
+from ..services import apps, compose, sftp_users, static_sites
 from . import job_response, signed, signed_upload
 
 router = APIRouter(prefix="/api", dependencies=[Depends(signed)])
 upload_router = APIRouter(prefix="/api", dependencies=[Depends(signed_upload)])
 
 
-# --- stacki --------------------------------------------------------------------
+# --- stacki --------------------------------------------------------------------------------
+
+
+def _stack_target(ctx: Context, ep: str) -> tuple[object, "Path", dict[str, str]]:
+    """(klient Dockera, katalog stacków, env z DOCKER_HOST) dla endpointu."""
+    return ctx.docker_for(ep), compose.stacks_root(ctx.config.stacks_dir, ep), ctx.endpoints.docker_host_env(ep)
 
 
 @router.get("/stacks")
-def stacks(ctx: Context = Depends(get_ctx)) -> list[dict]:
-    return compose.list_stacks(ctx.docker, ctx.config.stacks_dir)
+def stacks(ep: str = "local", ctx: Context = Depends(get_ctx)) -> list[dict]:
+    client, root, _ = _stack_target(ctx, ep)
+    root.mkdir(parents=True, exist_ok=True)
+    return compose.list_stacks(client, root)
 
 
 @router.get("/stacks/{name}")
-def stack(name: str, ctx: Context = Depends(get_ctx)) -> dict:
+def stack(name: str, ep: str = "local", ctx: Context = Depends(get_ctx)) -> dict:
+    _, root, _ = _stack_target(ctx, ep)
     try:
-        return compose.read_stack(ctx.config.stacks_dir, name)
+        return compose.read_stack(root, name)
     except FileNotFoundError:
         raise HTTPException(404, "ten stack nie jest zarządzany przez Deployrę (brak pliku compose)") from None
 
 
 @router.put("/stacks/{name}")
-async def save_stack(name: str, spec: StackSpec, pull: bool = False, ctx: Context = Depends(get_ctx)) -> dict:
+async def save_stack(name: str, spec: StackSpec, pull: bool = False, ep: str = "local", ctx: Context = Depends(get_ctx)) -> dict:
     compose.check_name(name)
     compose.parse_compose(spec.compose)
+    _, root, env = _stack_target(ctx, ep)
 
     def work(job):
-        compose.write_stack(ctx.config.stacks_dir, name, spec.compose, spec.env)
-        compose.up(job, ctx.config.stacks_dir, name, pull=pull)
+        compose.write_stack(root, name, spec.compose, spec.env)
+        compose.up(job, root, name, pull=pull, env=env)
 
     return job_response(ctx.jobs.start("stack", f"Stack {name}: wdrożenie", work))
 
 
 @router.post("/stacks/{name}/{verb}")
-async def stack_action(name: str, verb: str, ctx: Context = Depends(get_ctx)) -> dict:
+async def stack_action(name: str, verb: str, ep: str = "local", ctx: Context = Depends(get_ctx)) -> dict:
     compose.check_name(name)
-    return job_response(
-        ctx.jobs.start("stack", f"Stack {name}: {verb}", lambda job: compose.action(job, ctx.config.stacks_dir, name, verb))
-    )
+    _, root, env = _stack_target(ctx, ep)
+    return job_response(ctx.jobs.start("stack", f"Stack {name}: {verb}", lambda job: compose.action(job, root, name, verb, env)))
 
 
 @router.delete("/stacks/{name}")
-async def remove_stack(name: str, volumes: bool = False, ctx: Context = Depends(get_ctx)) -> dict:
+async def remove_stack(name: str, volumes: bool = False, ep: str = "local", ctx: Context = Depends(get_ctx)) -> dict:
     compose.check_name(name)
-    return job_response(
-        ctx.jobs.start("stack", f"Stack {name}: usuwanie", lambda job: compose.remove(job, ctx.config.stacks_dir, name, volumes))
-    )
+    _, root, env = _stack_target(ctx, ep)
+    return job_response(ctx.jobs.start("stack", f"Stack {name}: usuwanie", lambda job: compose.remove(job, root, name, volumes, env)))
 
 
 # --- aplikacje -----------------------------------------------------------------
@@ -125,17 +132,21 @@ def sftp_users(ctx: Context = Depends(get_ctx)) -> dict:
         "enabled": ctx.config.sftp_enabled,
         "port": ctx.config.sftp_port,
         "fingerprint": ctx.sftp.fingerprint() if ctx.sftp else None,
-        "users": sftp_server.list_users(ctx.state),
+        "users": sftp_users.list_users(ctx.state),
     }
 
 
 @router.put("/sftp/{username}")
-def set_sftp_user(username: str, body: SftpUser, ctx: Context = Depends(get_ctx)) -> dict:
+async def set_sftp_user(username: str, body: SftpUser, ctx: Context = Depends(get_ctx)) -> dict:
     static_sites.ensure_site_dir(ctx.config.sites_dir, body.slug)
-    return sftp_server.set_user(ctx.state, username, body.slug, body.password, body.keys)
+    result = sftp_users.set_user(ctx.state, username, body.slug, body.password, body.keys)
+    from ..app import ensure_sftp
+
+    await ensure_sftp(ctx)
+    return result
 
 
 @router.delete("/sftp/{username}")
 def delete_sftp_user(username: str, ctx: Context = Depends(get_ctx)) -> dict:
-    sftp_server.delete_user(ctx.state, username)
+    sftp_users.delete_user(ctx.state, username)
     return {"ok": True}

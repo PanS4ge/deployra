@@ -46,9 +46,7 @@
     if (!match) return;
     document.cookie = "dpl_flash=; Max-Age=0; path=/";
     try {
-      let raw = decodeURIComponent(match[1]);
-      if (raw.startsWith('"')) raw = JSON.parse(raw);
-      const data = JSON.parse(raw);
+      const data = JSON.parse(decodeURIComponent(match[1].replace(/^"|"$/g, "")));
       toast(data.m, data.l || "ok");
     } catch (_) { /* ignorujemy uszkodzone ciasteczko */ }
   });

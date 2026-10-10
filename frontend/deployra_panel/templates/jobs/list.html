@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty %}
+{% block content %}
+<div class="card">
+  {% if jobs %}
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>Zadanie</th><th>Rodzaj</th><th>Stan</th><th>Start</th><th>Czas</th></tr></thead>
+    <tbody>
+    {% for j in jobs %}
+      <tr>
+        <td><a class="name" href="/jobs/{{ j.id }}">{{ j.title }}</a>{% if j.error %}<div class="small" style="color: #fda4af">{{ j.error[:160] }}</div>{% endif %}</td>
+        <td class="small muted">{{ j.kind }}</td>
+        <td>{% if j.status == "ok" %}<span class="badge ok">ok</span>{% elif j.status == "error" %}<span class="badge err">błąd</span>{% else %}<span class="badge info">trwa</span>{% endif %}</td>
+        <td class="small">{{ j.created | ago }}</td>
+        <td class="small mono">{{ ((j.finished - j.created) | round(1)) ~ " s" if j.finished else "—" }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}{{ empty("activity", "Brak zadań", "Tu pojawią się wdrożenia, pobierania obrazów i certyfikaty. Panel pamięta ostatnie 200.") }}{% endif %}
+</div>
+{% endblock %}

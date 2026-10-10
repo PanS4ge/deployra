@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import time
 
-import httpx
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
@@ -77,6 +76,10 @@ class PeerUpdate(BaseModel):
     lan_subnets: list[str]
 
 
+class TunnelToken(BaseModel):
+    token: str | None = None
+
+
 class CheckRequest(BaseModel):
     url: str
     host: str | None = None
@@ -112,10 +115,18 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        task = asyncio.create_task(renew_loop()) if start_scheduler else None
+        from . import analytics
+
+        tasks = []
+        if start_scheduler:
+            tasks.append(asyncio.create_task(renew_loop()))
+            tasks.append(asyncio.create_task(ctx.cloudflared.run()))
+            if ctx.config.analytics:
+                tasks.append(asyncio.create_task(analytics.run(ctx.analytics, "127.0.0.1", ctx.config.analytics_port)))
         yield
-        if task:
+        for task in tasks:
             task.cancel()
+        await ctx.cloudflared._stop()
 
     app = FastAPI(title="Deployra-WG API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.ctx = ctx
@@ -136,7 +147,26 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
             ],
             "nginx": ctx.last_apply,
             "certs": certs_list(ctx),
+            "cloudflared": ctx.cloudflared.status(),
+            "analytics": {"enabled": ctx.config.analytics, "received": ctx.analytics.received},
         }
+
+    @router.get("/analytics")
+    def analytics_daily(days: int = 30, domains: str = "", ctx: Context = Depends(get_ctx)) -> dict:
+        names = [d.strip().lower() for d in domains.split(",") if d.strip()] or None
+        return {"days": max(1, min(days, 400)), "domains": ctx.analytics.daily(max(1, min(days, 400)), names)}
+
+    @router.get("/analytics/hourly")
+    def analytics_hourly(hours: int = 24, domains: str = "", ctx: Context = Depends(get_ctx)) -> dict:
+        names = [d.strip().lower() for d in domains.split(",") if d.strip()] or None
+        return {"hours": max(1, min(hours, 72)), "domains": ctx.analytics.hourly(max(1, min(hours, 72)), names)}
+
+    @router.put("/cloudflared")
+    def set_cloudflared(body: TunnelToken, ctx: Context = Depends(get_ctx)) -> dict:
+        if body.token is not None and (len(body.token) < 20 or any(c.isspace() for c in body.token)):
+            raise HTTPException(400, "nieprawidłowy token tunelu")
+        ctx.cloudflared.set_token(body.token)
+        return ctx.cloudflared.status()
 
     @router.post("/join-tokens")
     def add_token(body: TokenRequest, ctx: Context = Depends(get_ctx)) -> dict:
@@ -192,12 +222,18 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
     async def check(body: CheckRequest) -> dict:
         if not body.url.startswith(("http://", "https://")):
             raise HTTPException(400, "adres musi zaczynać się od http:// lub https://")
+        import httpx  # leniwie — bramka potrzebuje go tylko do testów HTTP
+
         started = time.perf_counter()
         headers = {"Host": body.host} if body.host else {}
         try:
             async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=False) as client:
                 response = await client.get(body.url, headers=headers)
             return {"ok": response.status_code < 500, "status": response.status_code, "ms": round((time.perf_counter() - started) * 1000)}
+        except httpx.ConnectError:
+            return {"ok": False, "status": None, "error": "połączenie odrzucone — nic nie słucha na tym porcie (albo brak trasy przez tunel)"}
+        except httpx.TimeoutException:
+            return {"ok": False, "status": None, "error": "przekroczony czas odpowiedzi (10 s)"}
         except httpx.HTTPError as exc:
             return {"ok": False, "status": None, "error": str(exc) or type(exc).__name__}
 

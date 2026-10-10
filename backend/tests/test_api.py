@@ -42,13 +42,13 @@ def test_pairing_lockout(ctx):
 
 def test_info_vitals_and_lists(api):
     info = api.request("GET", "/api/info").json()
-    assert info["name"] == "testowy" and info["docker"]["Version"] == "28.0.0"
+    assert info["name"] == "testowy" and info["docker"]["Version"].startswith("28.0.0")
     vitals = api.request("GET", "/api/vitals").json()
     assert 0 <= vitals["ram"] <= 100
     assert api.request("POST", "/api/rps").json()["chosen"] in ("rock", "paper", "scissors")
     images = api.request("GET", "/api/images").json()
     assert images[0]["tags"] == ["nginx:latest"] and images[1]["dangling"] is True
-    assert api.request("GET", "/api/networks").json()[0]["name"] == "deployra"
+    assert "deployra" in [n["name"] for n in api.request("GET", "/api/networks").json()]
     assert api.request("GET", "/api/volumes").json()[0]["name"] == "dane"
 
 

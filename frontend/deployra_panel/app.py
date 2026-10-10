@@ -31,11 +31,21 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        from .services import wg_peer
+        import asyncio
+
+        from .services import uptime, wg_peer
 
         await run_in_threadpool(wg_peer.ensure_up, panel)
         await run_in_threadpool(panel.sessions.cleanup)
+        # zadania żyją w pamięci — to, co trwało w chwili restartu, zostało przerwane
+        panel.db.execute("UPDATE apps SET status = 'error', last_error = ? WHERE status = 'deploying'",
+                         ["Wdrożenie przerwane restartem panelu — wdroż ponownie"])
+        panel.db.execute("UPDATE certificates SET status = 'error', error = ? WHERE status = 'issuing'",
+                         ["Wystawianie przerwane restartem panelu — ponów"])
+        monitor_task = asyncio.create_task(uptime.loop(panel)) if panel.config.monitoring else None
         yield
+        if monitor_task:
+            monitor_task.cancel()
         await panel.aclose()
 
     app = FastAPI(title="Deployra", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
@@ -75,14 +85,14 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
     async def _forbidden(request: Request, exc: Forbidden) -> Response:
         if is_htmx(request):
             return toast(exc.message, "err", status=403)
-        return render(request, "error.html", status=403, title="Brak dostępu", message=exc.message, icon="shield-x")
+        return render(request, "error.html", status_code=403, title="Brak dostępu", message=exc.message, icon="shield-x")
 
     @app.exception_handler(RemoteError)
     async def _remote(request: Request, exc: RemoteError) -> Response:
         message = f"Zdalny komponent: {exc.detail}"
         if is_htmx(request):
             return toast(message, "err", status=502)
-        return render(request, "error.html", status=502, title="Błąd węzła", message=message, icon="hdd-network")
+        return render(request, "error.html", status_code=502, title="Błąd węzła", message=message, icon="hdd-network")
 
     @app.exception_handler(httpx.HTTPError)
     async def _offline(request: Request, exc: httpx.HTTPError) -> Response:
@@ -90,19 +100,19 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
         logger.warning(f"{request.url.path}: {type(exc).__name__}: {exc}")
         if is_htmx(request):
             return toast(message, "err", status=504)
-        return render(request, "error.html", status=504, title="Brak połączenia", message=message, icon="wifi-off")
+        return render(request, "error.html", status_code=504, title="Brak połączenia", message=message, icon="wifi-off")
 
     @app.exception_handler(LookupError)
     async def _lookup(request: Request, exc: LookupError) -> Response:
         if is_htmx(request):
             return toast(str(exc), "err", status=409)
-        return render(request, "error.html", status=409, title="Nie da się", message=str(exc), icon="exclamation-diamond")
+        return render(request, "error.html", status_code=409, title="Nie da się", message=str(exc), icon="exclamation-diamond")
 
     @app.exception_handler(ValueError)
     async def _value(request: Request, exc: ValueError) -> Response:
         if is_htmx(request):
             return toast(str(exc), "err", status=400)
-        return render(request, "error.html", status=400, title="Błędne dane", message=str(exc), icon="exclamation-diamond")
+        return render(request, "error.html", status_code=400, title="Błędne dane", message=str(exc), icon="exclamation-diamond")
 
     @app.exception_handler(HTTPException)
     async def _http(request: Request, exc: HTTPException) -> Response:
@@ -111,7 +121,7 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
                 return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
             return toast(str(exc.detail), "err", status=exc.status_code)
         return render(
-            request, "error.html", status=exc.status_code, title=f"Błąd {exc.status_code}", message=str(exc.detail),
+            request, "error.html", status_code=exc.status_code, title=f"Błąd {exc.status_code}", message=str(exc.detail),
             icon="question-octagon" if exc.status_code == 404 else "exclamation-octagon",
         )  # fmt: skip
 

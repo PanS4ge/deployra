@@ -7,7 +7,6 @@ import secrets
 import time
 from typing import Any
 
-import httpx
 from loguru import logger
 
 from deployra_common import pairing, wg
@@ -40,6 +39,8 @@ def join_gateway(ctx: Any) -> None:
         token.join_secret,
         {"kind": "join", "token_id": token.id, "wg_public_key": public, "name": cfg.name, "nonce": secrets.token_hex(12)},
     )
+    import httpx  # tylko przy dołączaniu — nie trzymamy go w pamięci na stałe
+
     response = httpx.post(bootstrap_url(cfg.gateway) + "/join", json=request, timeout=20)
     if response.status_code != 200:
         raise RuntimeError(f"bramka odrzuciła dołączenie ({response.status_code}): {response.text[:300]}")
@@ -71,7 +72,7 @@ def join_with_retry(ctx: Any) -> None:
         try:
             join_gateway(ctx)
             return
-        except (httpx.HTTPError, RuntimeError, ValueError) as exc:
+        except Exception as exc:  # noqa: BLE001 — bramka niedostępna, zły token, sieć: ponawiamy z narastającym odstępem
             logger.warning(f"Dołączenie do bramki nie powiodło się: {exc}. Ponawiam za {delay} s")
             time.sleep(delay)
             delay = min(delay * 2, 60)

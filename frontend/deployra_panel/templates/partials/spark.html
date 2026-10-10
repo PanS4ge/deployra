@@ -1,0 +1,4 @@
+{% if data is none %}<span class="muted small" title="Brak danych z Deployra-WG">—</span>
+{% else %}<div class="row" style="gap: 10px; flex-wrap: nowrap" title="Unikalni odwiedzający dziennie (30 dni) · powracający: {{ data.summary.returning_pct if data.summary.returning_pct is not none else '—' }}%">
+  {{ svg }}<span class="mono" style="min-width: 48px">{{ total }}</span>
+</div>{% endif %}

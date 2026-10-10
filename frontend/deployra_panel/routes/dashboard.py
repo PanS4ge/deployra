@@ -53,7 +53,7 @@ async def tunnel_card(request: Request, panel: Panel = Depends(get_panel)):
             status = await asyncio.wait_for(client.get("/api/status"), timeout=8)
         except (RemoteError, httpx.HTTPError, asyncio.TimeoutError) as exc:
             error = getattr(exc, "detail", None) or "bramka nie odpowiada"
-    return render(request, "partials/tunnel_card.html", status=status, error=error, gateway=panel.gateway())
+    return render(request, "partials/tunnel_card.html", gw=status, error=error, gateway=panel.gateway())
 
 
 @router.get("/notifications")

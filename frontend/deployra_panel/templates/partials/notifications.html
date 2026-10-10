@@ -1,0 +1,9 @@
+{% for n in items %}
+<div class="item">
+  <i class="bi bi-{{ {'ok': 'check-circle', 'err': 'x-octagon', 'warn': 'exclamation-triangle'}.get(n.level, 'info-circle') }}" style="color: {{ {'ok': 'var(--ok)', 'err': 'var(--err)', 'warn': 'var(--warn)'}.get(n.level, 'var(--info)') }}"></i>
+  <div style="flex: 1; min-width: 0"><div style="overflow-wrap: anywhere">{{ n.message }}</div><div class="small muted">{{ n.created_at | ago }}</div></div>
+  {% if not n.is_read %}<span class="dot" style="background: var(--violet-2)"></span>{% endif %}
+</div>
+{% else %}
+<div class="item muted">Cisza w eterze ✦</div>
+{% endfor %}

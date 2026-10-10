@@ -36,6 +36,7 @@ def site_model(panel: Any, row: dict, nodes: dict[int, dict]) -> Site | None:
             loc_up = resolve_target(panel, loc.get("target"), nodes)
             if loc_up:
                 locations.append(ProxyLocation(path=loc["path"], upstream=loc_up, advanced=loc.get("advanced") or ""))
+        tunnel = row.get("ingress") == "cloudflare"  # HTTPS kończy się na krawędzi Cloudflare
         return Site(
             id=row["id"],
             kind=row["kind"],
@@ -43,15 +44,15 @@ def site_model(panel: Any, row: dict, nodes: dict[int, dict]) -> Site | None:
             upstream=upstream,
             redirect=row.get("redirect"),
             locations=locations,
-            cert_id=row.get("cert_id"),
-            ssl_forced=bool(row["ssl_forced"]),
+            cert_id=None if tunnel else row.get("cert_id"),
+            ssl_forced=bool(row["ssl_forced"]) and not tunnel,
             http2=bool(row["http2"]),
             hsts=bool(row["hsts"]),
             hsts_subdomains=bool(row["hsts_subdomains"]),
             block_exploits=bool(row["block_exploits"]),
             websockets=bool(row["websockets"]),
             caching=bool(row["caching"]),
-            trust_forwarded_proto=bool(row["trust_forwarded_proto"]),
+            trust_forwarded_proto=bool(row["trust_forwarded_proto"]) or tunnel,
             access_list_id=row.get("access_list_id"),
             advanced=row.get("advanced") or "",
             max_body_mb=row.get("max_body_mb") or 100,
@@ -99,7 +100,15 @@ async def push(panel: Any) -> dict:
     if not client:
         return {"ok": False, "status": "no-gateway", "message": "Brak połączenia z Deployra-WG — konfiguracja zapisana w panelu"}
     state = build_state(panel)
-    return await client.put("/api/proxy", json=state.model_dump(mode="json"))
+    result = await client.put("/api/proxy", json=state.model_dump(mode="json"))
+    if result.get("status") != "rejected" and panel.db.setting("cf_tunnel_id"):
+        from . import cloudflared
+
+        try:
+            await cloudflared.sync(panel)
+        except cloudflared.TunnelError as exc:
+            result = {**result, "status": "pending", "ok": False, "message": f"Cloudflare Tunnel: {exc}"}
+    return result
 
 
 def push_message(result: dict) -> tuple[str, str]:

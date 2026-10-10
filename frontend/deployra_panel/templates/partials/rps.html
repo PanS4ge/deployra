@@ -1,0 +1,9 @@
+{% if walkover %}
+<span class="badge err">Węzeł poddał się walkowerem — nie odpowiedział.</span>
+{% else %}
+<div class="row fade-in">
+  <span style="font-size: 1.6rem">{{ you }}</span><span class="muted">vs.</span><span style="font-size: 1.6rem">{{ node }}</span>
+  {% if result == "win" %}<span class="badge ok">wygrana</span>{% elif result == "lose" %}<span class="badge err">przegrana</span>{% else %}<span class="badge warn">remis</span>{% endif %}
+  <span class="pill">{{ ms }} ms</span>
+</div>
+{% endif %}

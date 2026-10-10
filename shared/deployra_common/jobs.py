@@ -139,7 +139,9 @@ class JobRegistry:
             if inspect.iscoroutinefunction(fn):
                 job.result = await fn(job)
             else:
-                job.result = await asyncio.to_thread(fn, job)
+                result = await asyncio.to_thread(fn, job)
+                # `lambda job: coro(...)` nie jest funkcją async, ale zwraca korutynę — trzeba na nią poczekać
+                job.result = await result if inspect.isawaitable(result) else result
             job.status = "ok"
         except JobFailed as exc:
             job.error = str(exc)

@@ -1,0 +1,28 @@
+# Deployra (panel) — może stać gdziekolwiek; po synchronizacji jest peerem tunelu Deployra-WG.
+#   docker compose -f deploy/panel.compose.yml up -d --build
+#
+# Na tym samym VPS co bramka użyj deploy/vps.compose.yml (panel słucha wtedy na 127.0.0.1,
+# a na świat wystawiasz go hostem proxy, np. deploy.example.com → 127.0.0.1:8080).
+name: deployra-panel
+
+services:
+  deployra:
+    build: { context: .., dockerfile: frontend/Dockerfile }
+    image: deployra-panel:latest
+    container_name: deployra-panel
+    network_mode: host          # potrzebne, żeby panel sam postawił wg0 i widział węzły w tunelu
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun]
+    environment:
+      DEPLOYRA_BIND: ${DEPLOYRA_BIND:-127.0.0.1}
+      DEPLOYRA_PORT: ${DEPLOYRA_PORT:-8080}
+      DEPLOYRA_SECURE_COOKIES: ${DEPLOYRA_SECURE_COOKIES:-false}   # true, gdy panel jest tylko za HTTPS
+      # DEPLOYRA_DB: mysql://deployra:haslo@127.0.0.1:3306/deployra   # domyślnie SQLite w wolumenie
+    volumes:
+      - panel-data:/var/lib/deployra-panel
+    restart: unless-stopped
+    mem_limit: 160m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+volumes:
+  panel-data:

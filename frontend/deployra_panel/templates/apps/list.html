@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, empty, uptime_badge, heartbeat %}
+{% block actions %}{% if has(user, P.ALLOW_DEPLOYMENT) %}<a class="btn primary" href="/apps/new"><i class="bi bi-rocket-takeoff"></i> Nowa aplikacja</a>{% endif %}{% endblock %}
+{% block content %}
+{% set icons = {"image": "box", "compose": "layers", "static": "file-earmark-code", "git": "git"} %}
+{% if apps %}
+<div class="grid grid-auto">
+  {% for a in apps %}{% set s = stats.get(("app", a.id)) %}
+  <div class="card link" onclick="location.href='/apps/{{ a.id }}'">
+    <div class="card-head">
+      <i class="bi bi-{{ icons.get(a.kind, 'box') }}" style="font-size: 1.3rem; color: var(--violet-2)"></i>
+      <h3 class="trunc">{{ a.name }}</h3>
+      {{ status_badge(a.status) }}
+    </div>
+    <div class="card-body stack" style="gap: 8px">
+      <div class="small dim row" style="gap: 6px"><i class="bi bi-hdd-network"></i> {{ a.node_name or "—" }} <span class="muted">· {{ a.kind }}</span></div>
+      {% for d in (a.domains or [])[:2] %}<a class="small mono trunc" href="https://{{ d }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">{{ d }} <i class="bi bi-box-arrow-up-right"></i></a>{% endfor %}
+      {% if s %}<div class="row between">{{ heartbeat(s.beats[-20:]) }}{{ uptime_badge(s.uptime_24h) }}</div>{% endif %}
+      {% if a.last_error and a.status == "error" %}<div class="small" style="color: #fda4af">{{ a.last_error[:140] }}</div>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">{{ empty("rocket-takeoff", "Jeszcze nic tu nie lata", "Wdróż pierwszą aplikację: obraz z rejestru, docker-compose, stronę statyczną albo repozytorium Git — z domeną i HTTPS w jednym kroku.") }}</div>
+{% endif %}
+{% endblock %}

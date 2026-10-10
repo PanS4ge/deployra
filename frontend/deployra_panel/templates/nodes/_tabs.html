@@ -1,0 +1,28 @@
+{% set base = "/nodes/" ~ node.id %}
+{% set eps = (node.info or {}).get("endpoints") or [] %}
+{% if eps | length > 1 %}
+<div class="card">
+  <div class="card-body row" style="padding: 10px 14px; gap: 6px">
+    <span class="small muted" style="margin-right: 4px"><i class="bi bi-boxes"></i> Proxmox:</span>
+    {% for e in eps %}
+      {% set href = request.url.path ~ ("" if e.id == "local" else "?ep=" ~ e.id) %}
+      <a class="btn sm {{ 'primary' if e.id == ep else 'ghost' }}" href="{{ href }}" title="{{ e.ip or '' }}">
+        <i class="bi bi-{{ 'hdd-rack' if e.kind == 'host' else 'box-seam' }}"></i>
+        {{ e.name }}{% if e.vmid %} <span class="muted small">#{{ e.vmid }}</span>{% endif %}
+      </a>
+    {% endfor %}
+    <span class="spacer"></span>
+    <button class="btn sm ghost" hx-post="{{ base }}/info" hx-swap="none" title="Wykryj CT ponownie"><i class="bi bi-arrow-clockwise"></i></button>
+  </div>
+</div>
+{% endif %}
+<nav class="tabs">
+  <a href="{{ base }}{{ epq }}" class="{{ 'active' if tab == 'overview' }}"><i class="bi bi-speedometer2"></i> Przegląd</a>
+  <a href="{{ base }}/containers{{ epq }}" class="{{ 'active' if tab == 'containers' }}"><i class="bi bi-box"></i> Kontenery</a>
+  <a href="{{ base }}/stacks{{ epq }}" class="{{ 'active' if tab == 'stacks' }}"><i class="bi bi-layers"></i> Stacki</a>
+  <a href="{{ base }}/images{{ epq }}" class="{{ 'active' if tab == 'images' }}"><i class="bi bi-disc"></i> Obrazy</a>
+  <a href="{{ base }}/volumes{{ epq }}" class="{{ 'active' if tab == 'volumes' }}"><i class="bi bi-database"></i> Wolumeny</a>
+  <a href="{{ base }}/networks{{ epq }}" class="{{ 'active' if tab == 'networks' }}"><i class="bi bi-share"></i> Sieci</a>
+  <a href="{{ base }}/sftp" class="{{ 'active' if tab == 'sftp' }}"><i class="bi bi-folder-symlink"></i> SFTP</a>
+  <a href="{{ base }}/settings" class="{{ 'active' if tab == 'settings' }}"><i class="bi bi-sliders"></i> Ustawienia</a>
+</nav>

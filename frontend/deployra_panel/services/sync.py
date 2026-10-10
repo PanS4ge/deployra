@@ -181,6 +181,9 @@ async def pair_node(panel: Any, node: dict, code: str | None = None) -> dict:
         info={"node_id": data.get("node_id"), "name": data.get("name")},
     )  # fmt: skip
     panel.notify(f"Sparowano węzeł {node['name']}", "ok")
+    from . import uptime
+
+    uptime.ensure_for(panel, "node", node["id"], node["name"], node["id"])
     node = panel.node(node["id"])
     try:
         info = await panel.node_client(node).get("/api/info")

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes">Węzły</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
+{% block heading %}Obrazy{% endblock %}
+{% block content %}
+{% include "nodes/_tabs.html" %}
+<div class="grid grid-2">
+  {% if has(user, P.ALLOW_PULL_IMAGES) %}
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-cloud-download"></i> Pobierz obraz</h3></div>
+    <form class="card-body row" hx-post="/nodes/{{ node.id }}/images/pull{{ epq }}" hx-swap="none">
+      <input class="input" style="flex: 1" name="image" placeholder="grafana/grafana:latest" required>
+      <button class="btn primary"><span class="spin"></span>Pobierz</button>
+    </form>
+  </div>
+  {% endif %}
+  {% if has(user, P.ALLOW_DELETE_DOCKERS) %}
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-recycle"></i> Sprzątanie</h3></div>
+    <div class="card-body row">
+      <button class="btn" hx-post="/nodes/{{ node.id }}/images/prune{{ epq }}" hx-swap="none" hx-confirm="Usunąć wiszące obrazy (bez tagu)?">Usuń wiszące</button>
+      <button class="btn danger" hx-post="/nodes/{{ node.id }}/images/prune{{ epq }}" hx-vals='{"all": "1"}' hx-swap="none" hx-confirm="Usunąć WSZYSTKIE nieużywane obrazy?" data-danger>Usuń nieużywane</button>
+    </div>
+  </div>
+  {% endif %}
+</div>
+<div class="card">
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>Tag</th><th>ID</th><th>Rozmiar</th><th>Utworzony</th><th>Używany przez</th><th></th></tr></thead>
+    <tbody>
+    {% for i in items %}
+      <tr>
+        <td class="name mono small">{% if i.tags %}{{ i.tags | join(", ") }}{% else %}<span class="badge warn">bez tagu</span>{% endif %}</td>
+        <td class="mono small muted">{{ i.short_id }}</td>
+        <td class="small">{{ i.size | bytes }}</td>
+        <td class="small">{{ i.created | ago }}</td>
+        <td class="small">{{ i.used_by | join(", ") or "—" }}</td>
+        <td class="actions">
+          {% if has(user, P.ALLOW_DELETE_DOCKERS) and not i.used_by %}
+          <button class="btn icon sm ghost" title="Usuń" hx-post="/nodes/{{ node.id }}/images/remove{{ epq }}" hx-vals='{"image_id": "{{ i.id }}"}' hx-swap="none" hx-confirm="Usunąć obraz {{ i.tags[0] if i.tags else i.short_id }}?" data-danger><i class="bi bi-trash"></i></button>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}<tr><td colspan="6" class="muted">Brak obrazów.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

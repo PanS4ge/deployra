@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-heart-pulse"></i> Jak to działa</h3></div>
+    <div class="card-body small dim stack">
+      <div>Panel co minutę sprawdza monitory: <b>aplikacje</b> (HTTP przez tunel, dodawane automatycznie), <b>węzły</b> (czy odpowiadają), <b>kontenery</b> (włączysz dzwonkiem na liście kontenerów) i <b>własne adresy URL</b>.</div>
+      <div>Uptime liczę z agregatów godzinowych (90 dni), pasek pokazuje ostatnie sprawdzenia.
+        {% if not webhook %}Powiadomienia trafiają do dzwonka w panelu — webhook Discorda/ntfy ustawisz w <a href="/settings">Ustawieniach</a>.{% else %}Zmiany stanu lecą też na webhook.{% endif %}</div>
+    </div>
+  </div>
+  {% if has(user, P.ALLOW_SETTINGS) %}
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-plus-circle"></i> Monitor adresu URL</h3></div>
+    <form class="card-body form-grid" hx-post="/uptime/url" hx-swap="none">
+      <div class="field"><label>Nazwa</label><input class="input" name="name" placeholder="Mój blog"></div>
+      <div class="field"><label>Interwał</label><select class="select" name="interval"><option value="60">co minutę</option><option value="30">co 30 s</option><option value="300">co 5 min</option><option value="900">co 15 min</option></select></div>
+      <div class="field full"><label>Adres</label><input class="input" name="url" placeholder="https://example.com/health" required></div>
+      <div class="field full"><label>Słowo kluczowe (opcjonalnie)</label><input class="input" name="keyword" placeholder="musi wystąpić w odpowiedzi"></div>
+      <div class="full row" style="justify-content: flex-end"><button class="btn primary"><i class="bi bi-plus-lg"></i> Dodaj</button></div>
+    </form>
+  </div>
+  {% endif %}
+</div>
+<div class="card">
+  <div id="uptime-list" hx-get="/uptime" hx-trigger="every 30s [!document.hidden]" hx-swap="innerHTML" hx-disinherit="*">
+    {% include "partials/uptime_list.html" %}
+  </div>
+</div>
+{% endblock %}

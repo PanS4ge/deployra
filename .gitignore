@@ -30,3 +30,6 @@ legacy/backend/settings.json
 # IDE
 .vscode/
 .idea/
+
+# Środowisko deweloperskie (scripts/dev_stack.py)
+.dev/

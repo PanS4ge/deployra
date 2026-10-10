@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block crumbs %}<div class="crumbs"><a href="/import/npm">Import z NPM</a> /</div>{% endblock %}
+{% block content %}
+<div class="grid grid-4">
+  <div class="card stat"><div class="label">Hosty proxy</div><div class="value">{{ data.proxy_hosts | length }}</div></div>
+  <div class="card stat"><div class="label">Przekierowania / 404</div><div class="value">{{ data.redirection_hosts | length }} / {{ data.dead_hosts | length }}</div></div>
+  <div class="card stat"><div class="label">Streamy / listy dostępu</div><div class="value">{{ data.streams | length }} / {{ data.access_lists | length }}</div></div>
+  <div class="card stat"><div class="label">Certyfikaty</div><div class="value">{{ data.certificates | length }}<small> · PEM: {{ pems }}</small></div></div>
+</div>
+{% for w in data.warnings %}<div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div class="small">{{ w }}</div></div>{% endfor %}
+
+<form class="stack" hx-post="/import/npm/{{ token }}/apply" hx-swap="none">
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-signpost-2"></i> Dokąd teraz prowadzi ruch?</h3><span class="sub">adresy docelowe z NPM</span></div>
+    <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Adres w NPM</th><th>Użyty w</th><th>W Deployrze</th></tr></thead>
+      <tbody>
+      {% for h in hosts %}
+        <tr x-data="{ choice: 'address' }">
+          <td class="mono name">{{ h.host or "—" }}</td>
+          <td class="small muted">{{ h.count }}× {{ h.examples[:3] | join(", ") }}</td>
+          <td>
+            <div class="row" style="gap: 6px">
+              <select class="select" name="map_{{ loop.index0 }}" x-model="choice" style="width: auto">
+                <option value="address">zostaw adres {{ h.host }}</option>
+                {% for n in nodes %}<option value="node:{{ n.id }}">→ węzeł {{ n.name }} (ten sam port)</option>{% endfor %}
+              </select>
+              <select class="select" name="via_{{ loop.index0 }}" x-show="choice === 'address'" style="width: auto" title="Przez który węzeł bramka dosięgnie tego adresu">
+                <option value="">bezpośrednio</option>
+                {% for n in nodes if n.transport == "tunnel" %}<option value="{{ n.id }}">przez LAN węzła {{ n.name }}</option>{% endfor %}
+              </select>
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="card-body small muted">Np. jeśli drugi NPM z WireGuardem przekazywał ruch do <code>192.168.1.50</code>, wybierz „przez LAN węzła” i dodaj podsieć <code>192.168.1.0/24</code> w ustawieniach węzła.</div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-head"><h3><i class="bi bi-ui-checks"></i> Co importować</h3></div>
+      <div class="card-body stack" style="gap: 10px">
+        <label class="check"><input type="checkbox" name="proxy" value="1" checked><span class="sw"></span><span>Hosty proxy ({{ data.proxy_hosts | length }})</span></label>
+        <label class="check"><input type="checkbox" name="redirects" value="1" checked><span class="sw"></span><span>Przekierowania ({{ data.redirection_hosts | length }})</span></label>
+        <label class="check"><input type="checkbox" name="dead" value="1" checked><span class="sw"></span><span>Hosty 404 ({{ data.dead_hosts | length }})</span></label>
+        <label class="check"><input type="checkbox" name="streams" value="1" checked><span class="sw"></span><span>Streamy ({{ data.streams | length }})</span></label>
+        <label class="check"><input type="checkbox" name="acls" value="1" checked><span class="sw"></span><span>Listy dostępu ({{ data.access_lists | length }})</span></label>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3><i class="bi bi-shield-lock"></i> Certyfikaty</h3></div>
+      <div class="card-body stack" style="gap: 10px">
+        <label class="check"><input type="radio" name="certs" value="reissue" checked style="position: static; opacity: 1; width: auto; height: auto"> <span>Wystaw na nowo przez Let's Encrypt (DNS musi już wskazywać na bramkę)</span></label>
+        <label class="check"><input type="radio" name="certs" value="pem" {{ "disabled" if not pems }} style="position: static; opacity: 1; width: auto; height: auto"> <span>Przenieś pliki PEM ({{ pems }} dostępnych) — reszta wystawiona na nowo</span></label>
+        <label class="check"><input type="radio" name="certs" value="skip" style="position: static; opacity: 1; width: auto; height: auto"> <span>Pomiń (hosty bez HTTPS)</span></label>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-list-ul"></i> Hosty proxy</h3></div>
+    <div class="table-wrap" style="max-height: 420px; overflow: auto">
+    <table class="table">
+      <thead><tr><th>Domeny</th><th>Cel</th><th>SSL</th><th>Uwagi</th></tr></thead>
+      <tbody>
+      {% for h in data.proxy_hosts %}{% set clash = existing.intersection(h.domain_names or []) %}
+        <tr style="{{ 'opacity: .5' if clash }}">
+          <td class="mono small">{{ (h.domain_names or []) | join(", ") }}</td>
+          <td class="mono small">{{ h.forward_scheme }}://{{ h.forward_host }}:{{ h.forward_port }}</td>
+          <td>{{ "✔" if h.certificate_id else "—" }}</td>
+          <td class="small">{% if clash %}<span class="badge warn">już istnieje</span>{% endif %}{% if h.advanced_config %}<span class="badge">advanced</span>{% endif %}{% if not h.enabled %}<span class="badge">wyłączony</span>{% endif %}{% if h.locations %}<span class="badge">{{ h.locations | length }} lokacji</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="row" style="justify-content: flex-end">
+    <button type="button" class="btn ghost" hx-post="/import/npm/{{ token }}/cancel" hx-swap="none">Anuluj</button>
+    <button class="btn primary"><span class="spin"></span><i class="bi bi-box-arrow-in-down"></i> Importuj</button>
+  </div>
+</form>
+{% endblock %}

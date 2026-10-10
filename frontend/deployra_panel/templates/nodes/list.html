@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, empty %}
+{% block actions %}
+{% if has(user, P.ALLOW_ADD_DOCKERS) %}<a class="btn primary" href="/nodes/add"><i class="bi bi-plus-lg"></i> Dodaj węzeł</a>{% endif %}
+{% endblock %}
+{% block content %}
+{% if pending %}
+<div class="callout" hx-post="/nodes/refresh" hx-trigger="every 6s [!document.hidden]" hx-swap="none">
+  <i class="bi bi-hourglass-split"></i>
+  <div class="small">Czekam, aż nowe węzły dołączą do tunelu. Gdy kontener backendu wystartuje, panel sam dokończy parowanie.</div>
+</div>
+{% endif %}
+{% if nodes %}
+<div class="grid grid-auto">
+  {% for n in nodes %}
+  <div class="card link" onclick="location.href='/nodes/{{ n.id }}'">
+    <div class="card-head">
+      <i class="bi bi-hdd-network" style="font-size: 1.3rem; color: var(--violet-2)"></i>
+      <h3>{{ n.name }}</h3>
+      {{ status_badge(n.status) }}
+    </div>
+    <div class="card-body stack" style="gap: 10px">
+      <div class="row small dim">
+        <span class="badge {{ 'violet' if n.transport == 'tunnel' else 'info' }}"><i class="bi bi-{{ 'diagram-3' if n.transport == 'tunnel' else 'globe' }}"></i> {{ "tunel" if n.transport == "tunnel" else "bezpośrednio" }}</span>
+        <span class="mono">{{ n.tunnel_ip or n.api_url or "—" }}</span>
+      </div>
+      {% if n.status == "paired" %}
+      <div hx-get="/nodes/{{ n.id }}/vitals?compact=1" hx-trigger="load, every 5s [!document.hidden]" hx-swap="innerHTML" hx-disinherit="*">
+        <div class="muted small">Ładowanie zasobów…</div>
+      </div>
+      {% elif n.status == "pending" %}
+      <div class="small muted">Token ważny do {{ n.token_expires | dt }}</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">{{ empty("hdd-network", "Brak węzłów", "Dodaj pierwszy serwer z Dockerem — domowy przez tunel albo VPS bezpośrednio.") }}</div>
+{% endif %}
+{% endblock %}

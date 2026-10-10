@@ -28,14 +28,21 @@ def store(panel: Any, spec: AppSpec, options: dict) -> str:
 def create_app_row(panel: Any, name: str, node_id: int, spec: AppSpec, options: dict) -> int:
     if panel.db.get("apps", spec.slug, key="slug"):
         raise ValueError(f"aplikacja o nazwie {spec.slug} już istnieje")
-    return panel.db.insert(
+    app_id = panel.db.insert(
         "apps", slug=spec.slug, name=name or spec.slug, node_id=node_id, kind=spec.source.kind, spec=store(panel, spec, options),
         domains=spec.domains, status="new", webhook_secret=panel.sealer.seal(secrets.token_urlsafe(24)), created_at=now(),
     )  # fmt: skip
+    from . import uptime
+
+    uptime.ensure_for(panel, "app", app_id, name or spec.slug, node_id)
+    return app_id
 
 
-def _upsert_site(panel: Any, app: dict, node: dict, host_port: int, options: dict) -> dict:
-    target = {"type": "node", "node_id": node["id"], "port": host_port, "scheme": "http", "path": ""}
+def _upsert_site(panel: Any, app: dict, node: dict, host_port: int, options: dict, upstream_host: str | None = None) -> dict:
+    if upstream_host:  # aplikacja w CT na Proxmoxie — bramka łączy się z IP kontenera LXC
+        target = {"type": "address", "host": upstream_host, "port": host_port, "scheme": "http", "path": "", "via_node": node["id"]}
+    else:
+        target = {"type": "node", "node_id": node["id"], "port": host_port, "scheme": "http", "path": ""}
     site = panel.db.get("sites", app["site_id"]) if app.get("site_id") else None
     values = {"domains": app["domains"], "target": target, "websockets": 1, "dns": int(bool(options.get("dns")))}
     if site:
@@ -67,13 +74,17 @@ async def run(panel: Any, job: Job, app_id: int) -> dict:
         client = panel.node_client(node)
         job.log(f"▶ Wdrażam {spec.slug} ({spec.source.kind}) na węźle {node['name']}")
         remote = await relay.start_and_follow(client, "/api/apps/deploy", spec.model_dump(mode="json"), job, "  ")
-        host_port = (remote.get("result") or {}).get("host_port")
+        result = remote.get("result") or {}
+        host_port, upstream_host = result.get("host_port"), result.get("upstream_host")
         panel.db.update("apps", app_id, host_port=host_port)
         app = panel.db.get("apps", app_id)
+        if upstream_host and node["transport"] == "tunnel" and not _routed(upstream_host, node.get("lan_subnets") or []):
+            job.log(f"⚠ IP kontenera LXC {upstream_host} nie jest w podsieciach LAN węzła — dodaj jego podsieć w "
+                    f"ustawieniach węzła, żeby bramka do niego trafiła")  # fmt: skip
 
         if app["domains"] and host_port:
             job.log(f"🌐 Wystawiam {', '.join(app['domains'])} przez Deployra-WG")
-            site = _upsert_site(panel, app, node, host_port, options)
+            site = _upsert_site(panel, app, node, host_port, options, upstream_host)
             await _push(panel, job)
 
             if options.get("dns"):
@@ -95,7 +106,7 @@ async def run(panel: Any, job: Job, app_id: int) -> dict:
                 panel.db.update("apps", app_id, cert_id=cert["id"])
                 await _push(panel, job)
 
-            await _check(panel, job, node, host_port, app["domains"][0])
+            await _check(panel, job, node, host_port, app["domains"][0], upstream_host)
         panel.db.update("apps", app_id, status="running", last_deploy_at=now())
         job.log("✨ Gotowe!")
         return {"host_port": host_port}
@@ -105,8 +116,18 @@ async def run(panel: Any, job: Job, app_id: int) -> dict:
         raise JobFailed(message) from exc
 
 
-async def _check(panel: Any, job: Job, node: dict, port: int, domain: str) -> None:
-    host = panel.node_upstream_host(node)
+def _routed(ip: str, subnets: list[str]) -> bool:
+    import ipaddress
+
+    try:
+        address = ipaddress.ip_address(ip)
+        return any(address in ipaddress.ip_network(s, strict=False) for s in subnets)
+    except ValueError:
+        return False
+
+
+async def _check(panel: Any, job: Job, node: dict, port: int, domain: str, host: str | None = None) -> None:
+    host = host or panel.node_upstream_host(node)
     client = panel.gateway_client()
     if not client or not host:
         return

@@ -18,13 +18,20 @@ def _banner(lines: list[str]) -> None:
     width = max(len(line) for line in lines) + 4
     logger.opt(colors=True).info("<magenta>" + "═" * width + "</magenta>")
     for line in lines:
-        logger.opt(colors=True).info(f"<magenta>║</magenta> <bold>{line}</bold>")
+        safe = line.replace("<", r"\<")  # treść może zawierać <…> — loguru wziąłby to za tag koloru
+        logger.opt(colors=True).info(f"<magenta>║</magenta> <bold>{safe}</bold>")
     logger.opt(colors=True).info("<magenta>" + "═" * width + "</magenta>")
 
 
 def main() -> None:
     config = Config()
-    ctx = Context(config)
+    if config.fake_docker:
+        from .fake_docker import FakeDocker
+
+        logger.warning("DEPLOYRA_FAKE_DOCKER=1 — atrapa Dockera, nic nie jest naprawdę uruchamiane")
+        ctx = Context(config, docker_factory=lambda: FakeDocker(demo=True))
+    else:
+        ctx = Context(config)
 
     if len(sys.argv) > 1 and sys.argv[1] == "reset-pairing":
         code = enroll.reset_pairing(ctx)

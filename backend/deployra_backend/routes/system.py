@@ -82,6 +82,8 @@ def info(ctx: Context = Depends(get_ctx)) -> dict:
         "tunnel": {"address": wg_conf.get("address"), "lan_subnets": wg_conf.get("lan_subnets", []), "peer": wg_spoke.status(ctx.config.wg_iface)}
         if wg_conf
         else None,
+        "proxmox": ctx.config.proxmox,
+        "endpoints": [ep.public() for ep in ctx.endpoints.list()],
         "port_pool": list(ctx.config.port_pool),
         "static_port": ctx.state.get("static_port"),
         "sftp": {"port": ctx.config.sftp_port, "fingerprint": ctx.sftp.fingerprint() if ctx.sftp else None}
@@ -89,6 +91,12 @@ def info(ctx: Context = Depends(get_ctx)) -> dict:
         else None,
         **VitalsSampler.static_info(),
     }
+
+
+@router.get("/endpoints")
+def endpoints(refresh: bool = False, ctx: Context = Depends(get_ctx)) -> list[dict]:
+    """Docker hosta i (na Proxmoxie) kontenery LXC z własnym Dockerem."""
+    return [ep.public() for ep in ctx.endpoints.list(refresh=refresh)]
 
 
 @router.get("/vitals")

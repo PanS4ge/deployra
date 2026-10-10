@@ -1,0 +1,8 @@
+# Wszystko trafia do kontenerów Linuksa — końce linii LF także w kopii roboczej na Windowsie
+* text=auto eol=lf
+
+*.woff2 binary
+*.woff binary
+*.png binary
+*.ico binary
+*.pkl binary

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes">Węzły</a> /</div>{% endblock %}
+{% block content %}
+<div class="callout ok"><i class="bi bi-check-circle"></i><div>Token wygenerowany. <b>Pokazuję go tylko raz</b> — skopiuj teraz. Ważny do {{ node.token_expires | dt }}.</div></div>
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-head"><h2><i class="bi bi-1-circle"></i> Zbuduj obraz backendu</h2></div>
+    <div class="card-body stack">
+      <div class="small dim">Na serwerze węzła, w katalogu repozytorium Deployry:</div>
+      <pre class="code-block">docker build -f backend/Dockerfile -t deployra-backend .</pre>
+      <div class="small dim">Potrzebny jest Linux z Dockerem. WireGuard w kernelu (5.6+) albo <code>/dev/net/tun</code> dla wireguard-go.</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2><i class="bi bi-2-circle"></i> Uruchom z tokenem</h2></div>
+    <div class="card-body stack">
+      <div class="field"><label>Token dołączenia</label>
+        <span class="pill copy" data-copy="{{ token }}" style="white-space: normal; word-break: break-all">{{ token }} <i class="bi bi-clipboard"></i></span></div>
+      <div class="small dim">Zapisz poniższe jako <code>node.compose.yml</code> i uruchom <code>docker compose -f node.compose.yml up -d</code>.</div>
+    </div>
+  </div>
+</div>
+<div class="card">
+  <div class="card-head"><h3>node.compose.yml</h3><button class="btn sm" data-copy="{{ snippet }}"><i class="bi bi-clipboard"></i> Kopiuj</button></div>
+  <div class="card-body"><pre class="code-block">{{ snippet }}</pre></div>
+</div>
+<div class="card" hx-post="/nodes/refresh" hx-trigger="every 5s [!document.hidden]" hx-swap="none">
+  <div class="card-body row">
+    <span class="spin" style="border-top-color: var(--violet-2)"></span>
+    <div>Czekam na węzeł <b>{{ node.name }}</b>… Gdy dołączy do tunelu, panel sam go sparuje i przeniesie Cię do listy.</div>
+  </div>
+</div>
+{% endblock %}

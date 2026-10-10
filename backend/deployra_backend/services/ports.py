@@ -30,15 +30,20 @@ def docker_ports(client: Any) -> set[int]:
     return used
 
 
-def allocate(state: State, client: Any, key: str, pool: tuple[int, int], preferred: int | None = None) -> int:
-    """Zwraca port przypisany do `key` (aplikacji); przydziela nowy z puli, jeśli trzeba."""
+def allocate(
+    state: State, client: Any, key: str, pool: tuple[int, int], preferred: int | None = None, check_host: bool = True
+) -> int:
+    """Zwraca port przypisany do `key` (aplikacji); przydziela nowy z puli, jeśli trzeba.
+
+    `check_host=False` dla CT na Proxmoxie — porty CT nie zajmują portów hosta.
+    """
     current = state.get("ports", {})
     if key in current and (preferred is None or current[key] == preferred):
         return int(current[key])
     taken = {int(p) for k, p in current.items() if k != key} | docker_ports(client)
     candidates = [preferred] if preferred else range(pool[0], pool[1] + 1)
     for port in candidates:
-        if port not in taken and _port_free(port):
+        if port not in taken and (not check_host or _port_free(port)):
             state.mutate("ports", lambda ports: {**ports, key: port})
             return port
     raise RuntimeError("brak wolnego portu w puli" if not preferred else f"port {preferred} jest zajęty")

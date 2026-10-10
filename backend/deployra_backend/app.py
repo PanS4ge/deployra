@@ -21,19 +21,28 @@ def _docker_errors() -> tuple[type, type]:
         return LookupError, RuntimeError
 
 
+async def ensure_sftp(ctx: Context) -> None:
+    """Uruchamia serwer SFTP (leniwie — przy pierwszym koncie albo starcie z kontami)."""
+    if ctx.sftp or not ctx.config.sftp_enabled:
+        return
+    from .services.sftp_server import SftpService
+
+    service = SftpService(ctx.state, ctx.config.sites_dir, ctx.config.data_dir / "ssh_host_ed25519_key")
+    try:
+        await service.start(getattr(ctx, "bind_host", ""), ctx.config.sftp_port)
+        ctx.sftp = service
+    except OSError as exc:
+        logger.error(f"SFTP nie wystartował: {exc}")
+
+
 def create_app(ctx: Context, *, start_services: bool = True, bind_host: str = "") -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        ctx.bind_host = bind_host
         if start_services:
             ctx.vitals.start()
-            if ctx.config.sftp_enabled:
-                from .services.sftp_server import SftpService
-
-                ctx.sftp = SftpService(ctx.state, ctx.config.sites_dir, ctx.config.data_dir / "ssh_host_ed25519_key")
-                try:
-                    await ctx.sftp.start(bind_host, ctx.config.sftp_port)
-                except OSError as exc:
-                    logger.error(f"SFTP nie wystartował: {exc}")
+            if ctx.state.get("sftp_users"):  # asyncssh to ~20 MB RAM — ładujemy dopiero, gdy są konta
+                await ensure_sftp(ctx)
         yield
         ctx.vitals.stop()
         if ctx.sftp:
@@ -59,6 +68,10 @@ def create_app(ctx: Context, *, start_services: bool = True, bind_host: str = ""
     @app.exception_handler(PermissionError)
     async def _perm(_: Request, exc: PermissionError) -> JSONResponse:
         return JSONResponse({"detail": str(exc)}, status_code=403)
+
+    @app.exception_handler(LookupError)
+    async def _lookup(_: Request, exc: LookupError) -> JSONResponse:
+        return JSONResponse({"detail": str(exc)}, status_code=404)
 
     @app.exception_handler(RuntimeError)
     async def _runtime(_: Request, exc: RuntimeError) -> JSONResponse:

@@ -107,25 +107,32 @@ def run_streaming(job: Job, cmd: list[str], cwd: Path | None = None, env: dict[s
         raise JobFailed(f"polecenie zakończyło się kodem {code}")
 
 
-def up(job: Job, stacks_dir: Path, name: str, pull: bool = False) -> None:
+def stacks_root(base: Path, endpoint: str) -> Path:
+    """Stacki CT trzymamy osobno (na Proxmoxie nazwy mogą się powtarzać między CT)."""
+    return base if endpoint == "local" else base / "_ep" / endpoint
+
+
+def up(job: Job, stacks_dir: Path, name: str, pull: bool = False, env: dict[str, str] | None = None) -> None:
     stack_dir = stacks_dir / check_name(name)
     if pull:
-        run_streaming(job, compose_cmd(stack_dir, name, "pull"), cwd=stack_dir)
-    run_streaming(job, compose_cmd(stack_dir, name, "up", "-d", "--remove-orphans"), cwd=stack_dir)
+        run_streaming(job, compose_cmd(stack_dir, name, "pull"), cwd=stack_dir, env=env)
+    run_streaming(job, compose_cmd(stack_dir, name, "up", "-d", "--remove-orphans"), cwd=stack_dir, env=env)
 
 
-def action(job: Job, stacks_dir: Path, name: str, verb: str) -> None:
+def action(job: Job, stacks_dir: Path, name: str, verb: str, env: dict[str, str] | None = None) -> None:
     allowed = {"down": ["down"], "restart": ["restart"], "stop": ["stop"], "start": ["start"], "pull": ["pull"]}
     if verb not in allowed:
         raise ValueError(f"nieznana akcja: {verb}")
     stack_dir = stacks_dir / check_name(name)
-    run_streaming(job, compose_cmd(stack_dir, name, *allowed[verb]), cwd=stack_dir)
+    run_streaming(job, compose_cmd(stack_dir, name, *allowed[verb]), cwd=stack_dir, env=env)
 
 
-def remove(job: Job, stacks_dir: Path, name: str, volumes: bool = False) -> None:
+def remove(job: Job, stacks_dir: Path, name: str, volumes: bool = False, env: dict[str, str] | None = None) -> None:
     stack_dir = stacks_dir / check_name(name)
     if (stack_dir / COMPOSE_FILE).exists():
-        run_streaming(job, compose_cmd(stack_dir, name, "down", *(["-v"] if volumes else []), "--remove-orphans"), cwd=stack_dir)
+        run_streaming(
+            job, compose_cmd(stack_dir, name, "down", *(["-v"] if volumes else []), "--remove-orphans"), cwd=stack_dir, env=env
+        )
     shutil.rmtree(stack_dir, ignore_errors=True)
     job.log(f"Usunięto stack {name}")
 

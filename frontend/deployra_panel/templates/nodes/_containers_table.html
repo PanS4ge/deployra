@@ -1,0 +1,50 @@
+{% from "_macros.html" import state_badge %}
+{% set epa = "" if ep == "local" else "?ep=" ~ ep %}
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>Nazwa</th><th>Obraz</th><th>Stan</th><th>Porty</th><th>Uptime</th><th></th></tr></thead>
+  <tbody>
+  {% for c in items %}
+    <tr x-show="!q || {{ (c.name ~ ' ' ~ c.image ~ ' ' ~ (c.stack or '') ~ ' ' ~ (c.app or '')) | lower | tojson | forceescape }}.includes(q.toLowerCase())">
+      <td>
+        <a class="name" href="/nodes/{{ node.id }}/containers/{{ c.short_id }}{{ epa }}">{{ c.name }}</a>
+        <div class="row" style="gap: 4px; margin-top: 2px">
+          {% if c.app %}<span class="badge violet"><i class="bi bi-rocket-takeoff"></i> {{ c.app }}</span>{% endif %}
+          {% if c.stack %}<span class="badge info"><i class="bi bi-layers"></i> {{ c.stack }}</span>{% endif %}
+          {% if c.system %}<span class="badge"><i class="bi bi-gear"></i> deployra</span>{% endif %}
+        </div>
+      </td>
+      <td class="mono small trunc" style="max-width: 260px" title="{{ c.image }}">{{ c.image }}</td>
+      <td>{{ state_badge(c.state) }}</td>
+      <td class="mono small">{% for p in c.ports if p.host %}{{ p.host }}→{{ p.container }}{{ "/udp" if p.proto == "udp" }}{% if not loop.last %}, {% endif %}{% else %}<span class="muted">—</span>{% endfor %}</td>
+      <td class="small">
+        {% set mon = monitors.get(c.name) %}
+        {% if mon %}<span class="badge {{ 'ok' if mon.uptime_24h is not none and mon.uptime_24h >= 99 else ('warn' if mon.uptime_24h is not none and mon.uptime_24h >= 90 else 'err') }}">{{ mon.uptime_24h | pct }} · 24h</span>
+        {% else %}<span class="muted">{{ c.status }}</span>{% endif %}
+      </td>
+      <td>
+        <div class="actions">
+          {% if has(user, P.ALLOW_MODIFY_DOCKERS) %}
+            {% if c.state == "running" %}
+            <button class="btn icon sm ghost" title="Zatrzymaj" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/stop{{ epa }}" hx-swap="none"><i class="bi bi-stop-fill"></i></button>
+            <button class="btn icon sm ghost" title="Restart" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/restart{{ epa }}" hx-swap="none"><i class="bi bi-arrow-clockwise"></i></button>
+            {% else %}
+            <button class="btn icon sm ghost" title="Uruchom" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/start{{ epa }}" hx-swap="none"><i class="bi bi-play-fill"></i></button>
+            {% endif %}
+          {% endif %}
+          {% if has(user, P.ALLOW_CONTAINER_TERMINAL) and c.state == "running" %}
+          <a class="btn icon sm ghost" title="Terminal" href="/nodes/{{ node.id }}/containers/{{ c.short_id }}/terminal{{ epa }}" hx-boost="false"><i class="bi bi-terminal"></i></a>
+          {% endif %}
+          {% if has(user, P.ALLOW_SETTINGS) %}
+          <button class="btn icon sm ghost" title="{{ 'Wyłącz monitorowanie' if c.name in monitors else 'Monitoruj uptime' }}" hx-post="/nodes/{{ node.id }}/containers/monitor" hx-vals='{"name": "{{ c.name }}", "ep": "{{ ep }}"}' hx-swap="none"><i class="bi bi-bell{{ '-fill' if c.name in monitors }}" style="{{ 'color: var(--violet-2)' if c.name in monitors }}"></i></button>
+          {% endif %}
+          <a class="btn icon sm ghost" title="Szczegóły i logi" href="/nodes/{{ node.id }}/containers/{{ c.short_id }}{{ epa }}"><i class="bi bi-eye"></i></a>
+        </div>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">Brak kontenerów.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>

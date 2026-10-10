@@ -52,6 +52,11 @@ class Context:
         self.guard = SignatureGuard(lambda key: self.state.panel_secret if key == "panel" else None, NonceCache())
         self.gate = Gate()
         self.last_apply: dict[str, Any] | None = None
+        from .analytics import Analytics
+        from .cloudflared import Cloudflared
+
+        self.analytics = Analytics(config.data_dir, bytes.fromhex(self.state.get("analytics_secret")))
+        self.cloudflared = Cloudflared(self.state, config.cloudflared_bin)
 
     # --- synchronizacja z panelem -------------------------------------------------
 

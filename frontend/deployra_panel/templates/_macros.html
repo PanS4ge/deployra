@@ -52,3 +52,16 @@
 {% macro copy_pill(value, mono=True) -%}
   <span class="pill copy" data-copy="{{ value }}" title="Kliknij, aby skopiować">{{ value }} <i class="bi bi-clipboard"></i></span>
 {%- endmacro %}
+
+{% macro uptime_badge(value) -%}
+  {%- if value is none -%}<span class="muted small">—</span>
+  {%- else -%}<span class="badge {{ 'ok' if value >= 99 else ('warn' if value >= 95 else 'err') }}">{{ value | pct }}</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro heartbeat(beats) -%}
+  <div class="beats">
+    {%- for b in beats -%}
+      <span class="{{ 'up' if b.ok else 'down' }}" title="{{ b.ts | dt }} · {{ b.message }}{% if b.latency_ms is not none %} · {{ b.latency_ms }} ms{% endif %}"></span>
+    {%- else -%}<span class="muted small">brak danych</span>{%- endfor -%}
+  </div>
+{%- endmacro %}

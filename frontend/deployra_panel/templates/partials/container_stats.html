@@ -1,0 +1,7 @@
+{% from "_macros.html" import meter %}
+<div class="grid grid-4">
+  <div class="card stat"><div class="label"><i class="bi bi-cpu"></i> CPU</div><div class="value">{{ "%.1f" | format(s.cpu) }}<small>%</small></div>{{ meter(s.cpu) }}</div>
+  <div class="card stat"><div class="label"><i class="bi bi-memory"></i> Pamięć</div><div class="value" style="font-size: 1.4rem">{{ s.mem_usage | bytes }}</div>{{ meter(s.mem) }}<div class="small muted">limit {{ s.mem_limit | bytes }}</div></div>
+  <div class="card stat"><div class="label"><i class="bi bi-arrow-down-up"></i> Sieć</div><div class="value" style="font-size: 1.2rem">↓ {{ s.net_rx | bytes }}</div><div class="small muted">↑ {{ s.net_tx | bytes }}</div></div>
+  <div class="card stat"><div class="label"><i class="bi bi-device-hdd"></i> Dysk I/O</div><div class="value" style="font-size: 1.2rem">R {{ s.blk_read | bytes }}</div><div class="small muted">W {{ s.blk_write | bytes }} · procesy {{ s.pids or "?" }}</div></div>
+</div>

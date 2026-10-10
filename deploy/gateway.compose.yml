@@ -1,0 +1,49 @@
+# Deployra-WG: hub WireGuard + nginx dla ruchu publicznego (VPS z publicznym IP).
+#   DEPLOYRA_PUBLIC_HOST=vps.example.com docker compose -f deploy/gateway.compose.yml up -d --build
+#   docker logs deployra-wg   # kod synchronizacji dla panelu
+#
+# Porty na firewallu VPS: 80/tcp, 443/tcp, 51820/udp (WireGuard), 51821/tcp (bootstrap — tylko na czas
+# synchronizacji panelu i dołączania węzłów) + porty streamów, jeśli ich używasz.
+name: deployra-wg
+
+services:
+  deployra-wg:
+    build: { context: .., dockerfile: gateway/Dockerfile }
+    image: deployra-wg:latest
+    container_name: deployra-wg
+    network_mode: host          # wg0 w przestrzeni sieciowej hosta: nginx widzi węzły pod 10.66.0.x
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun]     # fallback wireguard-go, gdy kernel nie ma WireGuarda (OpenVZ/LXC)
+    environment:
+      DEPLOYRA_PUBLIC_HOST: ${DEPLOYRA_PUBLIC_HOST:?ustaw DEPLOYRA_PUBLIC_HOST — publiczny adres/IP tego VPS}
+      DEPLOYRA_WG_SUBNET: ${DEPLOYRA_WG_SUBNET:-10.66.0.0/24}
+    volumes:
+      - wg-data:/var/lib/deployra-wg
+      - nginx-conf:/etc/nginx/deployra
+      - certs:/etc/deployra/certs
+      - acme:/var/www/acme
+    restart: unless-stopped
+    mem_limit: 128m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+  nginx:
+    image: nginx:stable-alpine     # oficjalny obraz bez zmian; skrypt przeładowania jest tylko podmontowany
+    container_name: deployra-nginx
+    network_mode: host
+    depends_on: [deployra-wg]
+    entrypoint: ["/bin/sh", "-c", "sh /opt/deployra/deployra-reloader.sh && exec /docker-entrypoint.sh nginx -g 'daemon off;'"]
+    volumes:
+      - ../gateway/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../gateway/nginx/deployra-reloader.sh:/opt/deployra/deployra-reloader.sh:ro
+      - nginx-conf:/etc/nginx/deployra
+      - certs:/etc/deployra/certs:ro
+      - acme:/var/www/acme:ro
+    restart: unless-stopped
+    mem_limit: 96m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+volumes:
+  wg-data:
+  nginx-conf:
+  certs:
+  acme:

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "_macros.html" import state_badge, copy_pill %}
+{% set epa = "" if ep == "local" else "?ep=" ~ ep %}
+{% set st = c.State or {} %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes">Węzły</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> / <a href="/nodes/{{ node.id }}/containers{{ epa }}">kontenery</a> /</div>{% endblock %}
+{% block heading %}{{ name }}{% endblock %}
+{% block actions %}
+{{ state_badge(st.Status) }}
+{% if has(user, P.ALLOW_MODIFY_DOCKERS) %}
+  {% if st.Running %}
+  <button class="btn sm" hx-post="/nodes/{{ node.id }}/containers/{{ c.Id }}/action/restart{{ epa }}" hx-swap="none"><i class="bi bi-arrow-clockwise"></i> Restart</button>
+  <button class="btn sm" hx-post="/nodes/{{ node.id }}/containers/{{ c.Id }}/action/stop{{ epa }}" hx-swap="none"><i class="bi bi-stop-fill"></i> Stop</button>
+  {% else %}
+  <button class="btn sm primary" hx-post="/nodes/{{ node.id }}/containers/{{ c.Id }}/action/start{{ epa }}" hx-swap="none"><i class="bi bi-play-fill"></i> Start</button>
+  {% endif %}
+{% endif %}
+{% if has(user, P.ALLOW_CONTAINER_TERMINAL) and st.Running %}
+<a class="btn sm cool" href="/nodes/{{ node.id }}/containers/{{ c.Id[:12] }}/terminal{{ epa }}" hx-boost="false"><i class="bi bi-terminal"></i> Terminal</a>
+{% endif %}
+{% endblock %}
+{% block content %}
+{% if st.Running %}
+<div hx-ext="sse" sse-connect="/nodes/{{ node.id }}/containers/{{ c.Id }}/stats/stream{{ epa }}">
+  <div sse-swap="stats" hx-swap="innerHTML">
+    <div class="grid grid-4">{% for label in ["CPU", "Pamięć", "Sieć", "Dysk"] %}<div class="card stat"><div class="label">{{ label }}</div><div class="value muted">…</div></div>{% endfor %}</div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head">
+    <h3><i class="bi bi-journal-text"></i> Logi na żywo</h3>
+    <span class="spacer"></span>
+    <span class="small muted">ostatnie 300 linii + nowe</span>
+  </div>
+  <div class="card-body" hx-ext="sse" sse-connect="/nodes/{{ node.id }}/containers/{{ c.Id }}/logs/stream{{ epa }}">
+    <pre class="log" sse-swap="line" hx-swap="beforeend"></pre>
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-info-circle"></i> Szczegóły</h3></div>
+    <div class="card-body">
+      <dl class="kv">
+        <dt>ID</dt><dd>{{ copy_pill(c.Id[:12]) }}</dd>
+        <dt>Obraz</dt><dd class="mono small">{{ c.Config.Image }}</dd>
+        <dt>Polecenie</dt><dd class="mono small">{{ ((c.Config.Entrypoint or []) + (c.Config.Cmd or [])) | join(" ") or "—" }}</dd>
+        <dt>Start</dt><dd>{{ st.StartedAt | dt }} <span class="muted small">({{ st.StartedAt | ago }})</span></dd>
+        <dt>Restart</dt><dd>{{ (c.HostConfig.RestartPolicy or {}).get("Name") or "no" }} · restartów: {{ c.RestartCount }}</dd>
+        <dt>Sieci</dt><dd class="small">{% for net, cfg in ((c.NetworkSettings or {}).Networks or {}).items() %}<span class="pill">{{ net }} · {{ cfg.IPAddress or "—" }}</span> {% endfor %}</dd>
+        <dt>Porty</dt>
+        <dd class="mono small">
+          {% for port, bindings in ((c.NetworkSettings or {}).Ports or {}).items() %}
+            {% if bindings %}{% for b in bindings %}{{ b.HostIp or "*" }}:{{ b.HostPort }} → {{ port }}<br>{% endfor %}{% else %}{{ port }} <span class="muted">(niepublikowany)</span><br>{% endif %}
+          {% else %}<span class="muted">brak</span>{% endfor %}
+        </dd>
+        <dt>Mounty</dt>
+        <dd class="mono small">{% for m in c.Mounts or [] %}{{ m.Name or m.Source }} → {{ m.Destination }} {{ "(ro)" if not m.RW }}<br>{% else %}<span class="muted">brak</span>{% endfor %}</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-tags"></i> Etykiety i zmienne</h3></div>
+    <div class="card-body stack">
+      <div class="small">{% for k, v in (c.Config.Labels or {}).items() %}<div class="mono trunc" title="{{ k }}={{ v }}"><span class="muted">{{ k }}</span> = {{ v }}</div>{% else %}<span class="muted">Brak etykiet</span>{% endfor %}</div>
+      <details>
+        <summary class="small muted" style="cursor: pointer">Zmienne środowiskowe ({{ (c.Config.Env or []) | length }}) — mogą zawierać sekrety</summary>
+        <pre class="code-block" style="margin-top: 8px">{{ (c.Config.Env or []) | join("\n") }}</pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<details class="card">
+  <summary class="card-head" style="cursor: pointer"><h3><i class="bi bi-braces"></i> Pełny inspect (JSON)</h3></summary>
+  <div class="card-body"><pre class="code-block" style="max-height: 520px; overflow: auto">{{ raw }}</pre></div>
+</details>
+
+{% if has(user, P.ALLOW_DELETE_DOCKERS) and not (c.Config.Labels or {}).get("deployra.system") %}
+<div class="card">
+  <div class="card-body row between">
+    <div class="small dim">Usunięcie kontenera jest nieodwracalne. Kontenery aplikacji usuwaj z poziomu aplikacji.</div>
+    <form class="row" hx-post="/nodes/{{ node.id }}/containers/{{ c.Id }}/remove{{ epa }}" hx-swap="none" hx-confirm="Usunąć kontener {{ name }}?" data-danger>
+      <label class="check small"><input type="checkbox" name="volumes" value="1"><span class="sw"></span><span>z anonimowymi wolumenami</span></label>
+      <button class="btn danger sm"><i class="bi bi-trash"></i> Usuń</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

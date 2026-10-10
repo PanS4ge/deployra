@@ -1,0 +1,35 @@
+{% from "_macros.html" import heartbeat, uptime_badge, empty %}
+{% if items %}
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>Monitor</th><th>Ostatnie sprawdzenia</th><th class="right">24 h</th><th class="right">7 dni</th><th class="right">30 dni</th><th class="right">Opóźnienie</th><th></th></tr></thead>
+  <tbody>
+  {% for s in items %}{% set m = s.monitor %}
+    <tr style="{{ 'opacity: .55' if not m.enabled }}">
+      <td>
+        <div class="row" style="gap: 8px">
+          <span class="dot {{ {'up': 'ok', 'down': 'err'}.get(m.status, '') }}"></span>
+          <span class="name">{% if m.kind == "app" %}<a href="/apps/{{ m.ref_id }}">{{ m.name }}</a>{% elif m.kind == "node" %}<a href="/nodes/{{ m.ref_id }}">{{ m.name }}</a>{% else %}{{ m.name }}{% endif %}</span>
+          <span class="badge">{{ kinds.get(m.kind, m.kind) }}</span>
+        </div>
+        <div class="small muted trunc" style="max-width: 340px" title="{{ m.last_message or '' }}">{{ m.last_message or "jeszcze nie sprawdzono" }}{% if m.last_change %} · zmiana {{ m.last_change | ago }}{% endif %}</div>
+      </td>
+      <td>{{ heartbeat(s.beats) }}</td>
+      <td class="right">{{ uptime_badge(s.uptime_24h) }}</td>
+      <td class="right">{{ uptime_badge(s.uptime_7d) }}</td>
+      <td class="right">{{ uptime_badge(s.uptime_30d) }}</td>
+      <td class="right small mono">{{ s.latency ~ " ms" if s.latency is not none else "—" }}</td>
+      <td class="actions">
+        {% if has(user, P.ALLOW_SETTINGS) %}
+        <button class="btn icon sm ghost" title="{{ 'Wstrzymaj' if m.enabled else 'Wznów' }}" hx-post="/uptime/{{ m.id }}/toggle" hx-swap="none"><i class="bi bi-{{ 'pause' if m.enabled else 'play' }}"></i></button>
+        <button class="btn icon sm ghost" title="Usuń" hx-post="/uptime/{{ m.id }}/delete" hx-swap="none" hx-confirm="Usunąć monitor {{ m.name }} z historią?" data-danger><i class="bi bi-trash"></i></button>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+{{ empty("heart-pulse", "Brak monitorów", "Monitory aplikacji i węzłów dodadzą się same. Kontenery włączysz dzwonkiem na liście kontenerów.") }}
+{% endif %}

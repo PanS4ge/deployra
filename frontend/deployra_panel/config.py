@@ -28,6 +28,7 @@ class Config:
     secure_cookies: bool = field(default_factory=lambda: _flag("DEPLOYRA_SECURE_COOKIES", False))
     session_hours: int = field(default_factory=lambda: int(_env("DEPLOYRA_SESSION_HOURS", "24")))
     open_browser: bool = field(default_factory=lambda: _flag("DEPLOYRA_OPEN_BROWSER", False))
+    monitoring: bool = field(default_factory=lambda: _flag("DEPLOYRA_MONITORING", True))
 
     def __post_init__(self) -> None:
         if not self.db_url:

@@ -1,0 +1,15 @@
+.git
+.venv
+.dev
+.claude
+legacy
+docs
+deploy
+scripts
+**/__pycache__
+**/*.pyc
+**/tests
+**/.pytest_cache
+**/data
+*.sqlite
+.env

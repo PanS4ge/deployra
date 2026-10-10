@@ -71,7 +71,7 @@ def inside(repo: Path, relative: str) -> Path:
     return path
 
 
-def build(job: Job, repo: Path, dockerfile: str, context: str, tag: str) -> None:
+def build(job: Job, repo: Path, dockerfile: str, context: str, tag: str, env: dict[str, str] | None = None) -> None:
     dockerfile_path = inside(repo, dockerfile)
     context_path = inside(repo, context)
     if not dockerfile_path.is_file():
@@ -79,5 +79,5 @@ def build(job: Job, repo: Path, dockerfile: str, context: str, tag: str) -> None
     run_streaming(
         job,
         ["docker", "build", "--progress=plain", "-t", tag, "-f", str(dockerfile_path), str(context_path)],
-        env={"DOCKER_BUILDKIT": "1"},
+        env={"DOCKER_BUILDKIT": "1", **(env or {})},
     )

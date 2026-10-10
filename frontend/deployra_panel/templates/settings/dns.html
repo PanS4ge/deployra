@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "_macros.html" import copy_pill %}
+{% block content %}
+{% include "settings/_tabs.html" %}
+<div class="grid grid-2">
+  <form class="card" hx-post="/settings/dns" hx-swap="none">
+    <div class="card-head"><h3><i class="bi bi-cloud"></i> Cloudflare</h3>{% if has_token %}<span class="badge ok">token zapisany</span>{% endif %}</div>
+    <div class="card-body stack">
+      <div class="field">
+        <label>Token API</label>
+        <input class="input" name="cloudflare_token" type="password" autocomplete="off" placeholder="{{ 'zostaw puste, aby nie zmieniać' if has_token else 'Zone:Read + DNS:Edit (+ Cloudflare Tunnel:Edit)' }}">
+        <div class="hint">Rekordy DNS per host (zamiast wildcarda), certyfikaty wildcard (DNS-01) i Cloudflare Tunnel. Token jest szyfrowany w bazie.</div>
+      </div>
+      <div class="field"><label>Publiczny IP bramki dla rekordów A/AAAA</label><input class="input mono" name="public_ip" value="{{ s.public_ip or '' }}" placeholder="domyślnie z adresu Deployra-WG"></div>
+      <label class="check"><input type="checkbox" name="cloudflare_proxied" value="1" {{ "checked" if s.cloudflare_proxied }}><span class="sw"></span><span>Pomarańczowa chmurka (proxy Cloudflare) dla rekordów A</span></label>
+      {% if has_token %}<label class="check"><input type="checkbox" name="clear_token" value="1"><span class="sw"></span><span>Usuń token</span></label>{% endif %}
+      <div class="row" style="justify-content: flex-end">
+        {% if has_token %}<button type="button" class="btn" hx-post="/settings/dns/verify" hx-swap="none"><span class="spin"></span><i class="bi bi-patch-check"></i> Sprawdź token</button>{% endif %}
+        <button class="btn primary"><i class="bi bi-check2"></i> Zapisz</button>
+      </div>
+    </div>
+  </form>
+
+  <div class="card {{ 'glow' if tunnel.enabled }}">
+    <div class="card-head"><h3><i class="bi bi-cloud-arrow-down"></i> Cloudflare Tunnel (cloudflared)</h3>{% if tunnel.enabled %}<span class="badge ok">włączony</span>{% endif %}</div>
+    <div class="card-body stack small">
+      <div class="dim">Alternatywne wejście ruchu: Deployra-WG uruchamia <code>cloudflared</code>, a hosty z opcją „Cloudflare Tunnel” dostają rekordy CNAME do tunelu. Działa bez publicznego IP i bez otwierania portów 80/443 — np. gdy bramka stoi w domu za CGNAT-em.</div>
+      {% if tunnel.enabled %}
+      <dl class="kv">
+        <dt>Tunel</dt><dd>{{ copy_pill(tunnel.tunnel_id) }}</dd>
+        <dt>Hosty</dt><dd class="mono">{{ tunnel.hosts | join(", ") or "brak — wybierz „Cloudflare Tunnel” w hoście proxy" }}</dd>
+        <dt>Synchronizacja</dt><dd>{{ tunnel.synced_at | ago }}</dd>
+      </dl>
+      <div class="row" style="justify-content: flex-end">
+        <button class="btn" hx-post="/settings/dns/tunnel" hx-swap="none"><span class="spin"></span><i class="bi bi-arrow-repeat"></i> Synchronizuj</button>
+        {% if has(user, P.ALLOW_TUNNEL) %}<button class="btn danger" hx-post="/settings/dns/tunnel/disable" hx-swap="none" hx-confirm="Zatrzymać cloudflared na bramce? Hosty za tunelem przestaną odpowiadać." data-danger>Wyłącz</button>{% endif %}
+      </div>
+      {% elif has(user, P.ALLOW_TUNNEL) %}
+      <div class="row" style="justify-content: flex-end"><button class="btn primary" hx-post="/settings/dns/tunnel" hx-swap="none" {{ "disabled" if not has_token }}><span class="spin"></span><i class="bi bi-cloud-plus"></i> Utwórz i uruchom tunel</button></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

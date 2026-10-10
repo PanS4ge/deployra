@@ -221,6 +221,7 @@ class AppSource(BaseModel):
 class AppSpec(BaseModel):
     slug: str
     source: AppSource
+    endpoint: str = "local"  # Docker hosta albo `ct-<vmid>` (kontener LXC na Proxmoxie)
     container_port: Port | None = None
     host_port: Port | None = None
     env: dict[str, str] = Field(default_factory=dict)
@@ -241,6 +242,11 @@ class AppSpec(BaseModel):
 
     @model_validator(mode="after")
     def _ports(self) -> "AppSpec":
+        if not re.match(r"^(local|ct-\d{1,9})$", self.endpoint):
+            raise ValueError("endpoint: local albo ct-<vmid>")
+        static = self.source.kind == "static" or (self.source.kind == "git" and self.source.git_static_dir)
+        if static and self.endpoint != "local":
+            raise ValueError("strony statyczne działają na Dockerze hosta węzła (endpoint local)")
         if self.source.kind in ("image", "compose") and not self.container_port:
             raise ValueError("podaj port, na którym słucha aplikacja")
         if self.source.kind == "git" and not self.source.git_static_dir and not self.container_port:

@@ -26,7 +26,11 @@ def build_config(conf: dict, lan_iface: str | None = None) -> str:
     lan = conf.get("lan_subnets") or []
     if lan:
         out_iface = lan_iface or default_iface()
-        post_up += ["sysctl -w net.ipv4.ip_forward=1", "iptables -A FORWARD -i %i -j ACCEPT", "iptables -A FORWARD -o %i -j ACCEPT"]
+        post_up += [
+            "sysctl -w net.ipv4.ip_forward=1 || true",  # w kontenerze /proc/sys bywa tylko do odczytu
+            "iptables -A FORWARD -i %i -j ACCEPT",
+            "iptables -A FORWARD -o %i -j ACCEPT",
+        ]
         post_down += ["iptables -D FORWARD -i %i -j ACCEPT", "iptables -D FORWARD -o %i -j ACCEPT"]
         for subnet in lan:
             net = str(ipaddress.ip_network(subnet, strict=False))
