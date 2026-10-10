@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deployra-common"
+version = "1.0.0"
+description = "Wspólny kod komponentów Deployry (podpisy, parowanie, WireGuard, zadania, schematy)"
+requires-python = ">=3.12"
+dependencies = [
+    "cryptography>=42",
+    "pydantic>=2.5",
+    "httpx>=0.27",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["deployra_common*"]

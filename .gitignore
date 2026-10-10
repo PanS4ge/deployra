@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Dane lokalne / sekrety
+.env
+*.env
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.pkl
+secret.key
+
+# Stary kod: klucze, magazyn i cache nie trafiają do repo
+legacy/frontend/certs/
+legacy/frontend/storage/
+legacy/frontend/cache/
+legacy/frontend/settings.json
+legacy/frontend/cryptography.json
+legacy/backend/settings.json
+
+# IDE
+.vscode/
+.idea/

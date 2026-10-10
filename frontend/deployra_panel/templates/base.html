@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf }}">
+  <meta name="htmx-config" content='{"defaultSwapStyle":"outerHTML","scrollIntoViewOnBoost":false,"historyCacheSize":0}'>
+  <title>{% block title %}{{ title or "" }}{% endblock %} · Deployra</title>
+  <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/static/css/cosmos.css?v={{ VERSION }}">
+  {% block head %}{% endblock %}
+  <script src="/static/vendor/htmx.min.js"></script>
+  <script src="/static/vendor/htmx-sse.min.js"></script>
+  <script src="/static/js/app.js?v={{ VERSION }}" defer></script>
+  <script src="/static/vendor/alpine.min.js" defer></script>
+</head>
+<body hx-boost="true" x-data="{ nav: false }">
+{% block body %}
+<div class="shell">
+  <aside class="sidebar" :class="nav && 'open'" @click.outside="nav = false">
+    <a class="brand" href="/">
+      {% include "_logo.html" %}
+      <span><b>Deployra</b><small>centrum deployu</small></span>
+    </a>
+    {% set section = path.split('/')[1] if path != '/' else '' %}
+    <a class="nav-item {{ 'active' if section == '' }}" href="/"><i class="bi bi-grid-1x2"></i> Pulpit</a>
+    <a class="nav-item {{ 'active' if section == 'apps' }}" href="/apps"><i class="bi bi-rocket-takeoff"></i> Aplikacje</a>
+    <a class="nav-item {{ 'active' if section == 'nodes' }}" href="/nodes"><i class="bi bi-hdd-network"></i> Węzły</a>
+    <div class="nav-label">Ruch</div>
+    <a class="nav-item {{ 'active' if section == 'proxy' }}" href="/proxy"><i class="bi bi-signpost-split"></i> Proxy</a>
+    <a class="nav-item {{ 'active' if section == 'certs' }}" href="/certs"><i class="bi bi-shield-lock"></i> Certyfikaty</a>
+    <a class="nav-item {{ 'active' if section == 'tunnel' }}" href="/tunnel"><i class="bi bi-diagram-3"></i> Tunel (Deployra-WG)</a>
+    <div class="nav-label">Narzędzia</div>
+    <a class="nav-item {{ 'active' if section == 'import' }}" href="/import/npm"><i class="bi bi-box-arrow-in-down"></i> Import z NPM</a>
+    <a class="nav-item {{ 'active' if section == 'jobs' }}" href="/jobs"><i class="bi bi-activity"></i> Zadania</a>
+    <a class="nav-item {{ 'active' if section == 'settings' }}" href="/settings"><i class="bi bi-gear"></i> Ustawienia</a>
+    <div class="sidebar-foot">Deployra {{ VERSION }}<br><span class="muted">lekko, na LowEndy ✦</span></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="btn ghost icon menu-btn" @click.stop="nav = !nav" aria-label="Menu"><i class="bi bi-list"></i></button>
+      <div class="title">
+        {% block crumbs %}{% endblock %}
+        <h1>{% block heading %}{{ title }}{% endblock %}</h1>
+      </div>
+      {% block actions %}{% endblock %}
+      <div style="position: relative" x-data="{ open: false }">
+        <button class="btn ghost icon" @click="open = !open" hx-get="/notifications" hx-target="#notif-list" hx-swap="innerHTML" hx-trigger="click once" aria-label="Powiadomienia">
+          <i class="bi bi-bell"></i>
+        </button>
+        <div class="card dropdown" x-show="open" x-cloak @click.outside="open = false" x-transition>
+          <div class="card-head"><h3>Powiadomienia</h3></div>
+          <div id="notif-list"><div class="item muted">Ładowanie…</div></div>
+        </div>
+      </div>
+      {% if user %}
+      <div style="position: relative" x-data="{ open: false }">
+        <button class="btn ghost" @click="open = !open" style="padding: 4px 8px">
+          <img class="avatar" src="{{ gravatar(user.email, 64, panel.db.setting('gravatar_default', 'identicon')) }}" alt="" referrerpolicy="no-referrer">
+          <span class="nowrap" style="max-width: 160px; overflow: hidden; text-overflow: ellipsis">{{ user.name or user.email }}</span>
+        </button>
+        <div class="card dropdown" style="min-width: 220px" x-show="open" x-cloak @click.outside="open = false" x-transition>
+          <div class="item muted small">{{ user.email }}</div>
+          <a class="item" href="/settings/users"><i class="bi bi-people"></i> Użytkownicy</a>
+          <a class="item" hx-post="/logout" href="#"><i class="bi bi-box-arrow-right"></i> Wyloguj</a>
+        </div>
+      </div>
+      {% endif %}
+    </header>
+    <main class="content fade-in">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% endblock %}
+
+<div class="toasts" x-data>
+  <template x-for="t in $store.toasts.items" :key="t.id">
+    <div class="toast" :class="t.level" x-transition>
+      <i class="bi" :class="{ ok: 'bi-check-circle-fill', err: 'bi-x-octagon-fill', warn: 'bi-exclamation-triangle-fill', info: 'bi-info-circle-fill' }[t.level] || 'bi-info-circle-fill'"></i>
+      <p x-text="t.message"></p>
+      <button class="btn ghost icon sm" @click="$store.toasts.remove(t.id)"><i class="bi bi-x"></i></button>
+    </div>
+  </template>
+</div>
+
+<div x-data x-show="$store.confirm.open" x-cloak class="modal-backdrop" @keydown.escape.window="$store.confirm.answer(false)">
+  <div class="card modal" @click.outside="$store.confirm.answer(false)">
+    <div class="card-head"><h3 x-text="$store.confirm.title"></h3></div>
+    <div class="card-body stack">
+      <p style="margin: 0; white-space: pre-wrap" x-text="$store.confirm.text"></p>
+      <template x-if="$store.confirm.math">
+        <div class="stack">
+          <div class="muted small">Jeśli jesteś w 100% pewny, policz:</div>
+          <div style="font-size: 1.4rem; font-weight: 700" x-text="$store.confirm.math.question"></div>
+          <div class="row">
+            <template x-for="a in $store.confirm.answers" :key="a">
+              <button class="btn" @click="$store.confirm.answer(a === $store.confirm.math.result)" x-text="a"></button>
+            </template>
+          </div>
+        </div>
+      </template>
+      <div class="row" style="justify-content: flex-end">
+        <button class="btn ghost" @click="$store.confirm.answer(false)" x-text="$store.confirm.math ? 'Nie umiem liczyć, rezygnuję' : 'Anuluj'"></button>
+        <template x-if="!$store.confirm.math">
+          <button class="btn" :class="$store.confirm.danger ? 'danger' : 'primary'" @click="$store.confirm.answer(true)">Potwierdź</button>
+        </template>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

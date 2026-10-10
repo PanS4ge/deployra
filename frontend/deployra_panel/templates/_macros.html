@@ -1,0 +1,54 @@
+{% macro state_badge(state) -%}
+  {%- set map = {"running": ("ok", "działa"), "exited": ("err", "zatrzymany"), "created": ("info", "utworzony"),
+                 "paused": ("warn", "wstrzymany"), "restarting": ("warn", "restartuje"), "dead": ("err", "martwy"),
+                 "removing": ("warn", "usuwanie")} -%}
+  {%- set item = map.get(state, ("", state or "—")) -%}
+  <span class="badge {{ item[0] }}"><span class="dot {{ item[0] }}"></span>{{ item[1] }}</span>
+{%- endmacro %}
+
+{% macro status_badge(status) -%}
+  {%- set map = {"running": ("ok", "działa"), "deploying": ("info", "wdrażanie"), "error": ("err", "błąd"),
+                 "stopped": ("warn", "zatrzymana"), "pending": ("info", "oczekuje"), "paired": ("ok", "sparowany"),
+                 "joined": ("info", "w tunelu, czeka na parowanie"), "ok": ("ok", "ok"), "issuing": ("info", "wystawianie"),
+                 "valid": ("ok", "ważny"), "expiring": ("warn", "wygasa"), "expired": ("err", "wygasł"), "missing": ("warn", "brak pliku"),
+                 "new": ("", "nowa")} -%}
+  {%- set item = map.get(status, ("", status or "—")) -%}
+  <span class="badge {{ item[0] }}">{{ item[1] }}</span>
+{%- endmacro %}
+
+{% macro meter(pct, label=None) -%}
+  {%- set p = (pct or 0) | float -%}
+  <div class="meter {{ 'hot' if p >= 85 else ('warm' if p >= 60 else '') }}" {% if label %}title="{{ label }}"{% endif %}>
+    <span style="width: {{ [p, 100] | min }}%"></span>
+  </div>
+{%- endmacro %}
+
+{% macro empty(icon, title, text="", action=None) -%}
+  <div class="empty">
+    <i class="bi bi-{{ icon }}"></i>
+    <h3>{{ title }}</h3>
+    {% if text %}<p>{{ text }}</p>{% endif %}
+    {% if action %}{{ action }}{% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro toggle(name, label, checked=False, hint=None, disabled=False, attrs="") -%}
+  <label class="check">
+    <input type="checkbox" name="{{ name }}" value="1" {% if checked %}checked{% endif %} {% if disabled %}disabled{% endif %} {{ attrs }}>
+    <span class="sw"></span><span>{{ label }}</span>
+  </label>
+  {% if hint %}<div class="hint small muted">{{ hint }}</div>{% endif %}
+{%- endmacro %}
+
+{% macro field(name, label, value="", type="text", placeholder="", hint=None, required=False, cls="", attrs="") -%}
+  <div class="field {{ cls }}">
+    <label for="f-{{ name }}">{{ label }}</label>
+    <input class="input" id="f-{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ value if value is not none else '' }}"
+           placeholder="{{ placeholder }}" {% if required %}required{% endif %} {{ attrs }}>
+    {% if hint %}<div class="hint">{{ hint }}</div>{% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro copy_pill(value, mono=True) -%}
+  <span class="pill copy" data-copy="{{ value }}" title="Kliknij, aby skopiować">{{ value }} <i class="bi bi-clipboard"></i></span>
+{%- endmacro %}

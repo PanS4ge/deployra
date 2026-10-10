@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="auth">
+  <div class="stack" style="width: 100%; align-items: center">
+    <div class="hero">
+      {% include "_logo.html" %}
+      <h1>Deployra</h1>
+      <div class="muted">{% block tagline %}Coolify dla LowEndów — deploy, proxy i tunel w jednym miejscu{% endblock %}</div>
+    </div>
+    {% block content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

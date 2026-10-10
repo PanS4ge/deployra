@@ -1,0 +1,11 @@
+{% extends "base.html" if user else "auth_base.html" %}
+{% block content %}
+<div class="card">
+  <div class="empty">
+    <i class="bi bi-{{ icon or 'exclamation-octagon' }}"></i>
+    <h3>{{ title }}</h3>
+    <p style="white-space: pre-wrap">{{ message }}</p>
+    <a class="btn" href="javascript:history.back()"><i class="bi bi-arrow-left"></i> Wróć</a>
+  </div>
+</div>
+{% endblock %}
