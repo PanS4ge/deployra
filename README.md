@@ -94,7 +94,11 @@ panel i bramka go nie dostają. Działa w trzech trybach:
 2. `git tag v1.1.0 && git push origin main v1.1.0`.
 
 GitHub Actions ([.github/workflows/build.yml](.github/workflows/build.yml)) puszcza testy, buduje cztery obrazy dla `amd64` i `arm64`,
-wypycha je do `ghcr.io/pans4ge/deployra-*` (`1.1.0`, `1.1`, `latest`) i tworzy wydanie z notatkami. Każdy push na `main` daje obrazy `:edge`.
+wypycha je do `ghcr.io/pans4ge/deployra-*` (`1.1.0`, `1.1`, `latest`) i tworzy wydanie z notatkami. Zwykły push uruchamia tylko testy;
+obrazy `:edge` z `main` zbudujesz ręcznie (Actions → Build → Run workflow).
+
+Gdy repozytorium jest prywatne, panel nie zobaczy wydań przez API GitHuba — wtedy sprawdza tagi publicznego obrazu
+`ghcr.io/pans4ge/deployra-panel`. Paczki w GHCR muszą być publiczne, żeby działał zwykły `docker pull` bez logowania.
 
 ## Przesiadka z Portainera i NPM
 

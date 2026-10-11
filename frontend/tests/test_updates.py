@@ -28,7 +28,14 @@ async def test_fetch_latest_release_tags_and_json():
     info = await updates.fetch_latest("a/b", _github({"/repos/a/b/tags": httpx.Response(200, json=tags)}))
     assert info["version"] == "1.10.0"
 
-    custom = _github({"/latest.json": httpx.Response(200, json={"version": "2.0.0", "notes": "x", "url": "javascript:alert(1)"})})
+    # prywatne repozytorium: API GitHuba milczy, wersję bierzemy z tagów publicznego obrazu w GHCR
+    ghcr = _github({"/token": httpx.Response(200, json={"token": "anon"}),
+                    "/v2/a/deployra-panel/tags/list": httpx.Response(200, json={"tags": ["1.0", "1.2.0", "latest", "1.10.0", "edge"]})})  # fmt: skip
+    assert (await updates.fetch_latest("A/b", ghcr))["version"] == "1.10.0"
+    with pytest.raises(ValueError, match="prywatne"):
+        await updates.fetch_latest("a/b", _github({}))
+
+    custom = _github({"/latest.json":httpx.Response(200, json={"version": "2.0.0", "notes": "x", "url": "javascript:alert(1)"})})
     info = await updates.fetch_latest("https://example.com/latest.json", custom)
     assert info["version"] == "2.0.0" and info["url"] == ""  # tylko linki http(s)
 

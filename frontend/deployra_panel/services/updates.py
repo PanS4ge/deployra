@@ -64,17 +64,34 @@ async def fetch_latest(src: str, transport: httpx.AsyncBaseTransport | None = No
             return _release(raw, data.get("name"), data.get("notes") or data.get("body"), data.get("url") or data.get("html_url"),
                             data.get("published_at") or data.get("date"))  # fmt: skip
         response = await client.get(f"{GITHUB}{src}/releases/latest")
-        if response.status_code == 404:  # repozytorium bez wydań — bierzemy najwyższy tag vX.Y.Z
+        if response.status_code == 404:
+            # repozytorium bez wydań → najwyższy tag vX.Y.Z; prywatne repozytorium → tagi publicznego obrazu w GHCR
             tags = await client.get(f"{GITHUB}{src}/tags", params={"per_page": 100})
-            tags.raise_for_status()
-            names = [t.get("name") for t in tags.json() if parse_version(t.get("name"))]
-            if not names:
-                raise ValueError(f"{src}: brak wydań i tagów w formacie vX.Y.Z")
-            best = max(names, key=parse_version)
-            return _release(best, None, "", f"https://github.com/{src}/releases/tag/{best}", None)
+            names = [t.get("name") for t in tags.json() if parse_version(t.get("name"))] if tags.status_code == 200 else []
+            if names:
+                best = max(names, key=parse_version)
+                return _release(best, None, "", f"https://github.com/{src}/releases/tag/{best}", None)
+            best = await _registry_latest(client, f"ghcr.io/{src.split('/')[0].lower()}/deployra-panel")
+            if not best:
+                raise ValueError(f"{src}: brak wydań — repozytorium prywatne, a obrazy w GHCR niepubliczne albo jeszcze niezbudowane")
+            return _release(best, None, "", "", None)
         response.raise_for_status()
         data = response.json()
         return _release(data.get("tag_name"), data.get("name"), data.get("body"), data.get("html_url"), data.get("published_at"))
+
+
+async def _registry_latest(client: httpx.AsyncClient, image: str) -> str | None:
+    """Najwyższy tag X.Y.Z publicznego obrazu (anonimowy token rejestru, jak przy `docker pull`)."""
+    host, _, path = image.partition("/")
+    token = await client.get(f"https://{host}/token", params={"scope": f"repository:{path}:pull"})
+    if token.status_code != 200:
+        return None
+    listing = await client.get(f"https://{host}/v2/{path}/tags/list", params={"n": 1000},
+                               headers={"Authorization": f"Bearer {token.json().get('token', '')}"})  # fmt: skip
+    if listing.status_code != 200:
+        return None
+    names = [t for t in listing.json().get("tags") or [] if parse_version(t)]
+    return max(names, key=parse_version) if names else None
 
 
 def _release(raw: Any, name: Any, notes: Any, url: Any, published: Any) -> dict[str, Any]:
