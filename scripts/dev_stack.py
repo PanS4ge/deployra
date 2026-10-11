@@ -3,6 +3,7 @@
     python scripts/dev_stack.py            # uruchom (dane w .dev/)
     python scripts/dev_stack.py --seed     # + konfiguracja i przykładowe dane
     python scripts/dev_stack.py --reset    # wyczyść .dev/ i zacznij od zera
+    python scripts/dev_stack.py --no-traffic  # bez symulowanego ruchu (zalew, skaner) na stronie „Ruch”
 
 Bez WireGuarda, bez nginx i bez prawdziwego Dockera — działa także na Windowsie.
 Panel: http://127.0.0.1:8080 (przy --seed: admin@deployra.local / kosmos-demo).
@@ -17,9 +18,11 @@ import random
 import re
 import shutil
 import signal
+import socket
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -37,6 +40,7 @@ SERVICES = {
         "DEPLOYRA_DATA": DEV / "gateway", "DEPLOYRA_PUBLIC_HOST": "127.0.0.1", "DEPLOYRA_WG": "off",
         "DEPLOYRA_NGINX_RELOAD": "off", "DEPLOYRA_API_BIND": "127.0.0.1", "DEPLOYRA_NGINX_DIR": DEV / "gateway" / "nginx",
         "DEPLOYRA_CERTS_DIR": DEV / "gateway" / "certs", "DEPLOYRA_ACME_DIR": DEV / "gateway" / "acme", "DEPLOYRA_IPV6": "off",
+        "DEPLOYRA_GEOIP": "off", "DEPLOYRA_BAN_FIREWALL": "off",
     }),
     "backend": ("deployra_backend", ROOT / "backend", {
         "DEPLOYRA_DATA": DEV / "node", "DEPLOYRA_SRV": DEV / "node" / "srv", "DEPLOYRA_FAKE_DOCKER": "1",
@@ -47,6 +51,31 @@ SERVICES = {
         "DEPLOYRA_DATA": DEV / "panel", "DEPLOYRA_WG": "off", "DEPLOYRA_PORT": "8080", "DEPLOYRA_BIND": "127.0.0.1",
     }),
 }  # fmt: skip
+
+
+def simulate_traffic(stop: threading.Event) -> None:
+    """Udaje nginx: wysyła logi żądań na syslog bramki — zwykli goście, jeden zalew i skaner podatności."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    rng = random.Random()
+    visitors = [f"{rng.choice([31, 46, 77, 83, 89, 91, 185, 188, 213])}.{rng.randint(1, 254)}.{rng.randint(1, 254)}.{rng.randint(1, 254)}"
+                for _ in range(40)]  # fmt: skip
+    agents = ["Mozilla/5.0 (Windows NT 10.0) Firefox/131.0", "Mozilla/5.0 (iPhone) Safari/604.1", "Mozilla/5.0 (X11; Linux) Chrome/130"]
+    probes = ["/.env", "/wp-login.php", "/.git/config", "/phpmyadmin/", "/xmlrpc.php"]
+
+    def send(ip: str, host: str, path: str = "/", status: int = 200) -> None:
+        record = {"h": host, "a": ip, "u": rng.choice(agents), "s": status, "m": "GET", "b": rng.randint(400, 90_000), "t": time.time(), "r": path}
+        sock.sendto(b"<190>deployra: " + json.dumps(record).encode(), ("127.0.0.1", 5140))
+
+    tick = 0
+    while not stop.wait(0.5):
+        tick += 1
+        for _ in range(rng.randint(1, 4)):
+            send(rng.choice(visitors), rng.choice(list(DEMO_DOMAINS)), rng.choice(["/", "/blog/", "/img/logo.png", "/api/stats"]))
+        if tick % 240 < 60:  # co 2 minuty przez 30 s: zalew z jednego adresu (~720 zapytań/min)
+            for _ in range(6):
+                send("185.220.101.42", "grafana.example.com", "/login")
+        if tick % 20 == 0:  # skaner szukający dziur
+            send("45.148.10.7", "_", rng.choice(probes), 404)
 
 
 def start(name: str) -> subprocess.Popen:
@@ -137,6 +166,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--seed", action="store_true", help="skonfiguruj panel i dodaj przykładowe dane")
     parser.add_argument("--reset", action="store_true", help="usuń .dev/ przed startem")
+    parser.add_argument("--no-traffic", action="store_true", help="bez symulowanego ruchu na stronie „Ruch i bezpieczeństwo”")
     args = parser.parse_args()
     if args.reset and DEV.exists():
         shutil.rmtree(DEV)
@@ -145,8 +175,12 @@ def main() -> None:
     if args.seed and fresh:
         seed_analytics()
     procs = {name: start(name) for name in SERVICES}
+    traffic_stop = threading.Event()
+    if not args.no_traffic:
+        threading.Thread(target=simulate_traffic, args=(traffic_stop,), daemon=True).start()
 
     def stop(*_: object) -> None:
+        traffic_stop.set()
         for proc in procs.values():
             proc.terminate()
         sys.exit(0)

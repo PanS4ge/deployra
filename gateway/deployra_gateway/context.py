@@ -58,8 +58,16 @@ class Context:
         from .analytics import Analytics
         from .cloudflared import Cloudflared
 
+        from .bans import Bans, BanWall
+        from .geoip import GeoIP
+        from .ipwatch import IpWatch
+
         self.analytics = Analytics(config.data_dir, bytes.fromhex(self.state.get("analytics_secret")))
         self.cloudflared = Cloudflared(self.state, config.cloudflared_bin)
+        self.ipwatch = IpWatch(config.data_dir, config.ip_retention_days)
+        self.geoip = GeoIP(config.data_dir, config.geoip)
+        self.bans = Bans(self.state, protected=[config.wg_subnet])
+        self.banwall = BanWall(config.ban_firewall)
 
     # --- synchronizacja z panelem -------------------------------------------------
 
@@ -183,11 +191,18 @@ class Context:
         if proxy is None:
             stored = self.state.get("proxy_state")
             proxy = ProxyState.model_validate(stored) if stored else ProxyState()
-        files = nginx_driver.render(proxy, lambda cid: certs.is_ready(self.config.certs_dir, cid), self.config.ipv6)
+        files = nginx_driver.render(proxy, lambda cid: certs.is_ready(self.config.certs_dir, cid), self.config.ipv6, bans=self.bans.nets())
         result = self.nginx.apply(files)
         if result.status != "rejected":
             self.state.update(proxy_state=proxy.model_dump(mode="json"))
         self.last_apply = {"ok": result.ok, "status": result.status, "message": result.message, "at": time.time()}
+        return result
+
+
+    def apply_bans(self) -> ApplyResult:
+        """Bany zmienione: nowy plik geo dla nginx + zestawy ipset."""
+        result = self.apply_proxy()
+        self.banwall.sync(self.bans.nets())
         return result
 
 

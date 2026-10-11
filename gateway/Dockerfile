@@ -6,7 +6,7 @@ FROM python:3.13-alpine
 ARG TARGETARCH
 ARG CLOUDFLARED_VERSION=latest
 
-RUN apk add --no-cache bash iproute2 iptables ip6tables wireguard-tools wireguard-go lego ca-certificates wget
+RUN apk add --no-cache bash iproute2 iptables ip6tables ipset wireguard-tools wireguard-go lego ca-certificates wget
 
 # cloudflared (opcjonalne wejście ruchu przez Cloudflare Tunnel) — statyczna binarka z wydań Cloudflare
 RUN arch="${TARGETARCH:-amd64}"; \

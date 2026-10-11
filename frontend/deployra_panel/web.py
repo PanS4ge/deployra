@@ -96,11 +96,17 @@ def pct(value: Any) -> str:
     return f"{value:.0f}%" if value >= 100 else f"{value:.2f}%"
 
 
+def flag(code: Any) -> str:
+    """Kod kraju ISO (PL) → emoji flagi."""
+    code = str(code or "").upper()
+    return "".join(chr(0x1F1E6 + ord(c) - 65) for c in code) if len(code) == 2 and code.isascii() and code.isalpha() else ""
+
+
 def tojson_attr(value: Any) -> Markup:
     return Markup(json.dumps(value, ensure_ascii=False).replace("&", "&amp;").replace("'", "&#39;").replace('"', "&quot;"))
 
 
-templates.env.filters.update(pct=pct, bytes=human_bytes, ago=ago, dt=dt, duration=duration, jsonattr=tojson_attr)
+templates.env.filters.update(pct=pct, bytes=human_bytes, ago=ago, dt=dt, duration=duration, jsonattr=tojson_attr, flag=flag)
 def update_offer(panel: Any) -> dict | None:
     from .services import updates  # leniwie: serwis importuje httpx
 

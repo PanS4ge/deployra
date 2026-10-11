@@ -1,0 +1,28 @@
+{% from "_macros.html" import geo_cell, ban_button %}
+{% if error %}
+<div class="card-body"><div class="callout err"><i class="bi bi-wifi-off"></i><div class="small">{{ error }}</div></div></div>
+{% elif not data["items"] %}
+<div class="card-body small muted">{{ t("traffic.no_traffic") }}</div>
+{% else %}
+<div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>IP</th><th>{{ t("traffic.country") }}</th><th>ISP</th><th class="right">{{ t("analytics.requests") }}</th><th class="right">{{ t("analytics.transfer") }}</th><th class="right">4xx / 5xx</th><th>{{ t("setup.domains") }}</th><th>{{ t("traffic.last_seen") }}</th><th></th></tr></thead>
+    <tbody>
+    {% for item in data["items"] %}
+      <tr>
+        <td class="mono small nowrap"><span class="copy" data-copy="{{ item.ip }}" title="{{ t('common.click_to_copy') }}" style="cursor: pointer">{{ item.ip }}</span>{% if item.probes %} <span class="badge warn" title="{{ item.paths | join(', ') }}">{{ t("traffic.probes_short", count=item.probes) }}</span>{% endif %}</td>
+        <td class="small nowrap">{{ geo_cell(item.geo) }}</td>
+        <td class="small trunc" style="max-width: 200px" title="{{ ('AS' ~ item.geo.asn) if item.geo.asn else '' }}">{{ item.geo.isp or "—" }}</td>
+        <td class="right mono small">{{ item.requests }}</td>
+        <td class="right small">{{ item.bytes | bytes }}</td>
+        <td class="right mono small">{{ item.err4 }} / {{ item.err5 }}</td>
+        <td class="small muted trunc" style="max-width: 200px" title="{{ item.domains | join(', ') }}">{{ item.domains | join(", ") }}</td>
+        <td class="small nowrap">{{ item.last | ago }}</td>
+        <td class="right">{{ ban_button(item) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="card-body small muted">{{ t("traffic.retention", days=data.retention_days) }}</div>
+{% endif %}

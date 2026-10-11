@@ -33,6 +33,7 @@ Ruch publiczny idzie **jednym skokiem**: `nginx na bramce → wg0 → węzeł �
 | **Tunel** | hub WireGuard, dołączanie węzłów tokenem, routing podsieci LAN (NAS, Home Assistant…), węzły widzą się nawzajem |
 | **Cloudflare** | rekordy A/AAAA per host (bez wildcarda), certyfikaty wildcard (DNS-01), **Cloudflare Tunnel** (cloudflared — bez publicznego IP i otwartych portów) |
 | **Odwiedziny** | unikalni i powracający per domena, wykresy jak w Cloudflare — bez ciasteczek, bez botów, liczone na bramce z logów nginx |
+| **Ruch i bezpieczeństwo** | topka adresów IP z krajem i ISP (DB-IP Lite), podejrzane adresy (zalew zapytań, skanery, szukanie dziur), bany w nginx i firewallu (ipset), opcjonalny auto-ban z białą listą |
 | **Uptime** (à la Uptime Kuma) | monitory aplikacji, kontenerów, węzłów i URL, uptime 24 h / 7 dni / 30 dni, powiadomienia (panel, Discord, ntfy, Slack) |
 | **Panel** | FastAPI + Jinja2 + htmx + Alpine (bez NiceGUI, bez kroku build), ciemny kosmiczny motyw, użytkownicy i uprawnienia, SQLite albo MySQL/MariaDB |
 | **Języki** | polski i angielski — każdy użytkownik wybiera swój w menu konta; nowy język to jeden plik JSON |
@@ -118,6 +119,20 @@ W kodzie i szablonach są tylko klucze (`t("nodes.add")`), teksty leżą w paczk
 Nowy język: skopiuj oba `en.json` jako np. `de.json` i przetłumacz wartości — panel sam doda go do przełącznika. Brakujące klucze
 spadają na polski. Test `frontend/tests/test_i18n.py` pilnuje, żeby paczki miały te same klucze i parametry, a każda strona
 wyrenderowana po angielsku nie zawierała polskich liter.
+
+## Ruch i bezpieczeństwo
+
+Bramka liczy zapytania per adres IP z tych samych logów nginx co statystyki odwiedzin. Strona **Ruch i bezpieczeństwo** pokazuje:
+
+- **topkę adresów IP** (24 h / 7 dni, per domena) z krajem i operatorem — z darmowych baz DB-IP Lite, które bramka pobiera co miesiąc
+  (`DEPLOYRA_GEOIP=off` wyłącza);
+- **podejrzane adresy** z ostatnich 5 minut: zalew zapytań (ponad próg na minutę), skanery (≥ 80% błędów 4xx) i szukanie dziur
+  (`/.env`, `/wp-login.php`, `/.git/` …);
+- **bany** na adres albo podsieć — na 1 h, dzień, 7 dni albo na stałe. nginx zamyka połączenie (`444`), co działa też dla ruchu przez
+  Cloudflare; gdy jest `ipset`, bramka dodatkowo odrzuca pakiety w firewallu (`DEPLOYRA_BAN_FIREWALL=off` wyłącza);
+- **auto-ban** (domyślnie wyłączony) dla adresów ponad progiem, z białą listą adresów, których nigdy nie banujemy.
+
+Surowe adresy IP trzymamy 7 dni (`DEPLOYRA_IP_RETENTION_DAYS`) — adres IP to dana osobowa.
 
 ## Przesiadka z Portainera i NPM
 

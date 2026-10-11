@@ -20,6 +20,8 @@ from . import NAME, __version__, certs
 from .context import Context, get_ctx
 
 RENEW_INTERVAL = 12 * 3600
+SECURITY_TICK = 10
+GEOIP_CHECK = 24 * 3600
 
 
 def _errors(app: FastAPI) -> None:
@@ -87,6 +89,23 @@ class UpdateRequest(BaseModel):
     version: str
 
 
+class BanRequest(BaseModel):
+    target: str
+    minutes: int | None = Field(default=None, ge=1, le=525_600)
+    reason: str = ""
+
+
+class UnbanRequest(BaseModel):
+    target: str
+
+
+class BanSettings(BaseModel):
+    auto: bool = False
+    rate: int = 600
+    minutes: int = 60
+    allowlist: list[str] = Field(default_factory=list)
+
+
 class CheckRequest(BaseModel):
     url: str
     host: str | None = None
@@ -118,6 +137,26 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
                 logger.error(tr("gw.log.renew_error", error=exc))
             await asyncio.sleep(RENEW_INTERVAL)
 
+    async def security_loop() -> None:
+        """Wygasanie banów i auto-ban adresów, które zalewają bramkę zapytaniami."""
+        while True:
+            await asyncio.sleep(SECURITY_TICK)
+            try:
+                if await asyncio.to_thread(security_tick, ctx):
+                    await asyncio.to_thread(ctx.apply_bans)
+            except Exception as exc:  # noqa: BLE001 — pętla nie może paść
+                logger.error(tr("gw.log.security_error", error=exc))
+
+    async def geoip_loop() -> None:
+        await asyncio.sleep(20)
+        while True:
+            if ctx.geoip.enabled and ctx.geoip.stale():
+                try:
+                    await ctx.geoip.refresh()
+                except Exception as exc:  # noqa: BLE001 — brak sieci nie może wywrócić bramki
+                    logger.warning(tr("gw.log.geoip_download_failed", error=exc))
+            await asyncio.sleep(GEOIP_CHECK)
+
     from contextlib import asynccontextmanager
 
     @asynccontextmanager
@@ -129,7 +168,9 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
             tasks.append(asyncio.create_task(renew_loop()))
             tasks.append(asyncio.create_task(ctx.cloudflared.run()))
             if ctx.config.analytics:
-                tasks.append(asyncio.create_task(analytics.run(ctx.analytics, "127.0.0.1", ctx.config.analytics_port)))
+                tasks.append(asyncio.create_task(analytics.run(ctx.analytics, "127.0.0.1", ctx.config.analytics_port, ipwatch=ctx.ipwatch)))
+            tasks.append(asyncio.create_task(security_loop()))
+            tasks.append(asyncio.create_task(geoip_loop()))
         yield
         for task in tasks:
             task.cancel()
@@ -178,6 +219,57 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
     def analytics_hourly(hours: int = 24, domains: str = "", ctx: Context = Depends(get_ctx)) -> dict:
         names = [d.strip().lower() for d in domains.split(",") if d.strip()] or None
         return {"hours": max(1, min(hours, 72)), "domains": ctx.analytics.hourly(max(1, min(hours, 72)), names)}
+
+    def _enrich(items: list[dict]) -> list[dict]:
+        lang = i18n.current.get()
+        for item in items:
+            item["geo"] = ctx.geoip.lookup(item.get("ip") or item.get("target", "").split("/")[0], lang)
+            item["banned"] = ctx.bans.is_banned(item["ip"]) if "ip" in item else True
+            item["allowlisted"] = ctx.bans.allowed(item["ip"]) if "ip" in item else False
+        return items
+
+    @router.get("/traffic/top")
+    def traffic_top(days: int = 1, domain: str = "", limit: int = 50) -> dict:
+        items = ctx.ipwatch.top(max(1, min(days, 31)), domain.strip().lower() or None, max(1, min(limit, 200)))
+        return {"items": _enrich(items), "geoip": ctx.geoip.status(), "retention_days": ctx.config.ip_retention_days}
+
+    @router.get("/traffic/suspicious")
+    def traffic_suspicious() -> dict:
+        settings = ctx.bans.settings
+        return {"items": _enrich(ctx.ipwatch.suspicious(settings["rate"])), "settings": settings}
+
+    @router.get("/bans")
+    def bans_list() -> dict:
+        return {"items": _enrich(ctx.bans.list()), "settings": ctx.bans.settings, "firewall": ctx.banwall.available,
+                "geoip": ctx.geoip.status()}  # fmt: skip
+
+    @router.post("/bans")
+    def bans_add(body: BanRequest) -> dict:
+        entry = ctx.bans.add(body.target, body.minutes, body.reason)
+        result = ctx.apply_bans()
+        logger.info(tr("gw.log.banned", target=entry["target"]))
+        return {"ban": entry, "nginx": {"ok": result.ok, "status": result.status, "message": result.message}}
+
+    @router.post("/bans/remove")
+    def bans_remove(body: UnbanRequest) -> dict:
+        if not ctx.bans.remove(body.target):
+            raise HTTPException(404, tr("gw.ban.not_found"))
+        result = ctx.apply_bans()
+        return {"ok": True, "nginx": {"ok": result.ok, "status": result.status, "message": result.message}}
+
+    @router.put("/bans/settings")
+    def bans_settings(body: BanSettings) -> dict:
+        return ctx.bans.update_settings(body.auto, body.rate, body.minutes, body.allowlist)
+
+    @router.post("/geoip/refresh")
+    async def geoip_refresh() -> dict:
+        import httpx
+
+        try:
+            updated = await ctx.geoip.refresh(force=True)
+        except httpx.HTTPError as exc:
+            raise HTTPException(502, tr("gw.log.geoip_download_failed", error=exc)) from None
+        return {"updated": updated, **ctx.geoip.status()}
 
     @router.put("/cloudflared")
     def set_cloudflared(body: TunnelToken, ctx: Context = Depends(get_ctx)) -> dict:
@@ -272,6 +364,24 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
 
     app.include_router(router)
     return app
+
+
+def security_tick(ctx: Context) -> bool:
+    """Jeden obrót pętli bezpieczeństwa; zwraca True, gdy lista banów się zmieniła."""
+    changed = ctx.bans.expire()
+    settings = ctx.bans.settings
+    if settings["auto"]:
+        banned = set(ctx.bans.nets())
+        for item in ctx.ipwatch.suspicious(settings["rate"]):
+            if item["severity"] != "high" or item["ip"] in banned or ctx.bans.allowed(item["ip"]):
+                continue
+            try:
+                ctx.bans.add(item["ip"], settings["minutes"], f"auto · {item['peak']}/min", auto=True)
+            except ValueError:
+                continue  # adres prywatny / chroniony — nie banujemy
+            logger.warning(tr("gw.log.auto_banned", target=item["ip"], peak=item["peak"]))
+            changed = True
+    return changed
 
 
 def certs_list(ctx: Context) -> list[dict]:

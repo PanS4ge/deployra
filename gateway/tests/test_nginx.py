@@ -55,7 +55,7 @@ def test_redirect_dead_stream_and_full_render():
         access_lists=[AccessList(id=9, users=[AccessUser(username="u", htpasswd="$apr1$x$y")])],
     )
     files = nginx_driver.render(state, lambda cid: False, ipv6=False)
-    assert set(files) == {"http/00-default.conf", "http/site-1.conf", "http/site-2.conf", "stream/stream-4.conf", "access/9.htpasswd"}
+    assert set(files) == {"http/00-bans.conf", "http/00-default.conf", "http/site-1.conf", "http/site-2.conf", "stream/stream-4.conf", "access/9.htpasswd"}
     assert "return 301 $scheme://new.example.com$request_uri;" in files["http/site-1.conf"]
     assert "return 404;" in files["http/site-2.conf"]
     assert "listen 2201;" in files["stream/stream-4.conf"] and "listen 2201 udp;" in files["stream/stream-4.conf"]

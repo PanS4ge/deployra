@@ -1,0 +1,27 @@
+{% from "_macros.html" import geo_cell, ban_button %}
+{% if error %}
+<div class="card-body"><div class="callout err"><i class="bi bi-wifi-off"></i><div class="small">{{ error }}</div></div></div>
+{% elif not data["items"] %}
+<div class="card-body row small"><span class="dot ok"></span><span class="muted">{{ t("traffic.all_clear") }}</span></div>
+{% else %}
+<div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>IP</th><th>{{ t("traffic.country") }}</th><th>ISP</th><th>{{ t("traffic.why") }}</th><th class="right">{{ t("traffic.requests_window") }}</th><th></th></tr></thead>
+    <tbody>
+    {% for item in data["items"] %}
+      <tr>
+        <td class="mono small nowrap"><span class="dot {{ 'err' if item.severity == 'high' else 'warn' }}"></span> {{ item.ip }}</td>
+        <td class="small nowrap">{{ geo_cell(item.geo) }}</td>
+        <td class="small trunc" style="max-width: 200px">{{ item.geo.isp or "—" }}</td>
+        <td class="small">
+          {% for r in item.reasons %}<span class="badge {{ 'err' if r.code == 'rate' else 'warn' }}" {% if r.code == 'probes' %}title="{{ item.paths | join(', ') }}"{% endif %}>{{ t("traffic.reason_" ~ r.code, value=r.value) }}</span> {% endfor %}
+          {% if item.allowlisted %}<span class="badge ok">{{ t("traffic.allowlisted") }}</span>{% endif %}
+        </td>
+        <td class="right mono small">{{ item.requests }}</td>
+        <td class="right nowrap">{{ ban_button(item, quick=True) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}

@@ -50,6 +50,9 @@ class Config:
     analytics_port: int = field(default_factory=lambda: int(_env("DEPLOYRA_ANALYTICS_PORT", "5140")))
     analytics: bool = field(default_factory=lambda: _flag("DEPLOYRA_ANALYTICS", True))
     cloudflared_bin: str = field(default_factory=lambda: _env("DEPLOYRA_CLOUDFLARED", "cloudflared"))
+    geoip: bool = field(default_factory=lambda: _flag("DEPLOYRA_GEOIP", True))  # kraj i ISP adresów (bazy DB-IP Lite)
+    ip_retention_days: int = field(default_factory=lambda: int(_env("DEPLOYRA_IP_RETENTION_DAYS", "7")))
+    ban_firewall: bool = field(default_factory=lambda: _flag("DEPLOYRA_BAN_FIREWALL", True))  # bany także w ipset/iptables
     update_dir: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_UPDATE_DIR", "/run/deployra-update")))
     nginx_bundle: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_NGINX_BUNDLE", str(_bundle_dir()))))
 

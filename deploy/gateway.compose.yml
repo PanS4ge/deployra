@@ -24,6 +24,9 @@ services:
       DEPLOYRA_PUBLIC_HOST: ${DEPLOYRA_PUBLIC_HOST:?ustaw DEPLOYRA_PUBLIC_HOST — publiczny adres/IP tego VPS}
       DEPLOYRA_WG_SUBNET: ${DEPLOYRA_WG_SUBNET:-10.66.0.0/24}
       DEPLOYRA_LANG: ${DEPLOYRA_LANG:-pl}           # język logów i strony „nieznany host” (pl / en)
+      DEPLOYRA_GEOIP: ${DEPLOYRA_GEOIP:-on}         # kraj i ISP adresów (bazy DB-IP Lite)
+      DEPLOYRA_IP_RETENTION_DAYS: ${DEPLOYRA_IP_RETENTION_DAYS:-7}
+      DEPLOYRA_BAN_FIREWALL: ${DEPLOYRA_BAN_FIREWALL:-on}   # bany także w ipset/iptables
     volumes:
       - wg-data:/var/lib/deployra-wg
       - nginx-conf:/etc/nginx/deployra   # bramka kopiuje tu też nginx.conf i skrypt przeładowania (base/)

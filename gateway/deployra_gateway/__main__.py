@@ -58,6 +58,7 @@ def main() -> None:
     nginx_driver.write_snippets(config.nginx_dir)
     wg_up = ctx.hub.up()
     result = ctx.apply_proxy()
+    ctx.banwall.sync(ctx.bans.nets())
     logger.info(tr("gw.log.nginx_config", status=result.status, message=result.message).rstrip())
 
     api_host = config.api_bind or (config.hub_address if wg_up else "127.0.0.1")

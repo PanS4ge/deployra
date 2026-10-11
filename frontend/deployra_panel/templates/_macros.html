@@ -59,3 +59,21 @@
     {%- else -%}<span class="muted small">{{ t("common.no_data") }}</span>{%- endfor -%}
   </div>
 {%- endmacro %}
+
+{% macro geo_cell(geo) -%}
+  {%- set geo = geo or {} -%}
+  {%- if geo.private -%}<span class="muted">{{ t("traffic.private") }}</span>
+  {%- elif geo.country -%}<span title="{{ geo.country }}">{{ geo.country | flag }} {{ geo.country_name }}</span>
+  {%- else -%}<span class="muted">—</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro ban_button(item, quick=False) -%}
+  {%- set why = t("traffic.reason_" ~ item.reasons[0].code, value=item.reasons[0].value) if item.reasons else "" -%}
+  {%- if item.banned -%}<span class="badge err">{{ t("traffic.banned_badge") }}</span>
+  {%- elif not (item.geo or {}).private -%}
+  <button class="btn sm {{ 'danger' if quick else 'ghost' }}" title="{{ t('traffic.ban') }} · 1 h" hx-post="/traffic/ban" hx-vals='{{ {"target": item.ip, "minutes": 60, "reason": why} | tojson }}' hx-swap="none" hx-confirm="{{ t('traffic.ban_confirm', ip=item.ip) }}"><i class="bi bi-slash-circle"></i> 1 h</button>
+  {%- if quick %}
+  <button class="btn sm ghost" title="{{ t('traffic.permanent') }}" hx-post="/traffic/ban" hx-vals='{{ {"target": item.ip, "minutes": 0, "reason": why} | tojson }}' hx-swap="none" hx-confirm="{{ t('traffic.ban_confirm', ip=item.ip) }}">∞</button>
+  {%- endif -%}
+  {%- endif -%}
+{%- endmacro %}

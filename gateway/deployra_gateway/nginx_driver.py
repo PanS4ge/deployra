@@ -72,6 +72,9 @@ def deployra_page() -> str:
     )
 
 
+BAN_CHECK = "if ($deployra_ban) {\n    return 444;\n}"  # zbanowany adres: zamknij połączenie bez odpowiedzi
+
+
 def _ind(text: str, level: int = 1) -> str:
     pad = "    " * level
     return "\n".join(pad + line if line.strip() else "" for line in text.strip("\n").splitlines())
@@ -161,7 +164,7 @@ def render_site(site: Site, acl: AccessList | None, cert_ready: bool, ipv6: bool
     names = " ".join(site.domains)
     out = [f"# Deployra: {site.kind} #{site.id} — {names}"]
     body = _site_body(site, acl, root)
-    http_lines = _listen(80, ipv6) + [f"server_name {names};", f"include {root}/snippets/acme.conf;"]
+    http_lines = _listen(80, ipv6) + [f"server_name {names};", BAN_CHECK, f"include {root}/snippets/acme.conf;"]
     if cert_ready and site.ssl_forced:
         http_lines.append("location / {\n    return 301 https://$host$request_uri;\n}")
     else:
@@ -173,6 +176,7 @@ def render_site(site: Site, acl: AccessList | None, cert_ready: bool, ipv6: bool
             tls.append("http2 on;")
         tls += [
             f"server_name {names};",
+            BAN_CHECK,
             f"ssl_certificate /etc/deployra/certs/{site.cert_id}/fullchain.pem;",
             f"ssl_certificate_key /etc/deployra/certs/{site.cert_id}/privkey.pem;",
             f"include {root}/snippets/ssl.conf;",
@@ -188,12 +192,20 @@ def render_site(site: Site, acl: AccessList | None, cert_ready: bool, ipv6: bool
     return "\n\n".join(out) + "\n"
 
 
-def render_stream(stream: Stream, ipv6: bool) -> str:
+def render_bans(bans: list[str]) -> str:
+    """Zmienna $deployra_ban (1 = zbanowany) — plik ładuje się przed serwerami (00-bans < 00-default)."""
+    lines = ["# Deployra: zbanowane adresy", "geo $deployra_ban {", "    default 0;"]
+    lines += [f"    {net} 1;" for net in bans]
+    return "\n".join(lines + ["}"]) + "\n"
+
+
+def render_stream(stream: Stream, ipv6: bool, bans: list[str] = ()) -> str:
     host = f"[{stream.upstream_host}]" if ":" in stream.upstream_host else stream.upstream_host
     out = [f"# Deployra: stream #{stream.id} — :{stream.listen_port} → {host}:{stream.upstream_port}"]
     for proto, enabled in (("", stream.tcp), (" udp", stream.udp)):
         if enabled:
-            lines = _listen(stream.listen_port, ipv6, proto.strip()) + [f"proxy_pass {host}:{stream.upstream_port};"]
+            lines = _listen(stream.listen_port, ipv6, proto.strip()) + [f"deny {net};" for net in bans]
+            lines.append(f"proxy_pass {host}:{stream.upstream_port};")
             out.append("server {\n" + _ind("\n".join(lines)) + "\n}")
     return "\n\n".join(out) + "\n"
 
@@ -204,7 +216,7 @@ def render_default(ipv6: bool, page: str, root: str = ROOT) -> str:
         if page == "deployra"
         else "return 404;"
     )
-    http = _listen(80, ipv6, default=True) + ["server_name _;", f"include {root}/snippets/acme.conf;"]
+    http = _listen(80, ipv6, default=True) + ["server_name _;", BAN_CHECK, f"include {root}/snippets/acme.conf;"]
     https = _listen(443, ipv6, "ssl", default=True) + ["server_name _;", "ssl_reject_handshake on;"]
     return (
         "# Deployra: serwer domyślny\n"
@@ -213,10 +225,10 @@ def render_default(ipv6: bool, page: str, root: str = ROOT) -> str:
     )
 
 
-def render(state: ProxyState, cert_ready: Callable[[int], bool], ipv6: bool, root: str = ROOT) -> dict[str, str]:
+def render(state: ProxyState, cert_ready: Callable[[int], bool], ipv6: bool, root: str = ROOT, bans: list[str] = ()) -> dict[str, str]:
     """Zwraca {ścieżka względna: treść} dla katalogów http/, stream/, access/."""
     acls = {acl.id: acl for acl in state.access_lists}
-    files: dict[str, str] = {"http/00-default.conf": render_default(ipv6, state.default_page, root)}
+    files: dict[str, str] = {"http/00-bans.conf": render_bans(list(bans)), "http/00-default.conf": render_default(ipv6, state.default_page, root)}
     for site in state.sites:
         if not site.enabled:
             continue
@@ -225,7 +237,7 @@ def render(state: ProxyState, cert_ready: Callable[[int], bool], ipv6: bool, roo
         files[f"http/site-{site.id}.conf"] = render_site(site, acl, ready, ipv6, root)
     for stream in state.streams:
         if stream.enabled:
-            files[f"stream/stream-{stream.id}.conf"] = render_stream(stream, ipv6)
+            files[f"stream/stream-{stream.id}.conf"] = render_stream(stream, ipv6, list(bans))
     for acl in state.access_lists:
         if acl.users:
             files[f"access/{acl.id}.htpasswd"] = "".join(f"{u.username}:{u.htpasswd}\n" for u in acl.users)

@@ -1,0 +1,23 @@
+{% from "_macros.html" import geo_cell %}
+{% if error %}
+<div class="card-body"><div class="callout err"><i class="bi bi-wifi-off"></i><div class="small">{{ error }}</div></div></div>
+{% elif not data["items"] %}
+<div class="card-body small muted">{{ t("traffic.no_bans") }}</div>
+{% else %}
+<div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>IP</th><th>{{ t("traffic.country") }}</th><th>{{ t("traffic.reason") }}</th><th>{{ t("traffic.expires") }}</th><th></th></tr></thead>
+    <tbody>
+    {% for item in data["items"] %}
+      <tr>
+        <td class="mono small nowrap">{{ item.target }}{% if item.auto %} <span class="badge violet">auto</span>{% endif %}</td>
+        <td class="small nowrap">{{ geo_cell(item.geo) }}</td>
+        <td class="small trunc" style="max-width: 180px" title="{{ item.reason }}">{{ item.reason or "—" }}<div class="muted">{{ item.created | ago }}</div></td>
+        <td class="small nowrap">{{ (item.expires | ago) if item.expires else t("traffic.permanent") }}</td>
+        <td class="right"><button class="btn sm ghost" hx-post="/traffic/unban" hx-vals='{{ {"target": item.target} | tojson }}' hx-swap="none">{{ t("traffic.unban") }}</button></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}

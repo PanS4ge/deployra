@@ -27,6 +27,8 @@ from typing import Any
 
 from loguru import logger
 
+from deployra_common.i18n import tr
+
 BOTS = re.compile(
     r"bot|crawl|spider|slurp|curl|wget|python|httpx|aiohttp|go-http|java/|okhttp|libwww|scrapy|monitor|uptime|deployra|"
     r"headless|lighthouse|facebookexternalhit|preview|feedfetcher|nmap|masscan|zgrab",
@@ -252,10 +254,11 @@ class Analytics:
 
 
 class SyslogReceiver(asyncio.DatagramProtocol):
-    """Odbiera linie `<pri>… deployra: {json}` od nginx."""
+    """Odbiera linie `<pri>… deployra: {json}` od nginx (statystyki odwiedzin + ruch per IP)."""
 
-    def __init__(self, analytics: Analytics) -> None:
+    def __init__(self, analytics: Analytics, ipwatch: Any = None) -> None:
         self.analytics = analytics
+        self.ipwatch = ipwatch
 
     def datagram_received(self, data: bytes, addr: Any) -> None:
         text = data.decode("utf-8", errors="replace")
@@ -263,19 +266,28 @@ class SyslogReceiver(asyncio.DatagramProtocol):
         if start < 0:
             return
         try:
-            self.analytics.ingest(json.loads(text[start:]))
-        except (ValueError, TypeError):
+            record = json.loads(text[start:])
+            self.analytics.ingest(record)
+            if self.ipwatch is not None:
+                self.ipwatch.ingest(record)
+        except (ValueError, TypeError, AttributeError):
             pass
 
 
-async def run(analytics: Analytics, host: str, port: int, flush_every: float = 60.0) -> None:
+async def run(analytics: Analytics, host: str, port: int, flush_every: float = 60.0, ipwatch: Any = None) -> None:
     loop = asyncio.get_running_loop()
-    transport, _ = await loop.create_datagram_endpoint(lambda: SyslogReceiver(analytics), local_addr=(host, port))
-    logger.info(f"Statystyki odwiedzin: syslog UDP {host}:{port}")
+    transport, _ = await loop.create_datagram_endpoint(lambda: SyslogReceiver(analytics, ipwatch), local_addr=(host, port))
+    logger.info(tr("gw.log.analytics_listening", address=f"{host}:{port}"))
+
+    def flush() -> None:
+        analytics.flush()
+        if ipwatch is not None:
+            ipwatch.flush()
+
     try:
         while True:
             await asyncio.sleep(flush_every)
-            await asyncio.to_thread(analytics.flush)
+            await asyncio.to_thread(flush)
     finally:
         transport.close()
-        await asyncio.to_thread(analytics.flush)
+        await asyncio.to_thread(flush)

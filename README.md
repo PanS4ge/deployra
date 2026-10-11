@@ -33,6 +33,7 @@ Public traffic takes **a single hop**: `nginx on the gateway → wg0 → node �
 | **Tunnel** | WireGuard hub, join nodes with a token, LAN subnet routing (NAS, Home Assistant…), nodes can reach each other |
 | **Cloudflare** | per-host A/AAAA records (no wildcard needed), wildcard certificates (DNS-01), **Cloudflare Tunnel** (cloudflared — no public IP, no open ports) |
 | **Visits** | unique and returning visitors per domain, Cloudflare-style charts — no cookies, no bots, counted on the gateway from nginx logs |
+| **Traffic & security** | top IP addresses with country and ISP (DB-IP Lite), suspicious addresses (floods, scanners, vulnerability probes), bans in nginx and the firewall (ipset), optional auto-ban with an allowlist |
 | **Uptime** (à la Uptime Kuma) | monitors for apps, containers, nodes and URLs, 24 h / 7 d / 30 d uptime, notifications (panel, Discord, ntfy, Slack) |
 | **Panel** | FastAPI + Jinja2 + htmx + Alpine (no build step), dark cosmic theme, users and permissions, SQLite or MySQL/MariaDB |
 | **Languages** | Polish and English — every user picks their own in the account menu; a new language is a single JSON file |
@@ -120,6 +121,20 @@ Code and templates only contain keys (`t("nodes.add")`); the texts live in langu
 New language: copy both `en.json` files to e.g. `de.json` and translate the values — the panel adds it to the switcher by itself.
 Missing keys fall back to Polish. `frontend/tests/test_i18n.py` checks that the packs have the same keys and parameters, and that no page
 rendered in English contains Polish letters.
+
+## Traffic & security
+
+The gateway counts requests per IP from the same nginx logs as the visit statistics. The **Traffic & security** page shows:
+
+- **top IP addresses** (24 h / 7 days, per domain) with country and ISP — from the free DB-IP Lite databases the gateway downloads monthly
+  (`DEPLOYRA_GEOIP=off` disables it);
+- **suspicious addresses** from the last 5 minutes: request floods (over the threshold per minute), scanners (≥ 80% 4xx) and vulnerability
+  probes (`/.env`, `/wp-login.php`, `/.git/` …);
+- **bans** for an address or subnet, for 1 h, a day, 7 days or permanently. nginx closes the connection (`444`), which also works for
+  traffic through Cloudflare; with `ipset` available the gateway also drops packets in the firewall (`DEPLOYRA_BAN_FIREWALL=off` disables it);
+- **auto-ban** (off by default) for addresses above the threshold, with an allowlist of addresses that are never banned.
+
+Raw IPs are kept for 7 days (`DEPLOYRA_IP_RETENTION_DAYS`) — an IP address is personal data.
 
 ## Moving off Portainer and NPM
 
