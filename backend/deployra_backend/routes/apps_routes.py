@@ -1,11 +1,13 @@
-"""Stacki compose, aplikacje, upload stron i konta SFTP."""
+"""Stacki compose, aplikacje, upload stron, konta SFTP i przenoszenie aplikacji między węzłami."""
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from deployra_common.i18n import tr
@@ -14,7 +16,9 @@ from deployra_common.schemas import AppSpec, StackSpec, check_slug
 from deployra_common.server import receive_verified_upload
 
 from ..context import Context, get_ctx
-from ..services import apps, compose, sftp_users, static_sites
+from deployra_common.runtimes import KEEP_DIRS
+
+from ..services import apps, compose, sftp_users, static_sites, transfer
 from . import job_response, signed, signed_upload
 
 router = APIRouter(prefix="/api", dependencies=[Depends(signed)])
@@ -62,14 +66,14 @@ async def save_stack(name: str, spec: StackSpec, pull: bool = False, ep: str = "
 async def stack_action(name: str, verb: str, ep: str = "local", ctx: Context = Depends(get_ctx)) -> dict:
     compose.check_name(name)
     _, root, env = _stack_target(ctx, ep)
-    return job_response(ctx.jobs.start("stack", f"Stack {name}: {verb}", lambda job: compose.action(job, root, name, verb, env)))
+    return job_response(ctx.jobs.start("stack", tr("node.job.stack_action", name=name, action=verb), lambda job: compose.action(job, root, name, verb, env)))
 
 
 @router.delete("/stacks/{name}")
 async def remove_stack(name: str, volumes: bool = False, ep: str = "local", ctx: Context = Depends(get_ctx)) -> dict:
     compose.check_name(name)
     _, root, env = _stack_target(ctx, ep)
-    return job_response(ctx.jobs.start("stack", f"Stack {name}: usuwanie", lambda job: compose.remove(job, root, name, volumes, env)))
+    return job_response(ctx.jobs.start("stack", tr("node.job.stack_remove", name=name), lambda job: compose.remove(job, root, name, volumes, env)))
 
 
 # --- aplikacje -----------------------------------------------------------------
@@ -98,7 +102,7 @@ async def rollback(slug: str, spec: AppSpec, ctx: Context = Depends(get_ctx)) ->
 @router.post("/apps/{slug}/remove")
 async def remove_app(slug: str, body: RemoveRequest, ctx: Context = Depends(get_ctx)) -> dict:
     check_slug(slug)
-    return job_response(ctx.jobs.start("remove", f"Usuwanie {slug}", lambda job: apps.remove(ctx, job, slug, body.delete_data)))
+    return job_response(ctx.jobs.start("remove", tr("node.job.remove", name=slug), lambda job: apps.remove(ctx, job, slug, body.delete_data)))
 
 
 @upload_router.post("/apps/{slug}/upload")
@@ -110,12 +114,88 @@ async def upload_site(slug: str, request: Request, ctx: Context = Depends(get_ct
         archive = Path(tmp) / "upload.zip"
         await receive_verified_upload(request, str(archive), max_bytes)
         try:
-            count = static_sites.publish_zip(ctx.config.sites_dir, slug, archive, max_bytes * 4)
+            keep = KEEP_DIRS if ctx.state.get("apps", {}).get(slug, {}).get("kind") == "runtime" else ()
+            count = static_sites.publish_zip(ctx.config.sites_dir, slug, archive, max_bytes * 4, keep)
         except JobFailed as exc:
             raise HTTPException(400, str(exc)) from None
         except Exception as exc:  # zipfile.BadZipFile itd.
             raise HTTPException(400, tr("node.unpack_failed", error=exc)) from None
     return {"files": count}
+
+
+# --- przenoszenie między węzłami ---------------------------------------------------------
+
+
+class ExportRequest(BaseModel):
+    spec: AppSpec
+    stop: bool = True
+
+
+class PowerRequest(BaseModel):
+    kind: str
+    running: bool
+
+
+class ImportRequest(BaseModel):
+    transfer: str
+
+
+@router.post("/apps/{slug}/export")
+async def export_app(slug: str, body: ExportRequest, ctx: Context = Depends(get_ctx)) -> dict:
+    check_slug(slug)
+    title = tr("node.job.export", name=slug)
+    return job_response(ctx.jobs.start("export", title, lambda job: transfer.export(ctx, job, slug, body.spec, body.stop)))
+
+
+@router.post("/apps/{slug}/power")
+async def power(slug: str, body: PowerRequest, ctx: Context = Depends(get_ctx)) -> dict:
+    check_slug(slug)
+    title = tr("node.job.start" if body.running else "node.job.stop", name=slug)
+    return job_response(ctx.jobs.start("power", title, lambda job: transfer.set_running(ctx, job, slug, body.kind, body.running)))
+
+
+@router.get("/transfers/{transfer_id}")
+def download_transfer(transfer_id: str, ctx: Context = Depends(get_ctx)) -> FileResponse:
+    path = transfer.bundle_path(ctx.config, transfer_id)
+    if not path.is_file():
+        raise HTTPException(404, tr("node.transfer.missing"))
+    return FileResponse(path, media_type="application/x-tar")
+
+
+@router.delete("/transfers/{transfer_id}")
+def delete_transfer(transfer_id: str, ctx: Context = Depends(get_ctx)) -> dict:
+    transfer.remove_bundle(ctx.config, transfer_id)
+    return {"ok": True}
+
+
+@upload_router.post("/transfers")
+async def upload_transfer(request: Request, ctx: Context = Depends(get_ctx)) -> dict:
+    transfer_id = transfer.new_id()
+    path = transfer.bundle_path(ctx.config, transfer_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        size = await receive_verified_upload(request, str(path), ctx.config.max_transfer_mb * 1024 * 1024)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    return {"transfer": transfer_id, "size": size}
+
+
+@router.post("/apps/{slug}/import")
+async def import_app(slug: str, body: ImportRequest, ctx: Context = Depends(get_ctx)) -> dict:
+    check_slug(slug)
+    transfer.bundle_path(ctx.config, body.transfer)
+    loop = asyncio.get_running_loop()
+
+    def work(job):
+        result = transfer.import_bundle(ctx, job, slug, body.transfer)
+        if result["sftp"]:
+            from ..app import ensure_sftp
+
+            asyncio.run_coroutine_threadsafe(ensure_sftp(ctx), loop)
+        return result
+
+    return job_response(ctx.jobs.start("import", tr("node.job.import", name=slug), work))
 
 
 # --- SFTP ----------------------------------------------------------------------
@@ -128,7 +208,7 @@ class SftpUser(BaseModel):
 
 
 @router.get("/sftp")
-def sftp_users(ctx: Context = Depends(get_ctx)) -> dict:
+def list_sftp(ctx: Context = Depends(get_ctx)) -> dict:
     return {
         "enabled": ctx.config.sftp_enabled,
         "port": ctx.config.sftp_port,

@@ -15,7 +15,7 @@
   <div class="card stat">
     <div class="label"><i class="bi bi-hdd-network"></i> {{ t("apps.node") }}</div>
     <a href="/nodes/{{ node.id }}">{{ node.name }}</a>
-    <div class="small muted">{{ spec.source.kind }}{% if spec.endpoint != "local" %} · {{ spec.endpoint }}{% endif %} · port {{ app.host_port or "—" }}</div>
+    <div class="small muted">{{ RUNTIME_META()[spec.source.runtime].name if spec.source.kind == "runtime" else spec.source.kind }}{% if spec.endpoint != "local" %} · {{ spec.endpoint }}{% endif %} · port {{ app.host_port or "—" }}</div>
   </div>
   <div class="card stat">
     <div class="label"><i class="bi bi-heart-pulse"></i> Uptime 24 h / {{ t("analytics.days", count=30) }}</div>
@@ -29,6 +29,12 @@
     {% if cert %}{{ status_badge(cert.status) }}<div class="small muted">{{ t("certs.until", date=cert.expires_at | dt) }}</div>{% elif options.https %}<span class="badge warn">{{ t("certs.not_issued") }}</span>{% else %}<span class="muted">HTTP</span>{% endif %}
   </div>
 </div>
+
+{% if spec.endpoint == "local" %}
+<div class="card" hx-get="/apps/{{ app.id }}/resources" hx-trigger="load" hx-swap="innerHTML" hx-disinherit="*">
+  <div class="card-body muted small">{{ t("common.loading") }}</div>
+</div>
+{% endif %}
 
 {% if app.domains %}
 <div class="card" hx-get="/analytics/chart?domains={{ app.domains | join(',') }}" hx-trigger="load" hx-swap="innerHTML" hx-disinherit="*">
@@ -54,16 +60,16 @@
 {% endif %}
 
 <div class="grid grid-2">
-  {% if spec.source.kind in ("static", "git") %}
+  {% if spec.source.kind in ("static", "git", "runtime") %}
   <div class="card">
     <div class="card-head"><h3><i class="bi bi-file-earmark-zip"></i> {{ t("apps.site_files") }}</h3></div>
     <div class="card-body stack">
-      {% if spec.source.kind == "static" %}
+      {% if spec.source.kind in ("static", "runtime") %}
       <form class="row" hx-post="/apps/{{ app.id }}/upload" hx-encoding="multipart/form-data" hx-swap="none">
         <input class="input" type="file" name="file" accept=".zip" required style="flex: 1">
         <button class="btn primary"><span class="spin"></span><i class="bi bi-upload"></i> {{ t("apps.publish_zip") }}</button>
       </form>
-      <div class="small muted">{{ t("apps.zip_hint") }}</div>
+      <div class="small muted">{{ t("apps.zip_hint_runtime") if spec.source.kind == "runtime" else t("apps.zip_hint") }}</div>
       {% endif %}
       <a class="btn sm" href="/nodes/{{ node.id }}/sftp"><i class="bi bi-folder-symlink"></i> {{ t("apps.sftp_accounts") }}</a>
     </div>
@@ -88,6 +94,10 @@
       <dl class="kv small">
         {% if spec.source.image %}<dt>{{ t("containers.image") }}</dt><dd class="mono">{{ spec.source.image }}</dd>{% endif %}
         {% if spec.source.git_url %}<dt>{{ t("apps.repository") }}</dt><dd class="mono">{{ spec.source.git_url }} @ {{ spec.source.git_branch }}</dd>{% endif %}
+        {% if spec.source.kind == "runtime" %}{% set rt = RUNTIME_META()[spec.source.runtime] %}
+        <dt>{{ t("apps.runtime") }}</dt><dd>{{ rt.name }}</dd>
+        <dt>{{ t("apps.start_command") }}</dt><dd class="mono">{{ spec.source.start_command or rt.start }}</dd>
+        {% endif %}
         {% if spec.container_port %}<dt>{{ t("apps.container_port") }}</dt><dd>{{ spec.container_port }}</dd>{% endif %}
         <dt>{{ t("apps.variables") }}</dt><dd>{{ spec.env | length }}</dd>
         <dt>{{ t("nodes.tab_volumes") }}</dt><dd class="mono">{% for v in spec.volumes %}{{ v.source }} → {{ v.target }}<br>{% else %}—{% endfor %}</dd>
@@ -106,7 +116,10 @@
         <button class="btn sm" hx-post="/apps/{{ app.id }}/rollback" hx-swap="none" hx-confirm="{{ t('apps.rollback_confirm') }}"><i class="bi bi-skip-backward"></i> Rollback</button></div>
       {% endif %}
       <div class="row between"><span class="small dim">{{ t("apps.containers_hint") }}</span>
-        <a class="btn sm" href="/nodes/{{ node.id }}/containers{{ '' if spec.endpoint == 'local' else '?ep=' ~ spec.endpoint }}"><i class="bi bi-box"></i> {{ t("nodes.tab_containers") }}</a></div>
+        <span class="row" style="gap: 6px">
+          {% if spec.source.kind in ("image", "git", "runtime") and spec.endpoint == "local" %}<a class="btn sm" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}"><i class="bi bi-journal-text"></i> {{ t("apps.logs") }}</a>{% endif %}
+          <a class="btn sm" href="/nodes/{{ node.id }}/containers{{ '' if spec.endpoint == 'local' else '?ep=' ~ spec.endpoint }}"><i class="bi bi-box"></i> {{ t("nodes.tab_containers") }}</a>
+        </span></div>
       {% if has(user, P.ALLOW_DEPLOYMENT_DELETE) %}
       <form class="row between" hx-post="/apps/{{ app.id }}/remove" hx-swap="none" hx-confirm="{{ t('apps.delete_confirm', slug=app.slug) }}" data-danger data-math>
         <label class="check small"><input type="checkbox" name="delete_data" value="1"><span class="sw"></span><span>{{ t("apps.delete_data") }}</span></label>
@@ -115,5 +128,29 @@
       {% endif %}
     </div>
   </div>
+
+  {% if spec.endpoint == "local" and has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-truck"></i> {{ t("move.title") }}</h3></div>
+    <div class="card-body stack">
+      {% if other_nodes %}
+      <form class="stack" hx-post="/apps/{{ app.id }}/move" hx-swap="none" hx-confirm="{{ t('move.confirm', app=app.name) }}">
+        <div class="row" style="gap: 8px">
+          <select class="select" name="node_id" style="flex: 1">
+            {% for n, free in other_nodes %}<option value="{{ n.id }}">{{ n.name }}{% if free is not none %} · {{ t("res.free_mb", mb=free) }}{% endif %}</option>{% endfor %}
+          </select>
+          <button class="btn"><span class="spin"></span><i class="bi bi-truck"></i> {{ t("move.button") }}</button>
+        </div>
+        <label class="check small"><input type="checkbox" name="delete_old" value="1"><span class="sw"></span><span>{{ t("move.delete_old", node=node.name) }}</span></label>
+      </form>
+      {% else %}<div class="small muted">{{ t("move.no_other_nodes") }}</div>{% endif %}
+      {% if auto_capable %}
+      <form hx-post="/apps/{{ app.id }}/auto-move" hx-trigger="change" hx-swap="none">
+        <label class="check small"><input type="checkbox" name="auto_move" value="1" {{ "checked" if options.auto_move }}><span class="sw"></span><span>{{ t("move.auto") }}</span></label>
+      </form>
+      {% else %}<div class="small muted">{{ t("move.auto_unavailable") }}</div>{% endif %}
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

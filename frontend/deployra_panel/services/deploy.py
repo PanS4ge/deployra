@@ -70,10 +70,17 @@ async def run(panel: Any, job: Job, app_id: int) -> dict:
     node = panel.node(app["node_id"])
     if not node:
         raise JobFailed(t("msg.app_node_missing"))
+    first = app["status"] == "new"
     panel.db.update("apps", app_id, status="deploying", last_job=job.id, last_error=None)
     try:
         client = panel.node_client(node)
         job.log(t("deploy.start", slug=spec.slug, kind=spec.source.kind, node=node["name"]))
+        if first:  # ochrona przed przepełnieniem — ponowne wdrożenie już nie pyta (świadoma decyzja)
+            from . import resources
+
+            problem = await resources.capacity_problem(panel, node, spec.memory_mb)
+            if problem:
+                raise JobFailed(problem + " " + t("res.retry_hint"))
         remote = await relay.start_and_follow(client, "/api/apps/deploy", spec.model_dump(mode="json"), job, "  ")
         result = remote.get("result") or {}
         host_port, upstream_host = result.get("host_port"), result.get("upstream_host")
@@ -115,6 +122,10 @@ async def run(panel: Any, job: Job, app_id: int) -> dict:
         message = getattr(exc, "detail", None) or str(exc) or type(exc).__name__
         panel.db.update("apps", app_id, status="error", last_error=message)
         panel.plugins.emit("app.failed", app=panel.db.get("apps", app_id), job=job.id, error=message)
+        from . import alerts
+        from .notify import Message
+
+        await alerts.event(panel, "deploy_failed", Message(t("alerts.title.deploy_failed", name=app["name"]), message[:1500], "err"))
         raise JobFailed(message) from exc
 
 

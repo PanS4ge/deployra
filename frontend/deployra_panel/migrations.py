@@ -100,4 +100,35 @@ def v4(dialect: str) -> list[str]:
     return ["ALTER TABLE users ADD COLUMN lang VARCHAR(8)"]
 
 
-MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1), (2, v2), (3, v3), (4, v4)]
+def v5(dialect: str) -> list[str]:
+    """Zasoby: próbki co minutę (48 h) i agregaty godzinowe (30 dni) dla węzłów i aplikacji; kanały powiadomień i alerty."""
+    t = _types(dialect)
+    i, s, x, n, r, tail = t["id"], t["str"], t["text"], t["int"], t["real"], t["tail"]
+    return [
+        f"""CREATE TABLE node_samples (
+            id {i}, node_id {n} NOT NULL, ts {r} NOT NULL, cpu {r}, ram {r}, swap {r}, disk {r}, load1 {r},
+            ram_used {r}, ram_total {r}, disk_used {r}, disk_total {r}
+        ){tail}""",
+        "CREATE INDEX idx_node_samples ON node_samples (node_id, ts)",
+        f"""CREATE TABLE node_hourly (
+            node_id {n} NOT NULL, hour {n} NOT NULL, n {n} NOT NULL DEFAULT 0, cpu_sum {r} NOT NULL DEFAULT 0, cpu_max {r} NOT NULL DEFAULT 0,
+            ram_sum {r} NOT NULL DEFAULT 0, ram_max {r} NOT NULL DEFAULT 0, disk_max {r} NOT NULL DEFAULT 0, PRIMARY KEY (node_id, hour)
+        ){tail}""",
+        f"CREATE TABLE app_samples (id {i}, app_id {n} NOT NULL, ts {r} NOT NULL, cpu {r}, mem {r}, mem_limit {r}){tail}",
+        "CREATE INDEX idx_app_samples ON app_samples (app_id, ts)",
+        f"""CREATE TABLE app_hourly (
+            app_id {n} NOT NULL, hour {n} NOT NULL, n {n} NOT NULL DEFAULT 0, cpu_sum {r} NOT NULL DEFAULT 0, cpu_max {r} NOT NULL DEFAULT 0,
+            mem_sum {r} NOT NULL DEFAULT 0, mem_max {r} NOT NULL DEFAULT 0, PRIMARY KEY (app_id, hour)
+        ){tail}""",
+        f"""CREATE TABLE notify_channels (
+            id {i}, name {s} NOT NULL, kind {s} NOT NULL, config {x}, enabled {n} NOT NULL DEFAULT 1, created_at {s}
+        ){tail}""",
+        f"""CREATE TABLE alerts (
+            id {i}, rule {s} NOT NULL, target_kind {s} NOT NULL, target_id {n}, target_name {s}, status {s} NOT NULL,
+            message {x}, value {r}, started_at {r} NOT NULL, resolved_at {r}
+        ){tail}""",
+        "CREATE INDEX idx_alerts ON alerts (status, started_at)",
+    ]
+
+
+MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1), (2, v2), (3, v3), (4, v4), (5, v5)]

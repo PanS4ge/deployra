@@ -30,4 +30,24 @@
   </div>
   <div class="hint small muted">{{ t("apps.build_hint") }}</div>
 </div>
-<div x-show="kind === 'static'" class="callout"><i class="bi bi-file-earmark-zip"></i><div class="small">{{ t("apps.static_hint") }}</div></div>
+<div x-show="kind === 'static'" class="stack">
+  <div class="callout"><i class="bi bi-file-earmark-zip"></i><div class="small">{{ t("apps.static_hint") }}</div></div>
+  {% if upload_field %}<div class="field"><label>{{ t("apps.files_zip") }}</label><input class="input" type="file" name="file" accept=".zip" :disabled="kind !== 'static'"></div>{% endif %}
+</div>
+<div class="stack" x-show="kind === 'runtime'">
+  <input type="hidden" name="runtime" :value="runtime" :disabled="kind !== 'runtime'">
+  {% if runtime_picker %}{% include "apps/_runtime_picker.html" %}{% endif %}
+  <div class="form-grid">
+    <div class="field"><label>{{ t("apps.listen_port") }}</label>
+      <input class="input" name="container_port" type="number" min="1" max="65535" x-model="rport" :disabled="kind !== 'runtime'"
+             :placeholder="(rts[runtime] || {}).port || '{{ t('apps.no_port') }}'"></div>
+    {% if upload_field %}<div class="field"><label>{{ t("apps.files_zip") }}</label><input class="input" type="file" name="file" accept=".zip" :disabled="kind !== 'runtime'"></div>{% endif %}
+  </div>
+  <details {{ 'open' if src and (src.start_command or src.install_command) }}>
+    <summary class="small muted" style="cursor: pointer"><i class="bi bi-terminal"></i> {{ t("apps.commands") }}</summary>
+    <div class="form-grid" style="margin-top: 12px">
+      <div class="field full"><label>{{ t("apps.start_command") }}</label><input class="input mono" name="start_command" value="{{ src.start_command if src and src.start_command else '' }}" :placeholder="(rts[runtime] || {}).start" :disabled="kind !== 'runtime'"></div>
+      <div class="field full"><label>{{ t("apps.install_command") }}</label><input class="input mono" name="install_command" value="{{ src.install_command if src and src.install_command else '' }}" :placeholder="(rts[runtime] || {}).install || '—'" :disabled="kind !== 'runtime'"></div>
+    </div>
+  </details>
+</div>

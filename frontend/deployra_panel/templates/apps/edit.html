@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block crumbs %}<div class="crumbs"><a href="/apps">{{ t("nav.apps") }}</a> / <a href="/apps/{{ app.id }}">{{ app.name }}</a> /</div>{% endblock %}
 {% block content %}
-<form class="stack" hx-post="/apps/{{ app.id }}/edit" hx-swap="none" x-data="{ kind: '{{ spec.source.kind }}' }">
+<form class="stack" hx-post="/apps/{{ app.id }}/edit" hx-swap="none"
+      x-data="{ kind: '{{ spec.source.kind }}', runtime: '{{ spec.source.runtime or '' }}', rport: '{{ spec.container_port or '' }}',
+                mem: '{{ spec.memory_mb or '' }}', rts: {{ RUNTIME_META() | tojson | forceescape }},
+                pick(id) { this.runtime = id; this.rport = this.rts[id].port || ''; this.mem = this.rts[id].memory || this.mem; } }">
   <input type="hidden" name="kind" value="{{ spec.source.kind }}">
   <input type="hidden" name="endpoint" value="{{ spec.endpoint }}">
   <div class="card">
@@ -13,7 +16,7 @@
   </div>
   <div class="card">
     <div class="card-head"><h3>{{ t("apps.step_source") }}</h3></div>
-    <div class="card-body stack">{% include "apps/_source_fields.html" %}</div>
+    <div class="card-body stack">{% set runtime_picker = true %}{% include "apps/_source_fields.html" %}</div>
   </div>
   {% if spec.source.kind != "static" %}
   <div class="card">
@@ -23,7 +26,7 @@
 {% endfor %}</textarea></div>
       <div class="field full"><label>{{ t("nodes.tab_volumes") }}</label><textarea class="textarea" name="volumes" style="min-height: 70px">{% for v in spec.volumes %}{{ v.source }}:{{ v.target }}{{ ":ro" if v.read_only }}
 {% endfor %}</textarea></div>
-      <div class="field"><label>{{ t("containers.memory") }}</label><input class="input" name="memory_mb" type="number" min="16" value="{{ spec.memory_mb or '' }}"></div>
+      <div class="field"><label>{{ t("containers.memory") }}</label><input class="input" name="memory_mb" type="number" min="16" x-model="mem"></div>
       <div class="field"><label>{{ t("apps.cpus_short") }}</label><input class="input" name="cpus" type="number" step="0.1" min="0.1" value="{{ spec.cpus or '' }}"></div>
     </div>
   </div>

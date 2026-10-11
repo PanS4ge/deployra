@@ -117,14 +117,19 @@ def swap_dir(target: Path, new: Path) -> None:
     shutil.rmtree(old, ignore_errors=True)
 
 
-def publish_zip(sites_dir: Path, slug: str, zip_path: Path, max_total: int) -> int:
+def publish_zip(sites_dir: Path, slug: str, zip_path: Path, max_total: int, keep: tuple[str, ...] = ()) -> int:
+    """Podmienia pliki strony/aplikacji; katalogi z `keep` (np. dane aplikacji) przechodzą ze starej wersji."""
     tmp = sites_dir / f".new-{slug}-{uuid.uuid4().hex[:6]}"
     tmp.mkdir(parents=True)
     try:
         count = extract_zip(zip_path, tmp, max_total)
         if count == 0:
             raise JobFailed(tr("node.zip.empty"))
-        swap_dir(site_dir(sites_dir, slug), tmp)
+        current = site_dir(sites_dir, slug)
+        for name in keep:
+            if (current / name).is_dir() and not (tmp / name).exists():
+                (current / name).rename(tmp / name)
+        swap_dir(current, tmp)
         return count
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

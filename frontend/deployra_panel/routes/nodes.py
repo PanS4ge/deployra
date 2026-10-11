@@ -15,7 +15,7 @@ from ..context import Panel, get_panel
 from ..deps import current_user, node_or_404, require
 from ..i18n import t
 from ..permissions import Permission
-from ..services import sync
+from ..services import charts, resources, sync
 from ..web import redirect, render, toast
 
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -94,6 +94,33 @@ async def vitals(request: Request, node: dict = Depends(node_or_404), panel: Pan
             error = getattr(exc, "detail", None) or t("msg.node_not_responding")
     compact = request.query_params.get("compact") == "1"
     return render(request, "partials/vitals.html", node=node, v=data, error=error, compact=compact)
+
+
+def history_labels(starts: list[float], step: float) -> list[str]:
+    fmt = "%H:%M" if step < 3600 else "%d.%m %H:00" if step == 3600 else "%d.%m"
+    return [time.strftime(fmt, time.localtime(ts)) for ts in starts]
+
+
+@router.get("/nodes/{node_id}/resources")
+def node_resources(request: Request, range: str = "24h", node: dict = Depends(node_or_404), panel: Panel = Depends(get_panel)):
+    span = range if range in resources.RANGES else "24h"
+    data = resources.node_history(panel, node["id"], span)
+    chart, cut = None, resources.trimmed(data, ("cpu", "ram", "disk"))
+    if cut:
+        starts, v = cut
+        chart = charts.area_chart(history_labels(starts, data["step"]), [
+            ("CPU %", v["cpu"], "#8b5cf6", True), ("RAM %", v["ram"], "#22d3ee", False), (t("res.disk") + " %", v["disk"], "#f472b6", False),
+        ], height=200, scale_max=100)  # fmt: skip
+    latest = resources.LATEST.get(node["id"]) or {}
+    apps = {a["slug"]: a for a in panel.db.fetchall("SELECT id, slug, name FROM apps WHERE node_id = ?", [node["id"]])}
+    rows = []
+    for c in latest.get("containers") or []:
+        if c.get("state") != "running":
+            continue
+        rows.append({**c, "app_row": apps.get(c.get("app") or "")})
+    rows.sort(key=lambda c: -(c.get("mem") or 0))
+    return render(request, "partials/node_resources.html", node=node, chart=chart, span=span, ranges=list(resources.RANGES),
+                  rows=rows[:12], host=latest.get("host") or {}, updated=latest.get("ts"))  # fmt: skip
 
 
 @router.post("/nodes/{node_id}/info")

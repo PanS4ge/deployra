@@ -138,9 +138,23 @@ def js_i18n() -> dict[str, str]:
     return {key[3:]: catalog.raw(key) for key in catalog.pack(catalog.default) if key.startswith("js.")}
 
 
+def runtime_meta() -> dict[str, dict[str, Any]]:
+    """Dane środowisk „z plików” dla kreatora (Alpine): port, pamięć, polecenia."""
+    from deployra_common.runtimes import RUNTIMES
+
+    return {r.id: {"port": r.port, "memory": r.memory_mb, "start": r.start, "install": r.install, "live": r.live, "name": r.name}
+            for r in RUNTIMES.values()}  # fmt: skip
+
+
+def runtimes() -> list[Any]:
+    from deployra_common.runtimes import RUNTIMES
+
+    return list(RUNTIMES.values())
+
+
 templates.env.globals.update(
     NAME=NAME, VERSION=__version__, P=Permission, PERM_LABELS=LABELS, has=has, gravatar=gravatar, now=time.time,
-    update_offer=update_offer, t=tm, LANG=lang, LANGUAGES=catalog.names, JS_I18N=js_i18n,
+    update_offer=update_offer, t=tm, LANG=lang, LANGUAGES=catalog.names, JS_I18N=js_i18n, RUNTIMES=runtimes, RUNTIME_META=runtime_meta,
 )
 
 

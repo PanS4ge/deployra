@@ -112,6 +112,7 @@ class ContainerSpec(BaseModel):
     name: str
     image: str
     command: list[str] | None = None
+    working_dir: str | None = None
     env: dict[str, str] = Field(default_factory=dict)
     ports: list[PortMap] = Field(default_factory=list)
     volumes: list[VolumeMount] = Field(default_factory=list)
@@ -131,6 +132,13 @@ class ContainerSpec(BaseModel):
     @classmethod
     def _image(cls, v: str) -> str:
         return check_image(v)
+
+    @field_validator("working_dir")
+    @classmethod
+    def _workdir(cls, v: str | None) -> str | None:
+        if v is not None and not v.startswith("/"):
+            raise ValueError(tr("srv.schema.abs_container_path"))
+        return v if v is None else _no_newlines(v)
 
     @field_validator("env")
     @classmethod
@@ -189,7 +197,7 @@ class StackSpec(BaseModel):
 
 
 class AppSource(BaseModel):
-    kind: Literal["image", "compose", "static", "git"]
+    kind: Literal["image", "compose", "static", "git", "runtime"]
     image: str | None = None
     compose: str | None = None
     expose_service: str | None = None
@@ -200,6 +208,9 @@ class AppSource(BaseModel):
     dockerfile: str = "Dockerfile"
     build_context: str = "."
     git_static_dir: str | None = None  # Git bez Dockerfile: katalog z plikami strony
+    runtime: str | None = None  # aplikacja z plików: id środowiska z `runtimes.RUNTIMES`
+    start_command: str | None = Field(default=None, max_length=2000)  # zamiast domyślnego polecenia środowiska
+    install_command: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
     def _check(self) -> "AppSource":
@@ -207,6 +218,14 @@ class AppSource(BaseModel):
             raise ValueError(tr("srv.schema.need_image"))
         if self.kind == "compose" and not self.compose:
             raise ValueError(tr("srv.schema.need_compose"))
+        if self.kind == "runtime":
+            from .runtimes import RUNTIMES
+
+            if self.runtime not in RUNTIMES:
+                raise ValueError(tr("srv.schema.bad_runtime"))
+            for command in (self.start_command, self.install_command):
+                if command and chr(0) in command:
+                    raise ValueError(tr("srv.schema.no_newlines"))
         if self.kind == "git":
             if not self.git_url or not re.match(r"^(https://|git@|ssh://)[^\s]+$", self.git_url):
                 raise ValueError(tr("srv.schema.need_repo"))
@@ -246,13 +265,17 @@ class AppSpec(BaseModel):
     def _ports(self) -> "AppSpec":
         if not re.match(r"^(local|ct-\d{1,9})$", self.endpoint):
             raise ValueError(tr("srv.schema.bad_endpoint"))
-        static = self.source.kind == "static" or (self.source.kind == "git" and self.source.git_static_dir)
+        static = self.source.kind in ("static", "runtime") or (self.source.kind == "git" and self.source.git_static_dir)
         if static and self.endpoint != "local":
             raise ValueError(tr("srv.schema.static_local"))
         if self.source.kind in ("image", "compose") and not self.container_port:
             raise ValueError(tr("srv.schema.need_port"))
         if self.source.kind == "git" and not self.source.git_static_dir and not self.container_port:
             raise ValueError(tr("srv.schema.need_port"))
+        if self.source.kind == "runtime" and not self.container_port:
+            from .runtimes import RUNTIMES
+
+            self.container_port = RUNTIMES[self.source.runtime or ""].port  # None = proces w tle bez portu
         return self
 
 

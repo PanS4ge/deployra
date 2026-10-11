@@ -1,0 +1,8 @@
+{# Wybór środowiska aplikacji „z plików” — wymaga w x-data: runtime, pick(id). #}
+<div class="rt-grid">
+  {% for r in RUNTIMES() %}
+  <div class="choice sm" :class="kind === 'runtime' && runtime === '{{ r.id }}' && 'on'" @click="pick('{{ r.id }}')">
+    <i class="bi bi-{{ r.icon }}"></i><div><b>{{ r.name }}</b><span class="mono">{{ r.hint }}</span></div>
+  </div>
+  {% endfor %}
+</div>

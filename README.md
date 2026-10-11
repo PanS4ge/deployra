@@ -37,10 +37,15 @@ Public traffic takes **a single hop**: `nginx on the gateway → wg0 → node �
 | **Uptime** (à la Uptime Kuma) | monitors for apps, containers, nodes and URLs, 24 h / 7 d / 30 d uptime, notifications (panel, Discord, ntfy, Slack) |
 | **Panel** | FastAPI + Jinja2 + htmx + Alpine (no build step), dark cosmic theme, users and permissions, SQLite or MySQL/MariaDB |
 | **Languages** | Polish and English — every user picks their own in the account menu; a new language is a single JSON file |
+| **Apps from files** | upload a ZIP (or use SFTP) and Deployra runs it: PHP + Apache, Python (script, Flask, FastAPI, Django), Node.js (script, Express, Next/Nuxt/Astro), Bun, Deno, Go, Rust, Ruby, Java (.jar), .NET, shell — dependencies installed automatically |
+| **Resources & alerts** | CPU / RAM / disk history per node and per app, thresholds with duration, OOM and restart-loop detection, notifications to the panel, webhook, Discord, Slack, Telegram, ntfy, Gotify, Pushover or email — you pick the channels per rule |
+| **Moving apps** | one click moves an app with its files, volumes and SFTP accounts to another node; the domain switches over, a failed move rolls back; optional automatic moves off a node that runs out of RAM |
 | **Plugins** | app templates for the wizard (Uptime Kuma, Vaultwarden, Gitea, n8n, Grafana, WordPress… built in), language packs, Python code with its own pages and event handlers |
 | **Updates** | the panel checks for releases, shows an “Update available” banner and on “Update” replaces nodes, the gateway and itself in the background (or does it on its own if you enable auto-update) |
 
 ## Quick start
+
+Step-by-step tutorial in Polish (DNS, firewall, first app, alerts): [docs/tutorial.pl.md](docs/tutorial.pl.md).
 
 Requirements: Linux with Docker and the compose plugin. Ready-made images (amd64 + arm64) live in GHCR — nothing to build.
 Which file in `deploy/` is for what: [deploy/README.md](deploy/README.md).
@@ -136,6 +141,48 @@ The gateway counts requests per IP from the same nginx logs as the visit statist
 - **auto-ban** (off by default) for addresses above the threshold, with an allowlist of addresses that are never banned.
 
 Raw IPs are kept for 7 days (`DEPLOYRA_IP_RETENTION_DAYS`) — an IP address is personal data.
+
+## Apps from files
+
+**Apps → New → From files** lists ready runtimes. Pick one, upload a ZIP (or skip it and get starter files), choose the node and domain.
+The files land in `/srv/deployra/sites/<slug>` on the node (also reachable over SFTP), a one-off container installs dependencies
+(`pip`, `npm`, `bundle`, `go build`, `cargo`…) and the app container starts from the official language image with the files mounted.
+
+| Runtime | Starts with | Port |
+|---|---|---|
+| PHP + Apache | `index.php`, `.htaccess` (mod_rewrite, mysqli, pdo_mysql) | 80 |
+| Python / Flask / FastAPI / Django | `python main.py` / `gunicorn app:app` / `uvicorn main:app` / `gunicorn project.wsgi` | — / 8000 |
+| Node.js / Express / Next, Nuxt, Astro | `node index.js` / `npm start` / `npm run build` + `npm start` | — / 3000 |
+| Bun · Deno · Go · Rust | `bun run index.ts` · `deno run main.ts` · `go build` · `cargo build` | 3000 · 8000 · 8080 · 8080 |
+| Ruby · Java · .NET · shell | `rackup` · `java -jar *.jar` · `dotnet App.dll` · `sh run.sh` | 9292 · 8080 · 8080 · — |
+
+No port = a background process (bot, worker, script) without a domain. The start and install commands can be overridden.
+`data/` (persistent data, e.g. SQLite) and `.deployra/` (caches) survive a new ZIP; a new ZIP redeploys the app (PHP picks changes up live).
+
+## Resources and alerts
+
+Every minute the panel collects CPU, RAM and disk of each node and CPU/RAM of every app container: 48 hours at one-minute resolution,
+30 days as hourly averages and peaks. Charts live on the node page (24 h / 7 d / 30 d) and on the app page.
+
+**Settings → Alerts**:
+
+- **channels**: panel, webhook (JSON, optional HMAC signature in `X-Deployra-Signature`), Discord, Slack, Telegram, ntfy, Gotify,
+  Pushover, email (SMTP); every channel has a **Test** button;
+- **rules**: node CPU / RAM / disk above a threshold for N minutes, node not responding, app RAM near its limit, app killed by OOM,
+  restart loop, uptime monitor down, failed deployment, app moved, new version — each rule has its own threshold, duration and channels.
+
+Protection against overflow: the first deploy checks that the node has enough free RAM (the app's limit or 64 MB) and disk, and suggests
+a node with more room. The wizard shows free RAM next to every node; runtimes come with a default memory limit.
+
+## Moving apps between nodes
+
+**App → Move to another server**: the old node stops the app and packs its files, Docker volumes, compose stack and SFTP accounts,
+the panel carries the bundle to the new node, which unpacks it, and a normal deploy follows — the proxy host gets the new address;
+the domain, DNS and certificate stay. If anything fails before the switch, the app starts again on the old node. The old copy is kept
+unless you tick "delete the data". Host paths mounted into an app (e.g. `/mnt/media`) are not moved — the log lists them.
+
+Automatic moves: enable them per app (only apps without volumes and without compose) and in the **Node: RAM** rule. When a node stays
+above the threshold, the biggest such app moves to the node with the most free memory (at most one app per hour per node).
 
 ## Plugins
 

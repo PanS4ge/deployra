@@ -49,5 +49,5 @@ def test_language_switch(admin):
     assert panel.db.fetchone("SELECT lang FROM users")["lang"] == "en"
     assert '<html lang="en">' in admin.get("/settings", headers={"HX-Request": ""}).text
     assert admin.post("/language", data={"lang": "xx"}).status_code == 400
-    toast = admin.post("/settings", data={"notify_webhook": "ftp://x"}).headers["HX-Trigger"]
-    assert "http(s) URL" in toast  # komunikaty z Pythona też po angielsku
+    toast = admin.post("/settings/alerts/channels", data={"kind": "webhook", "f_url": "ftp://x"}).headers["HX-Trigger"]
+    assert "must start with http" in toast  # komunikaty z Pythona też po angielsku

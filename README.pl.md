@@ -37,10 +37,15 @@ Ruch publiczny idzie **jednym skokiem**: `nginx na bramce → wg0 → węzeł �
 | **Uptime** (à la Uptime Kuma) | monitory aplikacji, kontenerów, węzłów i URL, uptime 24 h / 7 dni / 30 dni, powiadomienia (panel, Discord, ntfy, Slack) |
 | **Panel** | FastAPI + Jinja2 + htmx + Alpine (bez NiceGUI, bez kroku build), ciemny kosmiczny motyw, użytkownicy i uprawnienia, SQLite albo MySQL/MariaDB |
 | **Języki** | polski i angielski — każdy użytkownik wybiera swój w menu konta; nowy język to jeden plik JSON |
+| **Aplikacje z plików** | wrzucasz ZIP (albo SFTP), a Deployra to uruchamia: PHP + Apache, Python (skrypt, Flask, FastAPI, Django), Node.js (skrypt, Express, Next/Nuxt/Astro), Bun, Deno, Go, Rust, Ruby, Java (.jar), .NET, shell — zależności instalują się same |
+| **Zasoby i alerty** | historia CPU / RAM / dysku węzłów i aplikacji, progi z czasem trwania, wykrywanie OOM i pętli restartów, powiadomienia do panelu, webhooka, Discorda, Slacka, Telegrama, ntfy, Gotify, Pushovera albo e-mailem — kanały wybierasz osobno dla każdej reguły |
+| **Przenoszenie aplikacji** | jednym kliknięciem aplikacja z plikami, wolumenami i kontami SFTP jedzie na inny węzeł, domena przełącza się sama, nieudane przenosiny się wycofują; opcjonalnie automatycznie z węzła, któremu kończy się RAM |
 | **Pluginy** | szablony aplikacji do kreatora (wbudowane: Uptime Kuma, Vaultwarden, Gitea, n8n, Grafana, WordPress…), paczki językowe, kod Pythona z własnymi stronami i obsługą zdarzeń |
 | **Aktualizacje** | panel sprawdza wydania, pokazuje baner „Dostępna aktualizacja” i na „Aktualizuj” podmienia w tle węzły, bramkę i siebie (albo robi to sam, jeśli włączysz automat) |
 
 ## Szybki start
+
+Pełny tutorial krok po kroku (DNS, firewall, pierwsza aplikacja, alerty): [docs/tutorial.pl.md](docs/tutorial.pl.md).
 
 Wymagania: Linux z Dockerem i pluginem compose. Gotowe obrazy (amd64 + arm64) są w GHCR — nic nie budujesz.
 Który plik z `deploy/` do czego służy, opisuje [deploy/README.md](deploy/README.md).
@@ -134,6 +139,50 @@ Bramka liczy zapytania per adres IP z tych samych logów nginx co statystyki odw
 - **auto-ban** (domyślnie wyłączony) dla adresów ponad progiem, z białą listą adresów, których nigdy nie banujemy.
 
 Surowe adresy IP trzymamy 7 dni (`DEPLOYRA_IP_RETENTION_DAYS`) — adres IP to dana osobowa.
+
+## Aplikacje z plików
+
+**Aplikacje → Nowa → Z plików** pokazuje gotowe środowiska. Wybierasz jedno, wgrywasz ZIP (albo nie — dostaniesz pliki startowe),
+wskazujesz węzeł i domenę. Pliki lądują na węźle w `/srv/deployra/sites/<slug>` (dostępne też przez SFTP), jednorazowy kontener
+instaluje zależności (`pip`, `npm`, `bundle`, `go build`, `cargo`…), a aplikacja startuje z oficjalnego obrazu języka z podmontowanymi plikami.
+
+| Środowisko | Start | Port |
+|---|---|---|
+| PHP + Apache | `index.php`, `.htaccess` (mod_rewrite, mysqli, pdo_mysql) | 80 |
+| Python / Flask / FastAPI / Django | `python main.py` / `gunicorn app:app` / `uvicorn main:app` / `gunicorn project.wsgi` | — / 8000 |
+| Node.js / Express / Next, Nuxt, Astro | `node index.js` / `npm start` / `npm run build` + `npm start` | — / 3000 |
+| Bun · Deno · Go · Rust | `bun run index.ts` · `deno run main.ts` · `go build` · `cargo build` | 3000 · 8000 · 8080 · 8080 |
+| Ruby · Java · .NET · shell | `rackup` · `java -jar *.jar` · `dotnet App.dll` · `sh run.sh` | 9292 · 8080 · 8080 · — |
+
+Bez portu = proces w tle (bot, worker, skrypt), bez domeny. Polecenie startowe i instalacji można nadpisać.
+`data/` (trwałe dane, np. SQLite) i `.deployra/` (pamięć podręczna) zostają przy wgraniu nowego ZIP-a; nowy ZIP wdraża aplikację
+ponownie (PHP widzi zmiany od razu).
+
+## Zasoby i alerty
+
+Panel co minutę zbiera CPU, RAM i dysk każdego węzła oraz CPU/RAM każdego kontenera aplikacji: 48 godzin co minutę,
+30 dni jako średnie i maksima godzinowe. Wykresy są na stronie węzła (24 h / 7 dni / 30 dni) i aplikacji.
+
+**Ustawienia → Alerty**:
+
+- **kanały**: panel, webhook (JSON, opcjonalny podpis HMAC w `X-Deployra-Signature`), Discord, Slack, Telegram, ntfy, Gotify,
+  Pushover, e-mail (SMTP); każdy kanał ma przycisk **Test**;
+- **reguły**: CPU / RAM / dysk węzła ponad progiem przez N minut, węzeł nie odpowiada, RAM aplikacji blisko limitu, aplikacja zabita
+  za brak pamięci (OOM), restarty w kółko, monitor uptime padł, nieudane wdrożenie, przeniesiona aplikacja, nowa wersja — każda reguła
+  ma własny próg, czas i kanały.
+
+Ochrona przed przepełnieniem: pierwsze wdrożenie sprawdza, czy węzeł ma dość wolnego RAM-u (limit aplikacji albo 64 MB) i dysku,
+i podpowiada węzeł z większym zapasem. Kreator pokazuje wolny RAM przy każdym węźle, a środowiska mają domyślny limit pamięci.
+
+## Przenoszenie aplikacji między węzłami
+
+**Aplikacja → Przenieś na inny serwer**: stary węzeł zatrzymuje aplikację i pakuje pliki, wolumeny Dockera, stack compose i konta SFTP,
+panel przenosi paczkę na nowy węzeł, który ją rozpakowuje, a potem idzie zwykłe wdrożenie — host proxy dostaje nowy adres; domena,
+DNS i certyfikat zostają. Gdy coś się nie uda przed przełączeniem, aplikacja wraca do pracy na starym węźle. Stara kopia zostaje,
+chyba że zaznaczysz „usuń dane”. Katalogi hosta montowane w aplikacji (np. `/mnt/media`) nie są przenoszone — log je wypisuje.
+
+Automatyczne przenosiny: włączasz je przy aplikacji (tylko bez wolumenów i bez compose) i w regule **Węzeł: RAM**. Gdy węzeł trzyma się
+ponad progiem, największa taka aplikacja jedzie na węzeł z największym zapasem pamięci (najwyżej jedna na godzinę z danego węzła).
 
 ## Pluginy
 

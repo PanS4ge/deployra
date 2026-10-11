@@ -3,8 +3,8 @@
 Panel co kilkanaście sekund sprawdza monitory, którym minął interwał. Każde
 sprawdzenie trafia do `monitor_checks` (trzymane 48 h — pasek ostatnich
 sprawdzeń, opóźnienia) i do agregatu `monitor_hourly` (90 dni — uptime 24 h /
-7 dni / 30 dni). Zmiana stanu wysyła powiadomienie w panelu i opcjonalnie
-webhook (Discord / ntfy / Slack / dowolny JSON).
+7 dni / 30 dni). Zmiana stanu to alert `monitor_down` — trafia do kanałów
+wybranych w Ustawienia → Alerty (panel, webhook, Discord, Telegram, e-mail…).
 """
 
 from __future__ import annotations
@@ -163,7 +163,7 @@ class Checker:
                 if not node or node["status"] != "paired":
                     return None, None, t("uptime.msg.node_unpaired")
                 await self.panel.node_client(node).get("/api/vitals")
-                return True, elapsed(), "odpowiada"
+                return True, elapsed(), t("uptime.msg.responds")
             if kind == "container":
                 target = monitor.get("target") or {}
                 node = self.panel.node(target.get("node_id") or monitor.get("node_id"))
@@ -195,6 +195,11 @@ class Checker:
         if app["status"] in ("deploying", "new"):
             return None, None, t("uptime.msg.deploying")
         node = self.panel.node(app["node_id"])
+        if node and app["kind"] == "runtime" and not app.get("host_port"):  # proces w tle — liczy się, że kontener działa
+            for c in await self._containers_of(node, "local"):
+                if c["name"] == f"app-{app['slug']}":
+                    return c["state"] == "running", None, c.get("status") or c["state"]
+            return False, None, t("uptime.msg.container_missing")
         if not node or not app.get("host_port"):
             return False, None, t("uptime.msg.not_deployed")
         site = self.panel.db.get("sites", app["site_id"]) if app.get("site_id") else None
@@ -242,24 +247,11 @@ def record(panel: Any, monitor: dict, ok: bool, latency: float | None, message: 
 
 
 async def notify_change(panel: Any, monitor: dict, status: str, message: str) -> None:
-    icon = "🟢" if status == "up" else "🔴"
-    state = t("uptime.msg.up" if status == "up" else "uptime.msg.down")
-    text = f"{icon} {t('uptime.kind.' + monitor['kind'])} {monitor['name']}: {state} — {message}"
-    panel.notify(text, "ok" if status == "up" else "err")
+    """Zmiana stanu monitora → alert (kanały wybiera się w Ustawienia → Alerty) i zdarzenie dla pluginów."""
+    from . import alerts
+
     panel.plugins.emit("monitor.up" if status == "up" else "monitor.down", monitor=monitor, message=message)
-    url = (panel.db.setting("notify_webhook") or "").strip()
-    if not url:
-        return
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            if "discord.com/api/webhooks" in url or "discordapp.com/api/webhooks" in url:
-                await client.post(url, json={"content": text, "username": "Deployra"})
-            elif "ntfy" in url:
-                await client.post(url, content=text.encode(), headers={"Title": "Deployra", "Priority": "high" if status == "down" else "default"})
-            else:
-                await client.post(url, json={"text": text, "monitor": monitor["name"], "status": status})
-    except httpx.HTTPError as exc:
-        logger.warning(f"Webhook powiadomień: {exc}")
+    await alerts.monitor_change(panel, monitor, status, message)
 
 
 async def run_due(panel: Any, checker: Checker) -> int:
@@ -275,7 +267,7 @@ async def run_due(panel: Any, checker: Checker) -> int:
             try:
                 ok, latency, message = await asyncio.wait_for(checker.check(monitor), timeout=30)
             except asyncio.TimeoutError:
-                ok, latency, message = False, None, "przekroczony czas sprawdzenia"
+                ok, latency, message = False, None, t("uptime.msg.timeout")
             if ok is None:
                 panel.db.update("monitors", monitor["id"], last_check=time.time(), last_message=message)
                 return

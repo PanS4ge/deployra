@@ -128,6 +128,12 @@ def vitals(ctx: Context = Depends(get_ctx)) -> dict:
     return ctx.vitals.latest()
 
 
+@router.get("/usage")
+def usage(ctx: Context = Depends(get_ctx)) -> dict:
+    """Zasoby hosta i kontenerów aplikacji — panel zbiera je co minutę do historii i alertów."""
+    return ctx.usage.collect(ctx)
+
+
 @router.post("/rps")
 def rps() -> dict:
     """Kamień-papier-nożyce: zabawny test opóźnienia węzła."""

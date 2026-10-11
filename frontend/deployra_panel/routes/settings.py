@@ -25,7 +25,7 @@ from ..web import redirect, render, toast
 
 router = APIRouter(dependencies=[Depends(current_user)])
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-GENERAL_KEYS = ("panel_domain", "base_domain", "acme_email", "default_page", "gravatar_default", "image_prefix", "notify_webhook", "language")
+GENERAL_KEYS = ("panel_domain", "base_domain", "acme_email", "default_page", "gravatar_default", "image_prefix", "language")
 
 
 @router.get("/settings")
@@ -40,8 +40,6 @@ async def save_general(request: Request, panel: Panel = Depends(get_panel), user
         value = str(form.get(key) or "").strip()
         if key == "base_domain":
             value = value.lower().removeprefix("*.").strip(".")
-        if key == "notify_webhook" and value and not value.startswith(("http://", "https://")):
-            return toast(t("msg.webhook_http"), "err", status=400)
         if key == "language":
             value = catalog.supported(value) or ""
             panel.default_language = value or panel.config.language or None

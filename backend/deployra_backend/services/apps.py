@@ -1,4 +1,4 @@
-"""Wdrażanie aplikacji na węźle (obraz / compose / statyczna / Git) z rollbackiem.
+"""Wdrażanie aplikacji na węźle (obraz / compose / statyczna / Git / z plików) z rollbackiem.
 
 Aplikacja może trafić na Docker hosta (`local`) albo — na Proxmoxie — do
 wybranego kontenera LXC (`ct-<vmid>`). Wtedy bramka łączy się z IP tego CT.
@@ -15,7 +15,7 @@ from deployra_common.i18n import tr
 from deployra_common.jobs import Job, JobFailed
 from deployra_common.schemas import AppSpec, ContainerSpec, PortMap, check_slug
 
-from . import compose, docker_svc, git_build, ports, static_sites
+from . import compose, docker_svc, git_build, ports, runtime, static_sites
 
 KEEP_BUILDS = 3
 
@@ -48,13 +48,16 @@ def _wait_running(client: Any, cid: str, seconds: float = 6.0) -> bool:
         time.sleep(0.5)
 
 
-def _container_spec(ctx: Any, spec: AppSpec, image: str, host_port: int) -> ContainerSpec:
+def _container_spec(ctx: Any, spec: AppSpec, image: str, host_port: int | None) -> ContainerSpec:
+    extra = runtime.container_extras(ctx.config, spec) if spec.source.kind == "runtime" else {}
     return ContainerSpec(
         name=container_name(spec.slug),
         image=image,
-        env=spec.env,
-        ports=[PortMap(container=spec.container_port, host=host_port)],
-        volumes=spec.volumes,
+        command=extra.get("command"),
+        working_dir=extra.get("working_dir"),
+        env=extra.get("env", spec.env),
+        ports=[PortMap(container=spec.container_port, host=host_port)] if host_port and spec.container_port else [],
+        volumes=extra.get("volumes", spec.volumes),
         labels={docker_svc.APP_LABEL: spec.slug},
         memory_mb=spec.memory_mb,
         cpus=spec.cpus,
@@ -62,7 +65,7 @@ def _container_spec(ctx: Any, spec: AppSpec, image: str, host_port: int) -> Cont
     )
 
 
-def replace_container(ctx: Any, job: Job, spec: AppSpec, image: str, host_port: int) -> str:
+def replace_container(ctx: Any, job: Job, spec: AppSpec, image: str, host_port: int | None) -> str:
     """Zastępuje kontener aplikacji nowym; jeśli nowy nie wstanie, wraca do poprzedniego obrazu."""
     client = ctx.docker_for(spec.endpoint)
     name = container_name(spec.slug)
@@ -72,7 +75,10 @@ def replace_container(ctx: Any, job: Job, spec: AppSpec, image: str, host_port: 
         previous_image = client.api.inspect_container(existing["Id"])["Config"]["Image"]
         job.log(tr("node.app.stopping_previous", image=previous_image))
         client.api.remove_container(existing["Id"], force=True)
-    job.log(tr("node.app.starting", name=name, image=image, host_port=host_port, port=spec.container_port))
+    if host_port:
+        job.log(tr("node.app.starting", name=name, image=image, host_port=host_port, port=spec.container_port))
+    else:
+        job.log(tr("node.app.starting_worker", name=name, image=image))
     cid = docker_svc.run_container(client, _container_spec(ctx, spec, image, host_port))
     if _wait_running(client, cid, ctx.wait_seconds):
         job.log(tr("node.app.running"))
@@ -124,9 +130,20 @@ def _deploy(ctx: Any, job: Job, spec: AppSpec) -> dict:
         job.log(tr("node.app.static_ready", port=port))
         return _record(ctx, spec.slug, **base, host_port=port, sha=sha, domains=spec.domains)
 
+    if kind == "runtime" and not spec.container_port:  # proces w tle (bot, skrypt) — bez portu i domeny
+        ports.release(ctx.state, spec.slug)
+        image = runtime.prepare(ctx, job, spec, client)
+        cid = replace_container(ctx, job, spec, image, None)
+        return _record(ctx, spec.slug, **base, host_port=None, image=image, runtime=spec.source.runtime, container=cid)
+
     host_port = ports.allocate(
         ctx.state, client, spec.slug, cfg.port_pool, spec.host_port or previous.get("host_port"), check_host=endpoint.kind == "host"
     )
+
+    if kind == "runtime":
+        image = runtime.prepare(ctx, job, spec, client)
+        cid = replace_container(ctx, job, spec, image, host_port)
+        return _record(ctx, spec.slug, **base, host_port=host_port, image=image, runtime=spec.source.runtime, container=cid)
 
     if kind == "image":
         image = docker_svc.pull_image(client, job, spec.source.image)
@@ -200,6 +217,8 @@ def remove(ctx: Any, job: Job, slug: str, delete_data: bool) -> None:
     if kind == "static" or (kind == "git" and info.get("host_port") == ctx.state.get("static_port")):
         static_sites.remove_site(ctx, slug, delete_files=delete_data)
         job.log(tr("node.app.site_conf_removed"))
+    if kind == "runtime" and delete_data:
+        shutil.rmtree(static_sites.site_dir(cfg.sites_dir, slug), ignore_errors=True)
     if delete_data:
         shutil.rmtree(cfg.builds_dir / slug, ignore_errors=True)
     ports.release(ctx.state, slug)

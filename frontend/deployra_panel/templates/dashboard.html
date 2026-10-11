@@ -2,6 +2,16 @@
 {% from "_macros.html" import status_badge %}
 {% block actions %}{% if has(user, P.ALLOW_DEPLOYMENT) %}<a class="btn primary" href="/apps/new"><i class="bi bi-rocket-takeoff"></i> {{ t("dashboard.deploy") }}</a>{% endif %}{% endblock %}
 {% block content %}
+{% if firing %}
+<div class="card" style="border-color: rgba(244, 63, 94, 0.45)">
+  <div class="card-head"><h3><i class="bi bi-bell-fill" style="color: var(--err)"></i> {{ t("alerts.active", count=firing | length) }}</h3><span class="spacer"></span><a class="btn sm ghost" href="/settings/alerts">{{ t("settings.tab_alerts") }}</a></div>
+  <div class="card-body stack" style="gap: 8px">
+    {% for a in firing[:5] %}
+    <div class="row between small"><span><b>{{ t("alerts.title." ~ a.rule, name=a.target_name) }}</b> <span class="muted">{{ a.message }}</span></span><span class="muted nowrap">{{ a.started_at | ago }}</span></div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 {% if not (onboarding | selectattr("done") | list | length == 3) %}
 <div class="card glow">
   <div class="card-head"><h2><i class="bi bi-stars"></i> {{ t("dashboard.onboarding") }}</h2></div>

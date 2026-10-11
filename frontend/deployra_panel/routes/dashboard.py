@@ -12,6 +12,7 @@ from deployra_common.client import RemoteError
 from ..context import Panel, get_panel
 from ..deps import current_user
 from ..i18n import t
+from ..services import alerts
 from ..web import render
 
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -41,7 +42,7 @@ async def dashboard(request: Request, panel: Panel = Depends(get_panel)):
     ]
     return render(
         request, "dashboard.html", title=t("nav.dashboard"), stats=stats, nodes=nodes, apps=apps[-6:][::-1], gateway=gateway,
-        onboarding=onboarding, jobs=panel.jobs.list()[:6],
+        onboarding=onboarding, jobs=panel.jobs.list()[:6], firing=alerts.firing(panel),
     )  # fmt: skip
 
 

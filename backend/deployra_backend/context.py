@@ -15,6 +15,7 @@ from deployra_common.server import SignatureGuard
 from .config import Config
 from .services.native_update import update_agent
 from .services.endpoints import EndpointRegistry
+from .services.usage import UsageSampler
 from .services.vitals import VitalsSampler
 from .state import State
 
@@ -44,6 +45,7 @@ class Context:
         self.jobs = JobRegistry()
         self.guard = SignatureGuard(self._lookup, NonceCache())
         self.vitals = VitalsSampler()
+        self.usage = UsageSampler()
         self._docker_factory = docker_factory
         self._docker: Any = None
         self._docker_lock = threading.Lock()

@@ -1,0 +1,16 @@
+{% from "_macros.html" import meter %}
+<div class="card-head"><h3><i class="bi bi-graph-up"></i> {{ t("res.app_usage") }}</h3><span class="spacer"></span><span class="small muted">24 h</span></div>
+<div class="card-body stack">
+  {% if current %}
+  <div class="grid grid-3">
+    <div><div class="small muted">RAM</div><div class="mono">{{ current.mem | bytes }}{% if current.limit %} <span class="muted">/ {{ current.limit | bytes }}</span>{% endif %}</div>
+      {% if current.limit %}{{ meter(current.mem / current.limit * 100) }}{% endif %}</div>
+    <div><div class="small muted">CPU</div><div class="mono">{{ "%.1f%%" | format(current.cpu) if current.cpu is not none else "—" }}</div></div>
+    <div><div class="small muted">{{ t("res.restarts") }}</div><div class="mono">{{ current.restarts or 0 }}{% if current.oom_at %} <span class="badge err" title="{{ current.oom_at }}">OOM</span>{% endif %}</div></div>
+  </div>
+  {% endif %}
+  {% if mem_chart %}
+  <div><div class="small muted">RAM (MB)</div>{{ mem_chart }}</div>
+  <div><div class="small muted">CPU (%)</div>{{ cpu_chart }}</div>
+  {% else %}<div class="muted small">{{ t("res.collecting") }}</div>{% endif %}
+</div>

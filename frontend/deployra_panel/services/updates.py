@@ -140,7 +140,11 @@ async def check(panel: Any, transport: httpx.AsyncBaseTransport | None = None) -
     panel.db.set_setting("update_latest", result)
     version = result.get("version")
     if version and is_newer(version, __version__) and panel.db.setting("update_notified") != version:
-        panel.notify(t("upd.notify_available", version=version, current=__version__), "info")
+        from . import alerts
+        from .notify import Message
+
+        await alerts.event(panel, "update_available", Message(t("alerts.title.update_available", name=version),
+                                                              t("upd.notify_available", version=version, current=__version__), "info"))  # fmt: skip
         panel.db.set_setting("update_notified", version)
         panel.plugins.emit("update.available", version=version, current=__version__, release=result)
     return result

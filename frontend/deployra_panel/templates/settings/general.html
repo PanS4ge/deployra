@@ -21,7 +21,7 @@
       <select class="select" name="gravatar_default">{% for g in ["identicon", "retro", "robohash", "monsterid", "wavatar", "mp"] %}<option {{ "selected" if s.gravatar_default == g }}>{{ g }}</option>{% endfor %}</select>
     </div>
     <div class="field"><label>{{ t("settings.image_prefix") }}</label><input class="input mono" name="image_prefix" value="{{ s.image_prefix or '' }}" placeholder="ghcr.io/pans4ge/deployra"><div class="hint">{{ t("settings.image_prefix_hint") }}</div></div>
-    <div class="field"><label>{{ t("settings.webhook") }}</label><input class="input" name="notify_webhook" value="{{ s.notify_webhook or '' }}" placeholder="https://discord.com/api/webhooks/…"><div class="hint">{{ t("settings.webhook_hint") }}</div></div>
+    <div class="field"><label>{{ t("settings.notifications") }}</label><a class="btn" href="/settings/alerts"><i class="bi bi-bell"></i> {{ t("settings.tab_alerts") }}</a></div>
     <div class="callout full"><i class="bi bi-database"></i><div class="small">{{ t("settings.database", db="SQLite" if db == "sqlite" else "MySQL/MariaDB", path=panel.config.data_dir) }}</div></div>
   </div>
   <div class="card-body row" style="justify-content: flex-end; border-top: 1px solid var(--border)"><button class="btn primary"><i class="bi bi-check2"></i> {{ t("common.save") }}</button></div>

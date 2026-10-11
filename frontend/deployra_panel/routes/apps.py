@@ -1,4 +1,4 @@
-"""Aplikacje: kreator (obraz / compose / statyczna / Git), szczegóły, redeploy, rollback, upload, webhooki."""
+"""Aplikacje: kreator (obraz / compose / statyczna / Git / z plików), szczegóły, redeploy, rollback, upload, webhooki."""
 
 from __future__ import annotations
 
@@ -12,13 +12,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from pydantic import ValidationError
 
 from deployra_common.jobs import Job
+from deployra_common.runtimes import RUNTIMES
 from deployra_common.schemas import AppSpec, VolumeMount
 
 from ..context import Panel, get_panel
 from ..deps import current_user, require
 from ..i18n import t
 from ..permissions import Permission
-from ..services import deploy, relay
+from ..services import charts, deploy, migrate, relay, resources
 from ..web import redirect, render, toast
 
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -88,6 +89,8 @@ def spec_from_form(form: Any, slug: str, existing: AppSpec | None = None) -> tup
         keep = existing.source if existing else None
         source["git_token"] = token or (keep.git_token if keep else None)
         source["git_ssh_key"] = key or (keep.git_ssh_key if keep else None)
+    elif kind == "runtime":
+        source.update(runtime=get("runtime"), start_command=get("start_command") or None, install_command=get("install_command") or None)
     port = get("container_port")
     spec = AppSpec(
         slug=slug,
@@ -100,8 +103,37 @@ def spec_from_form(form: Any, slug: str, existing: AppSpec | None = None) -> tup
         cpus=float(get("cpus")) if get("cpus") else None,
         domains=domains,
     )
+    if spec.source.kind == "runtime" and not spec.container_port:  # proces w tle nie ma czego wystawiać pod domeną
+        spec.domains = []
     options = {"https": bool(form.get("https")), "force_ssl": bool(form.get("force_ssl")), "dns": bool(form.get("dns"))}
     return spec, options
+
+
+async def _save_upload(panel: Panel, file: Any) -> str | None:
+    """ZIP z formularza → plik tymczasowy (None, gdy nic nie wybrano)."""
+    if file is None or not getattr(file, "filename", ""):
+        return None
+    if not file.filename.lower().endswith(".zip"):
+        raise ValueError(t("msg.upload_zip"))
+    fd, tmp = tempfile.mkstemp(suffix=".zip", dir=panel.config.data_dir / "uploads")
+    size = 0
+    with os.fdopen(fd, "wb") as out:
+        while chunk := await file.read(1 << 20):
+            size += len(chunk)
+            if size > MAX_UPLOAD:
+                out.close()
+                os.unlink(tmp)
+                raise ValueError(t("msg.file_too_big_gb"))
+            out.write(chunk)
+    return tmp
+
+
+async def _publish(panel: Panel, node: dict, slug: str, tmp: str) -> int:
+    try:
+        result = await panel.node_client(node).upload_file(f"/api/apps/{slug}/upload", tmp)
+    finally:
+        os.unlink(tmp)
+    return (result or {}).get("files", 0)
 
 
 def start_deploy(panel: Panel, app: dict) -> Job:
@@ -130,8 +162,10 @@ def apps(request: Request, panel: Panel = Depends(get_panel)):
 def new_app(request: Request, template: str = "", panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):
     settings = panel.db.settings()
     prefill = panel.plugins.app_template(template) if template else None
+    nodes = _nodes(panel)
+    free = {n["id"]: resources.node_free(n["id"]) for n in nodes}
     return render(
-        request, "apps/new.html", title=t("apps.new"), nodes=_nodes(panel), base_domain=settings.get("base_domain", ""),
+        request, "apps/new.html", title=t("apps.new"), nodes=nodes, free=free, base_domain=settings.get("base_domain", ""),
         has_cf=bool(settings.get("cloudflare_token")), has_gateway=bool(panel.gateway()), prefill=prefill,
         app_templates=panel.plugins.app_templates(), template=template,
     )  # fmt: skip
@@ -147,6 +181,11 @@ async def create_app(request: Request, panel: Panel = Depends(get_panel), user: 
         return toast(t("msg.pick_paired_node"), "err", status=400)
     try:
         spec, options = spec_from_form(form, slug)
+        if panel.db.get("apps", spec.slug, key="slug"):
+            raise ValueError(t("msg.app_exists", slug=spec.slug))
+        upload = await _save_upload(panel, form.get("file")) if spec.source.kind in ("static", "runtime") else None
+        if upload:  # pliki trafiają na węzeł przed pierwszym wdrożeniem — zamiast plików startowych
+            await _publish(panel, node, spec.slug, upload)
         app_id = deploy.create_app_row(panel, name or slug, node["id"], spec, options)
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc), "err", status=400)
@@ -174,12 +213,60 @@ def app_page(request: Request, job: str = "", app: dict = Depends(_app), panel: 
     from ..services import uptime
 
     monitor = uptime.monitor_for(panel, "app", app["id"])
+    others = [(n, resources.node_free(n["id"])) for n in _nodes(panel) if n["id"] != app["node_id"]]
     return render(
         request, "apps/detail.html", title=app["name"], app=app, spec=spec, options=options, node=node, site=site, cert=cert,
         job=live_job, hook_url=hook_url, hook_secret=panel.sealer.unseal(app.get("webhook_secret")),
         monitor=monitor, monitor_stats=uptime.stats_for(panel, [("app", app["id"])]).get(("app", app["id"])),
-        settings=panel.db.settings(),
+        settings=panel.db.settings(), other_nodes=others, auto_capable=migrate.auto_capable(spec),
     )  # fmt: skip
+
+
+@router.get("/apps/{app_id}/resources")
+def app_resources(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel)):
+    from .nodes import history_labels
+
+    data = resources.app_history(panel, app["id"])
+    mem_chart = cpu_chart = None
+    cut = resources.trimmed(data, ("mem", "limit", "cpu"))
+    if cut:
+        starts, v = cut
+        labels = history_labels(starts, data["step"])
+        series = [("RAM MB", v["mem"], "#22d3ee", True)]
+        if any(v["limit"]):
+            series.append((t("res.limit") + " MB", v["limit"], "#f472b6", False))
+        mem_chart = charts.area_chart(labels, series, height=160)
+        cpu_chart = charts.area_chart(labels, [("CPU %", v["cpu"], "#8b5cf6", True)], height=160)
+    current = ((resources.LATEST.get(app["node_id"]) or {}).get("apps") or {}).get(app["slug"])
+    return render(request, "partials/app_resources.html", app=app, current=current, mem_chart=mem_chart, cpu_chart=cpu_chart)
+
+
+@router.post("/apps/{app_id}/move")
+async def move(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+               user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
+    form = await request.form()
+    target = panel.node(int(form.get("node_id") or 0))
+    if not target or target["status"] != "paired" or target["id"] == app["node_id"]:
+        return toast(t("msg.pick_paired_node"), "err", status=400)
+    running = panel.jobs.get(app.get("last_job") or "")
+    if app["status"] == "deploying" and running and not running.done:
+        return toast(t("msg.deploy_running"), "warn", status=409)
+    delete_old = bool(form.get("delete_old"))
+    job = panel.jobs.start("move", t("move.job_title", app=app["slug"], target=target["name"]),
+                           lambda job: migrate.run(panel, job, app["id"], target["id"], delete_old))  # fmt: skip
+    panel.db.update("apps", app["id"], last_job=job.id)
+    panel.notify(t("move.notify_started", user=user["email"], app=app["name"], target=target["name"]))
+    return redirect(request, f"/apps/{app['id']}?job={job.id}")
+
+
+@router.post("/apps/{app_id}/auto-move")
+async def auto_move(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                    user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
+    form = await request.form()
+    spec, options = deploy.load(panel, app)
+    enabled = bool(form.get("auto_move")) and migrate.auto_capable(spec)
+    panel.db.update("apps", app["id"], spec=deploy.store(panel, spec, {**options, "auto_move": enabled}))
+    return toast(t("move.auto_on") if enabled else t("move.auto_off"))
 
 
 @router.post("/apps/{app_id}/deploy")
@@ -223,24 +310,20 @@ async def remove(request: Request, app: dict = Depends(_app), panel: Panel = Dep
 @router.post("/apps/{app_id}/upload")
 async def upload(request: Request, file: UploadFile, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
                  user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
-    if app["kind"] not in ("static", "git"):
+    if app["kind"] not in ("static", "git", "runtime"):
         return toast(t("msg.upload_static_only"), "err", status=400)
-    if not (file.filename or "").lower().endswith(".zip"):
-        return toast(t("msg.upload_zip"), "err", status=400)
-    fd, tmp = tempfile.mkstemp(suffix=".zip", dir=panel.config.data_dir / "uploads")
-    size = 0
     try:
-        with os.fdopen(fd, "wb") as out:
-            while chunk := await file.read(1 << 20):
-                size += len(chunk)
-                if size > MAX_UPLOAD:
-                    return toast(t("msg.file_too_big_gb"), "err", status=413)
-                out.write(chunk)
-        node = panel.node(app["node_id"])
-        result = await panel.node_client(node).upload_file(f"/api/apps/{app['slug']}/upload", tmp)
-    finally:
-        os.unlink(tmp)
-    return toast(t("msg.published_files", count=result.get("files", 0)))
+        tmp = await _save_upload(panel, file)
+    except ValueError as exc:
+        return toast(str(exc), "err", status=400)
+    if not tmp:
+        return toast(t("msg.upload_zip"), "err", status=400)
+    count = await _publish(panel, panel.node(app["node_id"]), app["slug"], tmp)
+    spec, _ = deploy.load(panel, app)
+    if spec.source.kind == "runtime" and not RUNTIMES[spec.source.runtime or ""].live:  # nowy kod → zależności i restart
+        job = start_deploy(panel, app)
+        return redirect(request, f"/apps/{app['id']}?job={job.id}", t("msg.published_redeploy", count=count))
+    return toast(t("msg.published_files", count=count))
 
 
 @router.get("/apps/{app_id}/edit")
@@ -256,9 +339,10 @@ def edit_page(request: Request, app: dict = Depends(_app), panel: Panel = Depend
 async def edit(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
                user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
     form = await request.form()
-    old_spec, _ = deploy.load(panel, app)
+    old_spec, old_options = deploy.load(panel, app)
     try:
         spec, options = spec_from_form(form, app["slug"], old_spec)
+        options["auto_move"] = bool(old_options.get("auto_move")) and migrate.auto_capable(spec)
         if spec.endpoint != old_spec.endpoint:
             raise ValueError(t("msg.endpoint_change"))
     except (ValidationError, ValueError) as exc:

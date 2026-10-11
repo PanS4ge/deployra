@@ -56,15 +56,16 @@ def area_chart(
     series: Sequence[tuple[str, Sequence[float], str, bool]],
     width: int = 860,
     height: int = 240,
+    scale_max: float | None = None,
 ) -> Markup:
-    """Wykres: lista serii (nazwa, wartości, kolor, czy wypełniać). Podpowiedzi przez <title>."""
+    """Wykres: lista serii (nazwa, wartości, kolor, czy wypełniać). Podpowiedzi przez <title>. `scale_max` — stała skala (np. 100 dla %)."""
     n = len(labels)
     if n == 0:
         return Markup('<div class="muted small">{}</div>').format(t("common.no_data"))
     left, right, top, bottom = 44, 12, 12, 26
     inner_w, inner_h = width - left - right, height - top - bottom
     peak = max([max(values or [0]) for _, values, _, _ in series] + [1])
-    nice = _nice_max(peak)
+    nice = scale_max or _nice_max(peak)
     step = inner_w / max(n - 1, 1)
     parts = [f'<svg class="chart" viewBox="0 0 {width} {height}" preserveAspectRatio="none" role="img">']
     # siatka i oś Y

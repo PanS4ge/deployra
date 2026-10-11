@@ -349,6 +349,7 @@ def run_container(client: Any, spec: ContainerSpec) -> str:
     container = client.api.create_container(
         spec.image,
         command=spec.command,
+        working_dir=spec.working_dir,
         name=spec.name,
         environment=spec.env or None,
         labels=spec.labels or None,

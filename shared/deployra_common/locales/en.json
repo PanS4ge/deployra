@@ -91,6 +91,7 @@
       "site_conf_removed": "Site config removed",
       "site_updated": "Site files updated from the repository",
       "starting": "Starting {name} from {image} (port {host_port} → {port})",
+      "starting_worker": "Starting {name} ({image}) — background process, no port",
       "static_ready": "✔ Static site ready (site server on port {port})",
       "stopping_previous": "Stopping the previous version ({image})",
       "target": "Target: {name} (CT {vmid}, IP {ip})",
@@ -120,7 +121,14 @@
     },
     "job": {
       "deploy": "Deploying {name}",
-      "stack_deploy": "Stack {name}: deploy"
+      "export": "Packing {name} for the move",
+      "import": "Unpacking {name}",
+      "remove": "Removing {name}",
+      "stack_action": "Stack {name}: {action}",
+      "stack_deploy": "Stack {name}: deploy",
+      "stack_remove": "Stack {name}: removal",
+      "start": "Start {name}",
+      "stop": "Stop {name}"
     },
     "join_rejected": "the gateway rejected the join ({code}): {error}",
     "log": {
@@ -159,6 +167,13 @@
     "port_taken": "port {port} is taken",
     "pull_error": "pull error",
     "pulling": "Pulling {image}",
+    "runtime": {
+      "building_base": "Building the base image {image} (once per node)",
+      "install_failed": "Installing dependencies failed (exit code {code})",
+      "installing": "Installing dependencies ({image})",
+      "need_files": "No {pattern} file — upload the app files (ZIP or SFTP) and deploy again",
+      "starter": "New app — starter files: {files}"
+    },
     "sftp": {
       "bad_login": "SFTP login: lowercase letters, digits, . _ - (2–32 characters)",
       "need_auth": "enter a password or a public key"
@@ -169,6 +184,24 @@
       "starting": "Starting the shared static site server ({image}) on port {port}"
     },
     "system_container": "this is a Deployra system container — remove it with docker compose",
+    "transfer": {
+      "bad_id": "invalid bundle id",
+      "helper_failed": "The helper container exited with code {code}:\n{logs}",
+      "missing": "No such bundle",
+      "no_space": "Not enough disk space: {free} free, about {need} needed",
+      "packed": "Bundle ready: {size}",
+      "packing_files": "Packing the app files",
+      "packing_volume": "Packing volume {name}",
+      "set_aside": "{path} already existed — set aside as {backup}",
+      "sftp_taken": "SFTP account {name} belongs to another app here — skipping",
+      "skipped_bind": "Skipping host directory {path} — move it by hand if it is needed",
+      "started": "Started {name}",
+      "stopped": "Stopped {name} while packing",
+      "unpacking_files": "Unpacking the app files",
+      "unpacking_volume": "Unpacking volume {name}",
+      "volume_overwrite": "Volume {name} already exists — replacing its contents",
+      "wrong_app": "The bundle belongs to another app ({slug})"
+    },
     "unknown_action": "unknown action: {action}",
     "unpack_failed": "couldn't unpack the archive: {error}",
     "zip": {
@@ -213,6 +246,7 @@
       "bad_image": "invalid image name",
       "bad_location_path": "invalid location path",
       "bad_name": "invalid name: {value}",
+      "bad_runtime": "unknown app runtime",
       "bad_slug": "slug: lowercase letters, digits and hyphens (max 40 characters)",
       "bad_target_path": "invalid target path",
       "bad_username": "invalid username",
@@ -225,7 +259,7 @@
       "proxy_needs_upstream": "a proxy host needs a target (upstream)",
       "redirect_needs_domain": "a redirect needs a target domain",
       "relative_paths": "paths in the repository must be relative",
-      "static_local": "static sites run on the node host's Docker (local endpoint)",
+      "static_local": "static sites and file-based apps run on the node host's Docker (local endpoint)",
       "volume_source": "source: a volume name or an absolute path",
       "wildcard_dns": "a wildcard certificate needs the DNS challenge (Cloudflare)"
     },

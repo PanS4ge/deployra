@@ -91,6 +91,7 @@
       "site_conf_removed": "Usunięto konfigurację strony",
       "site_updated": "Pliki strony zaktualizowane z repozytorium",
       "starting": "Uruchamiam {name} z {image} (port {host_port} → {port})",
+      "starting_worker": "Uruchamiam {name} ({image}) — proces w tle, bez portu",
       "static_ready": "✔ Strona statyczna gotowa (serwer stron na porcie {port})",
       "stopping_previous": "Zatrzymuję poprzednią wersję ({image})",
       "target": "Cel: {name} (CT {vmid}, IP {ip})",
@@ -120,7 +121,14 @@
     },
     "job": {
       "deploy": "Wdrożenie {name}",
-      "stack_deploy": "Stack {name}: wdrożenie"
+      "export": "Pakowanie {name} do przeniesienia",
+      "import": "Rozpakowanie {name}",
+      "remove": "Usuwanie {name}",
+      "stack_action": "Stack {name}: {action}",
+      "stack_deploy": "Stack {name}: wdrożenie",
+      "stack_remove": "Stack {name}: usuwanie",
+      "start": "Start {name}",
+      "stop": "Zatrzymanie {name}"
     },
     "join_rejected": "bramka odrzuciła dołączenie ({code}): {error}",
     "log": {
@@ -159,6 +167,13 @@
     "port_taken": "port {port} jest zajęty",
     "pull_error": "błąd pobierania",
     "pulling": "Pobieram {image}",
+    "runtime": {
+      "building_base": "Buduję obraz bazowy {image} (raz na węźle)",
+      "install_failed": "Instalacja zależności nie powiodła się (kod {code})",
+      "installing": "Instaluję zależności ({image})",
+      "need_files": "Brak pliku {pattern} — wgraj pliki aplikacji (ZIP albo SFTP) i wdróż ponownie",
+      "starter": "Nowa aplikacja — pliki startowe: {files}"
+    },
     "sftp": {
       "bad_login": "login SFTP: małe litery, cyfry, . _ - (2–32 znaki)",
       "need_auth": "podaj hasło albo klucz publiczny"
@@ -169,6 +184,24 @@
       "starting": "Uruchamiam współdzielony serwer stron statycznych ({image}) na porcie {port}"
     },
     "system_container": "to kontener systemowy Deployry — usuń go przez docker compose",
+    "transfer": {
+      "bad_id": "nieprawidłowy identyfikator paczki",
+      "helper_failed": "Kontener pomocniczy zakończył się kodem {code}:\n{logs}",
+      "missing": "Nie ma takiej paczki",
+      "no_space": "Za mało miejsca na dysku: wolne {free}, potrzeba około {need}",
+      "packed": "Paczka gotowa: {size}",
+      "packing_files": "Pakuję pliki aplikacji",
+      "packing_volume": "Pakuję wolumen {name}",
+      "set_aside": "{path} już istniał — odłożony jako {backup}",
+      "sftp_taken": "Konto SFTP {name} należy tu do innej aplikacji — pomijam",
+      "skipped_bind": "Pomijam katalog hosta {path} — przenieś go ręcznie, jeśli jest potrzebny",
+      "started": "Uruchomiono {name}",
+      "stopped": "Zatrzymano {name} na czas pakowania",
+      "unpacking_files": "Rozpakowuję pliki aplikacji",
+      "unpacking_volume": "Rozpakowuję wolumen {name}",
+      "volume_overwrite": "Wolumen {name} już istnieje — zastępuję jego zawartość",
+      "wrong_app": "Paczka należy do innej aplikacji ({slug})"
+    },
     "unknown_action": "nieznana akcja: {action}",
     "unpack_failed": "nie udało się rozpakować archiwum: {error}",
     "zip": {
@@ -213,6 +246,7 @@
       "bad_image": "nieprawidłowa nazwa obrazu",
       "bad_location_path": "nieprawidłowa ścieżka lokacji",
       "bad_name": "nieprawidłowa nazwa: {value}",
+      "bad_runtime": "nieznane środowisko aplikacji",
       "bad_slug": "slug: małe litery, cyfry i myślniki (maks. 40 znaków)",
       "bad_target_path": "nieprawidłowa ścieżka docelowa",
       "bad_username": "nieprawidłowa nazwa użytkownika",
@@ -225,7 +259,7 @@
       "proxy_needs_upstream": "host proxy wymaga celu (upstream)",
       "redirect_needs_domain": "przekierowanie wymaga domeny docelowej",
       "relative_paths": "ścieżki w repozytorium muszą być względne",
-      "static_local": "strony statyczne działają na Dockerze hosta węzła (endpoint local)",
+      "static_local": "strony statyczne i aplikacje z plików działają na Dockerze hosta węzła (endpoint local)",
       "volume_source": "źródło: nazwa wolumenu albo ścieżka absolutna",
       "wildcard_dns": "certyfikat wildcard wymaga wyzwania DNS (Cloudflare)"
     },

@@ -45,6 +45,34 @@ class _LogStream:
         self._closed.set()
 
 
+def _fake_tar(container: dict) -> None:
+    """`tar czf /out/x.tar.gz …` w kontenerze pomocniczym → mały, poprawny plik w katalogu hosta zamontowanym jako /out."""
+    command = container.get("command") or []
+    if len(command) < 3 or command[0] != "tar" or "c" not in command[1]:
+        return
+    import io
+    import tarfile
+    from pathlib import Path
+
+    for source, bind in (container["host_config"].get("binds") or {}).items():
+        prefix = bind["bind"].rstrip("/") + "/"
+        if command[2].startswith(prefix):
+            with tarfile.open(Path(source) / command[2][len(prefix) :], "w:gz") as tar:
+                data = f"atrapa wolumenu {list(container['host_config']['binds'])[0]}\n".encode()
+                info = tarfile.TarInfo("README.txt")
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+
+
+def _bytes(limit: Any) -> int:
+    """"256m" → bajty (jak HostConfig.Memory w Dockerze; 0 = bez limitu)."""
+    if not limit:
+        return 0
+    text = str(limit).lower()
+    units = {"k": 1024, "m": 1024**2, "g": 1024**3}
+    return int(float(text[:-1]) * units[text[-1]]) if text[-1] in units else int(text)
+
+
 class FakeAPI:
     def __init__(self, demo: bool = False) -> None:
         self._ids = itertools.count(1)
@@ -55,6 +83,9 @@ class FakeAPI:
         ]
         self.volumes_ = [{"Name": "dane", "Driver": "local", "Mountpoint": "/var/lib/docker/volumes/dane/_data", "CreatedAt": "2026-09-01T10:00:00Z"}]
         self.pulled: list[str] = []
+        self.built: list[str] = []
+        self.oneoff_runs: list[dict] = []
+        self.on_oneoff: Any = None  # testy: podgląd/emulacja jednorazowych kontenerów (instalacja, tar wolumenów)
         self.crash_images: set[str] = set()
         self._cpu = 0
         if demo:
@@ -100,19 +131,36 @@ class FakeAPI:
         return kwargs
 
     def create_container(self, image: str, command: Any = None, name: str | None = None, environment: Any = None,
-                         labels: Any = None, ports: Any = None, host_config: Any = None) -> dict:  # fmt: skip
+                         labels: Any = None, ports: Any = None, host_config: Any = None, working_dir: str | None = None) -> dict:  # fmt: skip
         cid = hashlib.sha256(f"{next(self._ids)}-{name}-{time.time()}".encode()).hexdigest()  # losowe jak w Dockerze
         host_config = host_config or {}
         bindings = {k: (v[1] if isinstance(v, tuple) else v) for k, v in (host_config.get("port_bindings") or {}).items()}
         self.containers_[cid] = {
             "id": cid, "name": name or cid[:12], "image": image, "state": "created", "ports": bindings, "labels": labels or {},
-            "env": environment, "host_config": host_config, "created": int(time.time()),
+            "env": environment, "host_config": host_config, "created": int(time.time()), "command": command, "working_dir": working_dir,
+            "oom": False, "restarts": 0,
         }  # fmt: skip
         return {"Id": cid}
 
     def start(self, cid: str) -> None:
         c = self._find(cid)
+        if c["labels"].get("deployra.system") in ("install", "transfer"):  # jednorazowe kontenery kończą się od razu
+            c["state"] = "exited"
+            self.oneoff_runs.append({"image": c["image"], "command": c["command"], "binds": (c["host_config"].get("binds") or {})})
+            if self.on_oneoff:
+                self.on_oneoff(c)
+            elif c["labels"].get("deployra.system") == "transfer":
+                _fake_tar(c)
+            return
         c["state"] = "exited" if c["image"] in self.crash_images else "running"
+
+    def wait(self, cid: str, timeout: Any = None) -> dict:
+        c = self._find(cid)
+        return {"StatusCode": 1 if c["image"] in self.crash_images else 0}
+
+    def build(self, fileobj: Any = None, tag: str | None = None, **_: Any):
+        self.built.append(tag or "")
+        return iter([{"stream": "Step 1/2 : FROM base\n"}, {"stream": f"Successfully tagged {tag}\n"}])
 
     def stop(self, cid: str) -> None:
         self._find(cid)["state"] = "exited"
@@ -132,11 +180,13 @@ class FakeAPI:
         c = self._find(cid)
         running = c["state"] == "running"
         return {
-            "Id": c["id"], "Name": "/" + c["name"], "RestartCount": 0, "Created": "2026-10-10T08:00:00Z",
+            "Id": c["id"], "Name": "/" + c["name"], "Created": "2026-10-10T08:00:00Z",
             "Config": {"Image": c["image"], "Labels": c["labels"], "Env": [f"{k}={v}" for k, v in (c["env"] or {}).items()] or ["PATH=/usr/bin"],
                        "Cmd": ["nginx", "-g", "daemon off;"], "Entrypoint": None},
-            "State": {"Status": c["state"], "Running": running, "Restarting": False, "StartedAt": "2026-10-10T08:00:00Z"},
-            "HostConfig": {"RestartPolicy": {"Name": "unless-stopped"}},
+            "RestartCount": c.get("restarts", 0),
+            "State": {"Status": c["state"], "Running": running, "Restarting": False, "StartedAt": "2026-10-10T08:00:00Z",
+                      "OOMKilled": c.get("oom", False), "FinishedAt": "2026-10-10T09:00:00Z" if c.get("oom") else "0001-01-01T00:00:00Z"},
+            "HostConfig": {"RestartPolicy": {"Name": "unless-stopped"}, "Memory": _bytes(c["host_config"].get("mem_limit"))},
             "NetworkSettings": {"Networks": {"deployra": {"IPAddress": "172.30.0.5"}},
                                 "Ports": {k: [{"HostIp": "0.0.0.0", "HostPort": str(v)}] for k, v in c["ports"].items()}},
             "Mounts": [{"Name": "dane", "Source": "/var/lib/docker/volumes/dane/_data", "Destination": "/data", "RW": True}],
@@ -148,7 +198,7 @@ class FakeAPI:
     def logs(self, cid: str, tail: Any = None, stream: bool = False, follow: bool = False, timestamps: bool = False, **_: Any):
         c = self._find(cid)
         if stream:
-            return _LogStream(c["name"], int(tail or 0), follow)
+            return _LogStream(c["name"], int(tail or 0), follow and c["state"] == "running")
         return b"blad: brak konfiguracji\n" if c["image"] in self.crash_images else f"[{c['name']}] działa\n".encode()
 
     def stats(self, cid: str, stream: bool = False, one_shot: bool | None = None, decode: Any = None) -> dict:
@@ -215,15 +265,22 @@ class FakeAPI:
     def prune_networks(self) -> dict:
         return {"NetworksDeleted": []}
 
-    def volumes(self) -> dict:
+    def volumes(self, filters: dict | None = None) -> dict:
+        wanted = (filters or {}).get("label")
+        if wanted:
+            key, _, value = wanted.partition("=")
+            return {"Volumes": [v for v in self.volumes_ if (v.get("Labels") or {}).get(key) == value]}
         return {"Volumes": list(self.volumes_)}
 
-    def create_volume(self, name: str, **_: Any) -> dict:
-        self.volumes_.append({"Name": name, "Driver": "local", "Mountpoint": f"/var/lib/docker/volumes/{name}/_data"})
+    def create_volume(self, name: str, labels: dict | None = None, **_: Any) -> dict:
+        self.volumes_.append({"Name": name, "Driver": "local", "Mountpoint": f"/var/lib/docker/volumes/{name}/_data", "Labels": labels or {}})
         return {"Name": name}
 
     def inspect_volume(self, name: str) -> dict:
-        return next(v for v in self.volumes_ if v["Name"] == name)
+        for volume in self.volumes_:
+            if volume["Name"] == name:
+                return volume
+        raise NotFound(f"brak wolumenu {name}")
 
     def remove_volume(self, name: str, force: bool = False) -> None:
         self.volumes_ = [v for v in self.volumes_ if v["Name"] != name]

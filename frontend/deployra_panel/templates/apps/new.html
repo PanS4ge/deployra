@@ -6,12 +6,15 @@
 {% else %}
 {% set node_eps = {} %}
 {% for n in nodes %}{% set _ = node_eps.update({n.id|string: (n.info or {}).get("endpoints") or [{"id": "local", "name": "Host"}]}) %}{% endfor %}
-{% set pipeline = {"image": t("apps.pipeline_image"), "compose": "docker compose up", "static": t("apps.pipeline_static"), "git": t("apps.pipeline_git")} %}
-<form hx-post="/apps/new" hx-swap="none" class="stack"
+{% set pipeline = {"image": t("apps.pipeline_image"), "compose": "docker compose up", "static": t("apps.pipeline_static"), "git": t("apps.pipeline_git"), "runtime": t("apps.pipeline_runtime")} %}
+<form hx-post="/apps/new" hx-swap="none" hx-encoding="multipart/form-data" class="stack"
       x-data="{
         step: 1, kind: '{{ prefill.kind if prefill else 'image' }}', name: {{ (prefill.name if prefill else '') | tojson | forceescape }}, slug: '', slugEdited: false, domains: '', domainsEdited: false,
         base: {{ base_domain | tojson | forceescape }}, node: '{{ nodes[0].id }}', endpoint: '',
         eps: {{ node_eps | tojson | forceescape }}, pipeline: {{ pipeline | tojson | forceescape }},
+        runtime: 'php', rport: '', mem: '{{ prefill.memory_mb if prefill and prefill.memory_mb else '' }}', rts: {{ RUNTIME_META() | tojson | forceescape }},
+        pick(id) { this.kind = 'runtime'; this.runtime = id; this.rport = this.rts[id].port || ''; this.mem = this.rts[id].memory || ''; },
+        get worker() { return this.kind === 'runtime' && !this.rport; },
         slugify(t) { return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); },
         sync() { if (!this.slugEdited) this.slug = this.slugify(this.name); if (!this.domainsEdited && this.base && this.slug) this.domains = this.slug + '.' + this.base; },
         get static() { return this.kind === 'static'; },
@@ -38,6 +41,8 @@
       </div>
       {% endfor %}
     </div>
+    <div class="card-head"><h3><i class="bi bi-file-earmark-code"></i> {{ t("apps.from_files") }}</h3></div>
+    <div class="card-body">{% include "apps/_runtime_picker.html" %}</div>
     {% if app_templates %}
     <div class="card-head"><h3><i class="bi bi-grid-3x3-gap"></i> {{ t("apps.templates") }}</h3></div>
     <div class="card-body grid grid-3">
@@ -58,7 +63,7 @@
       <div class="field"><label>{{ t("apps.slug") }}</label><input class="input mono" name="slug" x-model="slug" @input="slugEdited = true; sync()" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" maxlength="40" required></div>
       <div class="field"><label>{{ t("apps.node") }}</label>
         <select class="select" name="node_id" x-model="node" @change="firstEp()">
-          {% for n in nodes %}<option value="{{ n.id }}">{{ n.name }}{{ (" (" ~ t("nodes.via_tunnel") ~ ")") if n.transport == "tunnel" }}</option>{% endfor %}
+          {% for n in nodes %}<option value="{{ n.id }}">{{ n.name }}{{ (" (" ~ t("nodes.via_tunnel") ~ ")") if n.transport == "tunnel" }}{% if free[n.id] is not none %} · {{ t("res.free_mb", mb=free[n.id]) }}{% endif %}</option>{% endfor %}
         </select>
       </div>
       <div class="field" x-show="(eps[node] || []).length > 1">
@@ -75,14 +80,14 @@
   <div class="card" x-show="step === 3" x-cloak>
     <div class="card-head"><h2>{{ t("apps.step_details") }}</h2></div>
     <div class="card-body stack">
-      {% set spec = prefill %}
+      {% set spec = prefill %}{% set upload_field = true %}
       {% include "apps/_source_fields.html" %}
       <details x-show="!static" {{ 'open' if prefill and (prefill.env or prefill.volumes) }}>
         <summary class="small muted" style="cursor: pointer"><i class="bi bi-sliders"></i> {{ t("apps.env_volumes_limits") }}</summary>
         <div class="form-grid" style="margin-top: 12px">
           <div class="field full"><label>{{ t("apps.env") }}</label><textarea class="textarea" name="env" style="min-height: 90px" placeholder="TZ=Europe/Warsaw">{{ prefill.env if prefill else '' }}</textarea></div>
           <div class="field full"><label>{{ t("apps.volumes") }}</label><textarea class="textarea" name="volumes" style="min-height: 70px" placeholder="{{ t('apps.volumes_placeholder') }}">{{ prefill.volumes if prefill else '' }}</textarea></div>
-          <div class="field"><label>{{ t("containers.memory") }}</label><input class="input" name="memory_mb" type="number" min="16" placeholder="{{ t('containers.no_limit') }}" value="{{ prefill.memory_mb if prefill and prefill.memory_mb else '' }}"></div>
+          <div class="field"><label>{{ t("containers.memory") }}</label><input class="input" name="memory_mb" type="number" min="16" placeholder="{{ t('containers.no_limit') }}" x-model="mem"></div>
           <div class="field"><label>{{ t("apps.cpus") }}</label><input class="input" name="cpus" type="number" step="0.1" min="0.1" placeholder="{{ t('containers.no_limit') }}"></div>
         </div>
       </details>
@@ -93,10 +98,12 @@
   <div class="card" x-show="step === 4" x-cloak>
     <div class="card-head"><h2>{{ t("apps.domain_https") }}</h2></div>
     <div class="card-body stack">
+      <div class="callout" x-show="worker"><i class="bi bi-cpu"></i><div class="small">{{ t("apps.worker_no_domain") }}</div></div>
+      <div class="stack" x-show="!worker">
       {% if not has_gateway %}<div class="callout warn"><i class="bi bi-diagram-3"></i><div class="small">{{ t("apps.no_gateway") }}</div></div>{% endif %}
       <div class="field">
         <label>{{ t("apps.domains") }}</label>
-        <textarea class="textarea" name="domains" style="min-height: 70px" x-model="domains" @input="domainsEdited = true" placeholder="blog.example.com"></textarea>
+        <textarea class="textarea" name="domains" style="min-height: 70px" x-model="domains" @input="domainsEdited = true" placeholder="blog.example.com" :disabled="worker"></textarea>
         <div class="hint">{{ t("apps.domains_hint") }}</div>
       </div>
       <div class="row" style="gap: 22px">
@@ -105,6 +112,7 @@
         <label class="check"><input type="checkbox" name="dns" value="1" {% if has_cf %}checked{% else %}disabled{% endif %}><span class="sw"></span><span>{{ t("apps.dns_record") }}{% if not has_cf %} <span class="muted small">{{ t("apps.add_token_hint") }}</span>{% endif %}</span></label>
       </div>
       <div class="callout"><i class="bi bi-rocket-takeoff"></i><div class="small">{{ t("apps.pipeline_hint_before") }} <span x-text="pipeline[kind]"></span> → {{ t("apps.pipeline_hint_after") }}</div></div>
+      </div>
     </div>
   </div>
 

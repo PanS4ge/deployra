@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty %}
+{% macro channel_fields(kind, values={}, secrets=[]) -%}
+  {% for f in kinds[kind].fields %}
+  <div class="field">
+    <label>{{ t("notify.field." ~ f.name) }}{% if not f.required %} <span class="muted small">({{ t("apps.optional") }})</span>{% endif %}</label>
+    {% if f.kind == "select" %}
+    <select class="select" name="f_{{ f.name }}">{% for o in f.options %}<option value="{{ o }}" {{ "selected" if values.get(f.name) == o }}>{{ o }}</option>{% endfor %}</select>
+    {% else %}
+    <input class="input {{ 'mono' if f.kind in ('url', 'secret') }}" name="f_{{ f.name }}" type="{{ 'password' if f.kind == 'secret' else ('number' if f.kind == 'number' else 'text') }}"
+           value="{{ values.get(f.name, '') }}" autocomplete="off"
+           placeholder="{{ t('apps.set_leave_empty') if f.name in secrets else f.placeholder }}">
+    {% endif %}
+  </div>
+  {% endfor %}
+{%- endmacro %}
+{% block content %}
+{% include "settings/_tabs.html" %}
+
+<div class="card">
+  <div class="card-head"><h3><i class="bi bi-broadcast"></i> {{ t("alerts.channels") }}</h3></div>
+  {% if channels %}
+  <div class="table-wrap">
+    <table class="table">
+      <tbody>
+      {% for c in channels %}
+        <tr>
+          <td style="width: 34px"><i class="bi bi-{{ kinds[c.kind].icon }}"></i></td>
+          <td>
+            <span class="name">{{ c.name }}</span> <span class="muted small">{{ t("notify.kind." ~ c.kind) }}</span>
+            {% if c.status %}<div class="small {{ 'muted' if not c.status[1] }}" {% if c.status[1] %}style="color: #fda4af"{% endif %}>{{ c.status[1] or t("notify.last_ok") }} · {{ c.status[0] | ago }}</div>{% endif %}
+            <details class="small" style="margin-top: 6px">
+              <summary class="muted" style="cursor: pointer">{{ t("common.edit") }}</summary>
+              <form class="form-grid" style="margin-top: 10px" hx-post="/settings/alerts/channels/{{ c.id }}" hx-swap="none">
+                <div class="field"><label>{{ t("common.name") }}</label><input class="input" name="name" value="{{ c.name }}" maxlength="60"></div>
+                {{ channel_fields(c.kind, c["values"], c.secrets) }}
+                <div class="field full row" style="justify-content: flex-end"><button class="btn sm primary">{{ t("common.save") }}</button></div>
+              </form>
+            </details>
+          </td>
+          <td>{% if c.enabled %}<span class="badge ok">{{ t("common.enabled") }}</span>{% else %}<span class="badge">{{ t("proxy.disabled") }}</span>{% endif %}</td>
+          <td class="right nowrap">
+            <button class="btn sm" hx-post="/settings/alerts/channels/{{ c.id }}/test" hx-swap="none"><span class="spin"></span><i class="bi bi-send"></i> {{ t("notify.test") }}</button>
+            <button class="btn sm ghost" hx-post="/settings/alerts/channels/{{ c.id }}/toggle" hx-swap="none">{{ t("common.disable") if c.enabled else t("common.enable") }}</button>
+            <button class="btn sm ghost icon" title="{{ t('common.delete') }}" hx-post="/settings/alerts/channels/{{ c.id }}/delete" hx-swap="none" hx-confirm="{{ t('notify.delete_confirm', name=c.name) }}" data-danger><i class="bi bi-trash"></i></button>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  <form class="card-body stack" hx-post="/settings/alerts/channels" hx-swap="none" x-data="{ kind: 'discord' }" style="border-top: 1px solid var(--border)">
+    <div class="rt-grid">
+      {% for kind, meta in kinds.items() %}
+      <div class="choice sm" :class="kind === '{{ kind }}' && 'on'" @click="kind = '{{ kind }}'"><i class="bi bi-{{ meta.icon }}"></i><div><b>{{ t("notify.kind." ~ kind) }}</b></div></div>
+      {% endfor %}
+    </div>
+    <input type="hidden" name="kind" :value="kind">
+    <div class="form-grid">
+      <div class="field"><label>{{ t("common.name") }}</label><input class="input" name="name" maxlength="60" :placeholder="kind"></div>
+      {% for kind in kinds %}<template x-if="kind === '{{ kind }}'"><div class="form-grid full" style="display: contents">{{ channel_fields(kind) }}</div></template>{% endfor %}
+    </div>
+    <div class="row" style="justify-content: flex-end"><button class="btn primary"><i class="bi bi-plus-lg"></i> {{ t("notify.add") }}</button></div>
+  </form>
+</div>
+
+<form class="card" hx-post="/settings/alerts/rules" hx-swap="none">
+  <div class="card-head"><h3><i class="bi bi-sliders"></i> {{ t("alerts.rules") }}</h3><span class="spacer"></span><button class="btn sm primary"><i class="bi bi-check2"></i> {{ t("common.save") }}</button></div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th></th><th>{{ t("alerts.rule_column") }}</th><th>{{ t("alerts.threshold") }}</th><th>{{ t("alerts.channels") }}</th></tr></thead>
+      <tbody>
+      {% for rule_id, rule in rules.items() %}{% set c = config[rule_id] %}
+        <tr>
+          <td style="width: 52px"><label class="check"><input type="checkbox" name="{{ rule_id }}.enabled" value="1" {{ "checked" if c.enabled }}><span class="sw"></span></label></td>
+          <td><span class="name">{{ t("alerts.rule." ~ rule_id) }}</span>
+            {% if rule.can_auto_move %}<label class="check small" style="margin-top: 6px"><input type="checkbox" name="{{ rule_id }}.auto_move" value="1" {{ "checked" if c.auto_move }}><span class="sw"></span><span>{{ t("alerts.auto_move") }}</span></label>{% endif %}
+          </td>
+          <td class="nowrap">
+            {% if rule.threshold is not none %}<input class="input sm" style="width: 74px; display: inline-block" type="number" step="1" min="1" name="{{ rule_id }}.threshold" value="{{ c.threshold | int }}"> {{ rule.unit }}{% endif %}
+            {% if rule.minutes is not none %}<span class="muted small">{{ t("alerts.for") }}</span> <input class="input sm" style="width: 64px; display: inline-block" type="number" min="0" max="1440" name="{{ rule_id }}.minutes" value="{{ c.minutes }}"> <span class="muted small">min</span>{% endif %}
+            {% if rule.threshold is none and rule.minutes is none %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td>
+            <div class="row" style="gap: 10px; flex-wrap: wrap">
+              <label class="check small"><input type="checkbox" name="{{ rule_id }}.channels" value="panel" {{ "checked" if "panel" in c.channels }}><span class="sw"></span><span>{{ t("notify.kind.panel") }}</span></label>
+              {% for ch in channels %}
+              <label class="check small"><input type="checkbox" name="{{ rule_id }}.channels" value="{{ ch.id }}" {{ "checked" if ch.id in c.channels }}><span class="sw"></span><span>{{ ch.name }}</span></label>
+              {% endfor %}
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</form>
+
+<div class="card">
+  <div class="card-head"><h3><i class="bi bi-clock-history"></i> {{ t("alerts.history") }}</h3></div>
+  {% if history %}
+  <div class="table-wrap">
+    <table class="table">
+      <tbody>
+      {% for a in history %}
+        <tr>
+          <td style="width: 110px">{% if a.status == "firing" %}<span class="badge err">{{ t("alerts.firing") }}</span>{% else %}<span class="badge">{{ t("alerts.resolved") }}</span>{% endif %}</td>
+          <td><span class="name">{{ t("alerts.title." ~ a.rule, name=a.target_name) }}</span><div class="small muted">{{ a.message }}</div></td>
+          <td class="nowrap small muted">{{ a.started_at | ago }}{% if a.resolved_at %} · {{ (a.resolved_at - a.started_at) | duration }}{% endif %}</td>
+          <td class="right">{% if a.status == "firing" %}<button class="btn sm ghost" hx-post="/alerts/{{ a.id }}/close" hx-swap="none">{{ t("alerts.close") }}</button>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}{{ empty("bell-slash", t("alerts.none")) }}{% endif %}
+</div>
+{% endblock %}

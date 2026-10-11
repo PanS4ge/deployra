@@ -11,6 +11,9 @@
 <div hx-get="/nodes/{{ node.id }}/vitals" hx-trigger="load, every 3s [!document.hidden]" hx-swap="innerHTML" hx-disinherit="*">
   <div class="card card-body muted">{{ t("nodes.loading_vitals") }}</div>
 </div>
+<div class="card" id="node-resources" hx-get="/nodes/{{ node.id }}/resources" hx-trigger="load" hx-swap="innerHTML" hx-disinherit="*">
+  <div class="card-body muted small">{{ t("common.loading") }}</div>
+</div>
 {% endif %}
 
 <div class="grid grid-2">

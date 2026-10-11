@@ -36,7 +36,7 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
     async def lifespan(app: FastAPI):
         import asyncio
 
-        from .services import updates, uptime, wg_peer
+        from .services import notify, resources, updates, uptime, wg_peer
 
         await run_in_threadpool(wg_peer.ensure_up, panel)
         await run_in_threadpool(panel.sessions.cleanup)
@@ -44,10 +44,12 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
         panel.db.execute("UPDATE apps SET status = 'error', last_error = ? WHERE status = 'deploying'", [i18n.t("msg.deploy_interrupted")])
         panel.db.execute("UPDATE certificates SET status = 'error', error = ? WHERE status = 'issuing'", [i18n.t("msg.cert_interrupted")])
         await run_in_threadpool(updates.finish_pending, panel)
+        await run_in_threadpool(notify.migrate_legacy_webhook, panel)
         panel.plugins.start(app)
         tasks = []
         if panel.config.monitoring:
             tasks.append(asyncio.create_task(uptime.loop(panel)))
+            tasks.append(asyncio.create_task(resources.loop(panel)))
         if panel.config.update_checks:
             tasks.append(asyncio.create_task(updates.loop(panel)))
         yield
