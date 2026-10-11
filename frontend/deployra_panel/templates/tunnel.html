@@ -2,8 +2,7 @@
 {% from "_macros.html" import copy_pill %}
 {% block content %}
 {% if not gateway %}
-<div class="grid grid-2">
-  <div class="card glow">
+<div class="card glow" style="max-width: 640px">
     <div class="card-head"><h2><i class="bi bi-link-45deg"></i> {{ t("tunnel.connect_title") }}</h2></div>
     <form class="card-body stack" hx-post="/tunnel/pair" hx-swap="none" x-data="{ adv: false }">
       <div class="field">
@@ -30,16 +29,6 @@
         <button class="btn primary"><span class="spin"></span><i class="bi bi-arrow-repeat"></i> {{ t("tunnel.sync") }}</button>
       </div>
     </form>
-  </div>
-  <div class="card">
-    <div class="card-head"><h2><i class="bi bi-diagram-3"></i> {{ t("common.how_it_works") }}</h2></div>
-    <div class="card-body stack small dim">
-      <p style="margin: 0">{{ t("tunnel.how_1") }}</p>
-      <pre class="code-block">{{ t("tunnel.how_diagram") }}</pre>
-      <p style="margin: 0">{{ t("tunnel.how_2") }}</p>
-      <p style="margin: 0">{{ t("tunnel.how_3") }}</p>
-    </div>
-  </div>
 </div>
 {% else %}
 <div class="grid grid-3">

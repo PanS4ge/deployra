@@ -3,7 +3,7 @@
 {% include "proxy/_tabs.html" %}
 {% if has(user, P.ALLOW_PROXY) %}
 <div class="card">
-  <div class="card-head"><h3><i class="bi bi-plus-circle"></i> {{ t("streams.new") }}</h3><span class="sub">{{ t("streams.examples") }}</span></div>
+  <div class="card-head"><h3><i class="bi bi-plus-circle"></i> {{ t("streams.new") }}</h3></div>
   <form class="card-body row" hx-post="/proxy/streams/save" hx-swap="none" x-data="{ via: 'node' }">
     <input class="input" style="width: 140px" name="listen_port" type="number" min="1" max="65535" placeholder="{{ t('streams.gateway_port_placeholder') }}" required>
     <span class="muted">→</span>

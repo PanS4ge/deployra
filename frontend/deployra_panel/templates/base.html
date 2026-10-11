@@ -22,7 +22,7 @@
   <aside class="sidebar" :class="nav && 'open'" @click.outside="nav = false">
     <a class="brand" href="/">
       {% include "_logo.html" %}
-      <span><b>Deployra</b><small>{{ t("nav.tagline") }}</small></span>
+      <span><b>Deployra</b></span>
     </a>
     {% set section = path.split('/')[1] if path != '/' else '' %}
     <a class="nav-item {{ 'active' if section == '' }}" href="/"><i class="bi bi-grid-1x2"></i> {{ t("nav.dashboard") }}</a>
@@ -37,7 +37,7 @@
     <a class="nav-item {{ 'active' if section == 'import' }}" href="/import/npm"><i class="bi bi-box-arrow-in-down"></i> {{ t("nav.import") }}</a>
     <a class="nav-item {{ 'active' if section == 'jobs' }}" href="/jobs"><i class="bi bi-activity"></i> {{ t("nav.jobs") }}</a>
     <a class="nav-item {{ 'active' if section == 'settings' }}" href="/settings"><i class="bi bi-gear"></i> {{ t("nav.settings") }}</a>
-    <div class="sidebar-foot">Deployra {{ VERSION }}<br><span class="muted">{{ t("nav.footer") }}</span></div>
+    <div class="sidebar-foot">Deployra {{ VERSION }}</div>
   </aside>
 
   <div class="main">

@@ -20,9 +20,8 @@
   "analytics": {
     "days": "{count} days",
     "legend_requests": "requests",
-    "legend_returning": "returning (seen on previous days)",
+    "legend_returning": "returning",
     "legend_uniques": "unique",
-    "no_bots": "no bots · no cookies",
     "no_data": "No data yet — Deployra-WG collects the statistics (nginx → syslog). Connect the gateway or wait for the first traffic.",
     "no_gateway_data": "No data from Deployra-WG",
     "requests": "Requests",
@@ -129,7 +128,6 @@
   },
   "auth": {
     "login": "Sign in",
-    "tagline": "Coolify for LowEnd boxes — deploy, proxy and tunnel in one place",
     "title_login": "Sign in",
     "title_setup": "Welcome to Deployra"
   },
@@ -197,7 +195,6 @@
     "enable": "Enable",
     "enabled": "enabled",
     "first_name": "First name",
-    "how_it_works": "How it works",
     "last_name": "Last name",
     "leave_empty_to_keep": "leave empty to keep the current one",
     "loading": "Loading…",
@@ -344,7 +341,6 @@
     "via_lan": "through the LAN of node {name}",
     "via_title": "Which node the gateway reaches this address through",
     "what": "What to import",
-    "where_sub": "target addresses from NPM",
     "where_title": "Where does traffic go now?"
   },
   "invite": {
@@ -541,7 +537,6 @@
     "apps": "Apps",
     "certs": "Certificates",
     "dashboard": "Dashboard",
-    "footer": "light, for LowEnd boxes ✦",
     "import": "Import from NPM",
     "jobs": "Jobs",
     "logout": "Sign out",
@@ -550,7 +545,6 @@
     "notifications": "Notifications",
     "proxy": "Proxy",
     "settings": "Settings",
-    "tagline": "deploy hub",
     "tools": "Tools",
     "traffic": "Traffic",
     "tunnel": "Tunnel (Deployra-WG)",
@@ -708,7 +702,6 @@
     "hint": "The node picks its move on the other side of the tunnel — and you see the response time on the way.",
     "lose": "loss",
     "pick": "Pick your move.",
-    "subtitle": "latency test",
     "title": "Rock, paper, scissors",
     "walkover": "The node forfeited — it didn't answer.",
     "win": "win"
@@ -753,8 +746,7 @@
     "domains": "Domains",
     "email_login": "Email (login)",
     "panel_domain_hint": "The gateway will expose the panel at this address (needed e.g. for Git webhooks).",
-    "start": "Let's go",
-    "tagline": "First-time setup — a few fields and we're off"
+    "start": "Let's go"
   },
   "sftp": {
     "account": "SFTP account",
@@ -861,7 +853,6 @@
   "streams": {
     "delete_confirm": "Delete stream :{port}?",
     "empty": "No streams. Remember to open the port on the VPS firewall.",
-    "examples": "e.g. a node's SFTP, a game server, MQTT",
     "gateway_port": "Gateway port",
     "gateway_port_placeholder": "gateway port",
     "lan_ip_placeholder": "or a LAN IP",
@@ -902,10 +893,6 @@
     "gateway_address": "Gateway address",
     "gateway_address_hint": "Host and bootstrap port (51821 by default) of the server running Deployra-WG.",
     "gateway_api": "Gateway API: {url}",
-    "how_1": "Deployra-WG runs on a VPS with a public IP. It is the WireGuard hub and runs nginx for public traffic, so there's <b>a single hop</b> to your home:",
-    "how_2": "The panel is a regular tunnel peer and controls nodes directly over WireGuard. Syncing is an X25519 key exchange confirmed with a one-time code, so nobody in between can swap the keys.",
-    "how_3": "Start the gateway: <code>docker compose -f deploy/gateway.compose.yml up -d</code>",
-    "how_diagram": "Internet ─► nginx (Deployra-WG) ─wg0─► node at home ─► container",
     "hub_key": "Hub key",
     "lan_subnets": "LAN subnets",
     "no_peers": "No peers — add your first node.",
@@ -1009,10 +996,6 @@
     "confirm_all": "Update all components to {version}?\n\nOrder: nodes → gateway → panel. The panel restarts last; apps keep running (traffic through the gateway pauses for a few seconds).",
     "confirm_one": "Update {name} to {version}?",
     "confirm_title": "Update to {version}",
-    "how_1": "Each component has a small <code>*-updater</code> container next to it (~1 MB RAM when idle, no network). Only it can talk to Docker — the panel and the gateway can't.",
-    "how_image": "<b>Registry images</b> (default, <code>ghcr.io/…/deployra-*</code>): <code>docker compose pull</code> + <code>up -d</code>, usually a few seconds.",
-    "how_native": "<b>Proxmox without Docker</b>: <code>install-native.sh --update</code> launched via <code>systemd-run</code>.",
-    "how_source": "<b>From source</b> (<code>DEPLOYRA_IMAGES=deployra</code> in <code>deploy/.env</code>): <code>git</code> fast-forwards the repository to the <code>vX.Y.Z</code> tag and rebuilds the images — slower, but no registry needed.",
     "in_progress": "Updating to <b>{version}</b>.",
     "last_check": "Last check: {ago}",
     "later": "Later",
@@ -1056,10 +1039,6 @@
     "empty_title": "No monitors",
     "every": "every {value}",
     "every_minute": "every minute",
-    "how_1": "Every minute the panel checks its monitors: <b>apps</b> (HTTP through the tunnel, added automatically), <b>nodes</b> (whether they respond), <b>containers</b> (turn on with the bell on the container list) and <b>your own URLs</b>.",
-    "how_2": "Uptime is computed from hourly aggregates (90 days); the bar shows the most recent checks.",
-    "how_webhook_off": "Notifications go to the bell in the panel — set a Discord/ntfy webhook in <a href=\"/settings\">Settings</a>.",
-    "how_webhook_on": "State changes are also sent to the webhook.",
     "interval": "Interval",
     "keyword": "Keyword (optional)",
     "keyword_placeholder": "must appear in the response",

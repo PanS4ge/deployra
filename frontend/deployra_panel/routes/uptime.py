@@ -26,8 +26,7 @@ def _monitor(monitor_id: int, panel: Panel = Depends(get_panel)) -> dict:
 def uptime_page(request: Request, panel: Panel = Depends(get_panel)):
     items = uptime.all_stats(panel)
     template = "partials/uptime_list.html" if request.headers.get("HX-Target") == "uptime-list" else "uptime.html"
-    return render(request, template, title="Uptime", items=items, 
-                  webhook=bool(panel.db.setting("notify_webhook")))  # fmt: skip
+    return render(request, template, title="Uptime", items=items)
 
 
 @router.post("/uptime/url")

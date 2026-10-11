@@ -20,9 +20,8 @@
   "analytics": {
     "days": "{count} dni",
     "legend_requests": "zapytania",
-    "legend_returning": "powracający (widziani w poprzednich dniach)",
+    "legend_returning": "powracający",
     "legend_uniques": "unikalni",
-    "no_bots": "bez botów · bez ciasteczek",
     "no_data": "Brak danych — statystyki zbiera Deployra-WG (nginx → syslog). Połącz bramkę albo poczekaj na pierwszy ruch.",
     "no_gateway_data": "Brak danych z Deployra-WG",
     "requests": "Zapytania",
@@ -129,7 +128,6 @@
   },
   "auth": {
     "login": "Zaloguj",
-    "tagline": "Coolify dla LowEndów — deploy, proxy i tunel w jednym miejscu",
     "title_login": "Logowanie",
     "title_setup": "Witaj w Deployrze"
   },
@@ -197,7 +195,6 @@
     "enable": "Włącz",
     "enabled": "włączony",
     "first_name": "Imię",
-    "how_it_works": "Jak to działa",
     "last_name": "Nazwisko",
     "leave_empty_to_keep": "zostaw puste, aby nie zmieniać",
     "loading": "Ładowanie…",
@@ -344,7 +341,6 @@
     "via_lan": "przez LAN węzła {name}",
     "via_title": "Przez który węzeł bramka dosięgnie tego adresu",
     "what": "Co importować",
-    "where_sub": "adresy docelowe z NPM",
     "where_title": "Dokąd teraz prowadzi ruch?"
   },
   "invite": {
@@ -541,7 +537,6 @@
     "apps": "Aplikacje",
     "certs": "Certyfikaty",
     "dashboard": "Pulpit",
-    "footer": "lekko, na LowEndy ✦",
     "import": "Import z NPM",
     "jobs": "Zadania",
     "logout": "Wyloguj",
@@ -550,7 +545,6 @@
     "notifications": "Powiadomienia",
     "proxy": "Proxy",
     "settings": "Ustawienia",
-    "tagline": "centrum deployu",
     "tools": "Narzędzia",
     "traffic": "Ruch",
     "tunnel": "Tunel (Deployra-WG)",
@@ -708,7 +702,6 @@
     "hint": "Węzeł losuje ruch po drugiej stronie tunelu — przy okazji widać czas odpowiedzi.",
     "lose": "przegrana",
     "pick": "Wybierz ruch.",
-    "subtitle": "test opóźnienia",
     "title": "Kamień, papier, nożyce",
     "walkover": "Węzeł poddał się walkowerem — nie odpowiedział.",
     "win": "wygrana"
@@ -753,8 +746,7 @@
     "domains": "Domeny",
     "email_login": "E-mail (login)",
     "panel_domain_hint": "Pod tym adresem bramka wystawi panel (potrzebne m.in. dla webhooków Gita).",
-    "start": "Zaczynamy",
-    "tagline": "Pierwsza konfiguracja — kilka pól i lecimy"
+    "start": "Zaczynamy"
   },
   "sftp": {
     "account": "Konto SFTP",
@@ -861,7 +853,6 @@
   "streams": {
     "delete_confirm": "Usunąć stream :{port}?",
     "empty": "Brak streamów. Pamiętaj o otwarciu portu na firewallu VPS.",
-    "examples": "np. SFTP węzła, serwer gry, MQTT",
     "gateway_port": "Port bramki",
     "gateway_port_placeholder": "port na bramce",
     "lan_ip_placeholder": "lub IP w LAN",
@@ -902,10 +893,6 @@
     "gateway_address": "Adres bramki",
     "gateway_address_hint": "Host i port bootstrapu (domyślnie 51821) serwera, na którym działa Deployra-WG.",
     "gateway_api": "API bramki: {url}",
-    "how_1": "Deployra-WG stoi na VPS z publicznym IP. Jest hubem WireGuarda i ma nginx dla ruchu publicznego, więc do domu jest <b>jeden skok</b>:",
-    "how_2": "Panel jest zwykłym peerem tunelu i steruje węzłami bezpośrednio przez WireGuarda. Synchronizacja to wymiana kluczy X25519 potwierdzona jednorazowym kodem, więc nikt po drodze nie podmieni kluczy.",
-    "how_3": "Start bramki: <code>docker compose -f deploy/gateway.compose.yml up -d</code>",
-    "how_diagram": "Internet ─► nginx (Deployra-WG) ─wg0─► węzeł w domu ─► kontener",
     "hub_key": "Klucz huba",
     "lan_subnets": "Podsieci LAN",
     "no_peers": "Brak peerów — dodaj pierwszy węzeł.",
@@ -1009,10 +996,6 @@
     "confirm_all": "Zaktualizować wszystkie komponenty do {version}?\n\nKolejność: węzły → bramka → panel. Panel zrestartuje się na końcu, aplikacje działają dalej (ruch przez bramkę zatrzyma się na kilka sekund).",
     "confirm_one": "Zaktualizować {name} do {version}?",
     "confirm_title": "Aktualizacja do {version}",
-    "how_1": "Każdy komponent ma obok siebie mały kontener <code>*-updater</code> (w spoczynku ~1 MB RAM, bez sieci). Tylko on ma dostęp do Dockera — panel i bramka nie.",
-    "how_image": "<b>Obrazy z rejestru</b> (domyślnie, <code>ghcr.io/…/deployra-*</code>): <code>docker compose pull</code> + <code>up -d</code>, zwykle kilkanaście sekund.",
-    "how_native": "<b>Proxmox bez Dockera</b>: <code>install-native.sh --update</code> uruchamiany przez <code>systemd-run</code>.",
-    "how_source": "<b>Ze źródeł</b> (<code>DEPLOYRA_IMAGES=deployra</code> w <code>deploy/.env</code>): <code>git</code> przewija repozytorium do taga <code>vX.Y.Z</code> i przebudowuje obrazy — wolniej, ale bez rejestru.",
     "in_progress": "Trwa aktualizacja do <b>{version}</b>.",
     "last_check": "Ostatnie sprawdzenie: {ago}",
     "later": "Później",
@@ -1056,10 +1039,6 @@
     "empty_title": "Brak monitorów",
     "every": "co {value}",
     "every_minute": "co minutę",
-    "how_1": "Panel co minutę sprawdza monitory: <b>aplikacje</b> (HTTP przez tunel, dodawane automatycznie), <b>węzły</b> (czy odpowiadają), <b>kontenery</b> (włączysz dzwonkiem na liście kontenerów) i <b>własne adresy URL</b>.",
-    "how_2": "Uptime liczę z agregatów godzinowych (90 dni), pasek pokazuje ostatnie sprawdzenia.",
-    "how_webhook_off": "Powiadomienia trafiają do dzwonka w panelu — webhook Discorda/ntfy ustawisz w <a href=\"/settings\">Ustawieniach</a>.",
-    "how_webhook_on": "Zmiany stanu lecą też na webhook.",
     "interval": "Interwał",
     "keyword": "Słowo kluczowe (opcjonalnie)",
     "keyword_placeholder": "musi wystąpić w odpowiedzi",
