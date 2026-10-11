@@ -13,6 +13,7 @@ from deployra_common.updates import UpdateAgent
 
 from .config import Config
 from .db import Database, now
+from .i18n import t
 from .security import LoginLimiter, Sealer, Sessions
 
 NODE_API_PORT = 2750
@@ -29,6 +30,7 @@ class Panel:
         self.limiter = LoginLimiter()
         self.jobs = JobRegistry()
         self.updates = UpdateAgent(config.update_dir)
+        self.default_language: str | None = self.db.setting("language") or config.language or None  # odświeżane przy zapisie ustawień
         self._clients: dict[str, tuple[str, SignedClient]] = {}
 
     # --- użytkownicy ----------------------------------------------------------------
@@ -72,7 +74,7 @@ class Panel:
 
     def node_client(self, node: dict[str, Any]) -> SignedClient:
         if node["status"] != "paired" or not node.get("secret"):
-            raise LookupError("węzeł nie jest jeszcze sparowany")
+            raise LookupError(t("nodes.not_paired"))
         return self._client(f"node-{node['id']}", self.node_url(node), self.sealer.unseal_bytes(node["secret"]))
 
     def node(self, node_id: int) -> dict[str, Any] | None:

@@ -5,14 +5,14 @@
     <form class="stack" hx-post="/login" hx-swap="none">
       <input type="hidden" name="next" value="{{ next }}">
       <div class="field">
-        <label for="email">E-mail</label>
+        <label for="email">{{ t("common.email") }}</label>
         <input class="input" id="email" name="email" type="email" autocomplete="username" required autofocus>
       </div>
       <div class="field">
-        <label for="password">Hasło</label>
+        <label for="password">{{ t("common.password") }}</label>
         <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
       </div>
-      <button class="btn primary" type="submit"><span class="spin"></span><i class="bi bi-rocket-takeoff"></i> Zaloguj</button>
+      <button class="btn primary" type="submit"><span class="spin"></span><i class="bi bi-rocket-takeoff"></i> {{ t("auth.login") }}</button>
     </form>
   </div>
 </div>

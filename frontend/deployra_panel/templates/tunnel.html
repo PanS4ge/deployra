@@ -4,78 +4,78 @@
 {% if not gateway %}
 <div class="grid grid-2">
   <div class="card glow">
-    <div class="card-head"><h2><i class="bi bi-link-45deg"></i> Połącz z Deployra-WG</h2></div>
+    <div class="card-head"><h2><i class="bi bi-link-45deg"></i> {{ t("tunnel.connect_title") }}</h2></div>
     <form class="card-body stack" hx-post="/tunnel/pair" hx-swap="none" x-data="{ adv: false }">
       <div class="field">
-        <label>Adres bramki</label>
+        <label>{{ t("tunnel.gateway_address") }}</label>
         <input class="input" name="address" placeholder="vps.example.com:51821" required>
-        <div class="hint">Host i port bootstrapu (domyślnie 51821) serwera, na którym działa Deployra-WG.</div>
+        <div class="hint">{{ t("tunnel.gateway_address_hint") }}</div>
       </div>
       <div class="field">
-        <label>Kod synchronizacji</label>
+        <label>{{ t("tunnel.sync_code") }}</label>
         <input class="input mono" name="code" placeholder="DPLR-XXXX-XXXX-XXXX" required autocomplete="off">
-        <div class="hint">Znajdziesz go w logach: <code>docker logs deployra-wg</code></div>
+        <div class="hint">{{ t("tunnel.sync_code_hint") }}</div>
       </div>
-      <label class="check"><input type="checkbox" name="colocated" value="1"><span class="sw"></span><span>Panel działa na tym samym serwerze co bramka</span></label>
+      <label class="check"><input type="checkbox" name="colocated" value="1"><span class="sw"></span><span>{{ t("tunnel.colocated") }}</span></label>
       {% if not wg_available %}
-      <div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div class="small">Ten panel nie postawi sam tunelu (brak <code>wireguard-tools</code>, Linuksa albo ustawione <code>DEPLOYRA_WG=off</code>). Zaznacz opcję powyżej, jeśli panel stoi obok bramki, albo w trybie testowym podaj adres API bramki w ustawieniach zaawansowanych.</div></div>
+      <div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div class="small">{{ t("tunnel.no_wg_hint") }}</div></div>
       {% endif %}
-      <a href="#" class="small" @click.prevent="adv = !adv"><i class="bi bi-sliders"></i> Zaawansowane</a>
+      <a href="#" class="small" @click.prevent="adv = !adv"><i class="bi bi-sliders"></i> {{ t("common.advanced") }}</a>
       <div class="field" x-show="adv" x-cloak>
-        <label>Adres API bramki (nadpisanie)</label>
+        <label>{{ t("tunnel.api_override") }}</label>
         <input class="input" name="api_override" placeholder="http://10.66.0.1:2751">
-        <div class="hint">Zostaw puste. Przydaje się tylko w środowisku testowym bez tunelu.</div>
+        <div class="hint">{{ t("tunnel.api_override_hint") }}</div>
       </div>
       <div class="row" style="justify-content: flex-end">
-        <button class="btn primary"><span class="spin"></span><i class="bi bi-arrow-repeat"></i> Synchronizuj</button>
+        <button class="btn primary"><span class="spin"></span><i class="bi bi-arrow-repeat"></i> {{ t("tunnel.sync") }}</button>
       </div>
     </form>
   </div>
   <div class="card">
-    <div class="card-head"><h2><i class="bi bi-diagram-3"></i> Jak to działa</h2></div>
+    <div class="card-head"><h2><i class="bi bi-diagram-3"></i> {{ t("common.how_it_works") }}</h2></div>
     <div class="card-body stack small dim">
-      <p style="margin: 0">Deployra-WG stoi na VPS z publicznym IP. Jest hubem WireGuarda i ma nginx dla ruchu publicznego, więc do domu jest <b>jeden skok</b>:</p>
-      <pre class="code-block">Internet ─► nginx (Deployra-WG) ─wg0─► węzeł w domu ─► kontener</pre>
-      <p style="margin: 0">Panel jest zwykłym peerem tunelu i steruje węzłami bezpośrednio przez WireGuarda. Synchronizacja to wymiana kluczy X25519 potwierdzona jednorazowym kodem, więc nikt po drodze nie podmieni kluczy.</p>
-      <p style="margin: 0">Start bramki: <code>docker compose -f deploy/gateway.compose.yml up -d</code></p>
+      <p style="margin: 0">{{ t("tunnel.how_1") }}</p>
+      <pre class="code-block">{{ t("tunnel.how_diagram") }}</pre>
+      <p style="margin: 0">{{ t("tunnel.how_2") }}</p>
+      <p style="margin: 0">{{ t("tunnel.how_3") }}</p>
     </div>
   </div>
 </div>
 {% else %}
 <div class="grid grid-3">
   <div class="card stat">
-    <div class="label"><i class="bi bi-hdd-rack"></i> Bramka</div>
+    <div class="label"><i class="bi bi-hdd-rack"></i> {{ t("tunnel.gateway") }}</div>
     <div class="value" style="font-size: 1.3rem">{{ gateway.public_host }}</div>
-    <div class="small muted">UDP {{ gateway.wg_port }} · podsieć {{ gateway.subnet }}</div>
+    <div class="small muted">UDP {{ gateway.wg_port }} · {{ t("tunnel.subnet", subnet=gateway.subnet) }}</div>
   </div>
   <div class="card stat">
-    <div class="label"><i class="bi bi-pc-display"></i> Panel w tunelu</div>
-    <div class="value" style="font-size: 1.3rem">{{ gateway.panel_address or "na hoście bramki" }}</div>
-    <div class="small muted">API bramki: {{ gateway.api_url }}</div>
+    <div class="label"><i class="bi bi-pc-display"></i> {{ t("tunnel.panel_in_tunnel") }}</div>
+    <div class="value" style="font-size: 1.3rem">{{ gateway.panel_address or t("tunnel.on_gateway_host") }}</div>
+    <div class="small muted">{{ t("tunnel.gateway_api", url=gateway.api_url) }}</div>
   </div>
   <div class="card stat">
-    <div class="label"><i class="bi bi-key"></i> Klucz huba</div>
+    <div class="label"><i class="bi bi-key"></i> {{ t("tunnel.hub_key") }}</div>
     <div>{{ copy_pill(gateway.hub_public_key) }}</div>
-    <div class="small muted">zsynchronizowano {{ gateway.created_at | ago }}</div>
+    <div class="small muted">{{ t("tunnel.synced_ago", ago=gateway.created_at | ago) }}</div>
   </div>
 </div>
 
 <div class="card">
   <div class="card-head">
-    <h2><i class="bi bi-broadcast"></i> Peery tunelu</h2>
-    <a class="btn sm" href="/nodes/add"><i class="bi bi-plus-lg"></i> Dodaj węzeł</a>
+    <h2><i class="bi bi-broadcast"></i> {{ t("tunnel.peers") }}</h2>
+    <a class="btn sm" href="/nodes/add"><i class="bi bi-plus-lg"></i> {{ t("nodes.add") }}</a>
   </div>
   <div hx-get="/tunnel/status" hx-trigger="load, every 10s [!document.hidden]" hx-swap="innerHTML" hx-disinherit="*">
-    <div class="card-body muted">Pytam bramkę o status…</div>
+    <div class="card-body muted">{{ t("tunnel.asking_status") }}</div>
   </div>
 </div>
 
 {% if has(user, P.ALLOW_TUNNEL) %}
 <div class="card">
-  <div class="card-head"><h3><i class="bi bi-exclamation-octagon"></i> Strefa ryzyka</h3></div>
+  <div class="card-head"><h3><i class="bi bi-exclamation-octagon"></i> {{ t("settings.tab_risky") }}</h3></div>
   <div class="card-body row between">
-    <div class="small dim">Odłączenie usuwa klucze bramki z panelu. Węzły w tunelu będą nieosiągalne, dopóki nie zsynchronizujesz bramki ponownie.</div>
-    <button class="btn danger" hx-post="/tunnel/unlink" hx-confirm="Odłączyć Deployra-WG od panelu?" data-danger data-math><i class="bi bi-plug"></i> Odłącz</button>
+    <div class="small dim">{{ t("tunnel.unlink_hint") }}</div>
+    <button class="btn danger" hx-post="/tunnel/unlink" hx-confirm="{{ t('tunnel.unlink_confirm') }}" data-danger data-math><i class="bi bi-plug"></i> {{ t("tunnel.unlink") }}</button>
   </div>
 </div>
 {% endif %}

@@ -3,32 +3,32 @@
 {% include "proxy/_tabs.html" %}
 {% if has(user, P.ALLOW_PROXY) %}
 <div class="card">
-  <div class="card-head"><h3><i class="bi bi-plus-circle"></i> Nowy stream</h3><span class="sub">np. SFTP węzła, serwer gry, MQTT</span></div>
+  <div class="card-head"><h3><i class="bi bi-plus-circle"></i> {{ t("streams.new") }}</h3><span class="sub">{{ t("streams.examples") }}</span></div>
   <form class="card-body row" hx-post="/proxy/streams/save" hx-swap="none" x-data="{ via: 'node' }">
-    <input class="input" style="width: 140px" name="listen_port" type="number" min="1" max="65535" placeholder="port na bramce" required>
+    <input class="input" style="width: 140px" name="listen_port" type="number" min="1" max="65535" placeholder="{{ t('streams.gateway_port_placeholder') }}" required>
     <span class="muted">→</span>
     <select class="select" style="width: 200px" name="node_id" x-show="via === 'node'">{% for n in node_list if n.status == "paired" %}<option value="{{ n.id }}">{{ n.name }}</option>{% endfor %}</select>
-    <input class="input mono" style="width: 170px" name="upstream_host" placeholder="lub IP w LAN" @input="via = $event.target.value ? 'host' : 'node'">
+    <input class="input mono" style="width: 170px" name="upstream_host" placeholder="{{ t('streams.lan_ip_placeholder') }}" @input="via = $event.target.value ? 'host' : 'node'">
     <input class="input" style="width: 120px" name="upstream_port" type="number" min="1" max="65535" placeholder="port" required>
     <label class="check"><input type="checkbox" name="tcp" value="1" checked><span class="sw"></span><span>TCP</span></label>
     <label class="check"><input type="checkbox" name="udp" value="1"><span class="sw"></span><span>UDP</span></label>
-    <button class="btn primary"><i class="bi bi-plus-lg"></i> Dodaj</button>
+    <button class="btn primary"><i class="bi bi-plus-lg"></i> {{ t("common.add") }}</button>
   </form>
 </div>
 {% endif %}
 <div class="card">
   <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>Port bramki</th><th>Cel</th><th>Protokół</th><th></th></tr></thead>
+    <thead><tr><th>{{ t("streams.gateway_port") }}</th><th>{{ t("proxy.target") }}</th><th>{{ t("streams.protocol") }}</th><th></th></tr></thead>
     <tbody>
     {% for s in streams %}
       <tr>
         <td class="name mono">:{{ s.listen_port }}</td>
         <td class="mono small">{% if s.node_id %}<i class="bi bi-hdd-network"></i> {{ (nodes.get(s.node_id) or {}).get("name", "?") }}{% else %}{{ s.upstream_host }}{% endif %}:{{ s.upstream_port }}</td>
         <td>{% if s.tcp %}<span class="badge">TCP</span>{% endif %} {% if s.udp %}<span class="badge">UDP</span>{% endif %}</td>
-        <td class="actions">{% if has(user, P.ALLOW_PROXY) %}<button class="btn icon sm ghost" hx-post="/proxy/streams/{{ s.id }}/delete" hx-swap="none" hx-confirm="Usunąć stream :{{ s.listen_port }}?" data-danger><i class="bi bi-trash"></i></button>{% endif %}</td>
+        <td class="actions">{% if has(user, P.ALLOW_PROXY) %}<button class="btn icon sm ghost" hx-post="/proxy/streams/{{ s.id }}/delete" hx-swap="none" hx-confirm="{{ t('streams.delete_confirm', port=s.listen_port) }}" data-danger><i class="bi bi-trash"></i></button>{% endif %}</td>
       </tr>
-    {% else %}<tr><td colspan="4" class="muted">Brak streamów. Pamiętaj o otwarciu portu na firewallu VPS.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="4" class="muted">{{ t("streams.empty") }}</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>

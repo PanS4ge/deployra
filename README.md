@@ -1,149 +1,169 @@
 # Deployra ✦
 
-**Coolify dla LowEndów.** Jedno miejsce do deployu: aplikacja → domena → DNS → certyfikat → tunel do domu.
-Zastępuje zestaw *strona z FTP + Portainer + Nginx Proxy Manager (×2 z WireGuardem)* i działa na 512 MB RAM.
+**English** · [Polski](README.pl.md)
+
+**Coolify for LowEnd boxes.** One place to deploy: app → domain → DNS → certificate → tunnel to your home lab.
+It replaces the *FTP page + Portainer + Nginx Proxy Manager (×2 with WireGuard)* combo and runs on 512 MB of RAM.
 
 ```
-                      Internet (80/443 albo Cloudflare Tunnel)
+                      Internet (80/443 or Cloudflare Tunnel)
                                    │
  ┌──────────── VPS ────────────────▼──────────────────────────┐
- │ Deployra-WG   hub WireGuard 10.66.0.1 · nginx · lego · cloudflared │
+ │ Deployra-WG   WireGuard hub 10.66.0.1 · nginx · lego · cloudflared │
  └──────┬──────────────────────────────┬──────────────────────┘
-        │ tunel WG                     │ tunel WG
+        │ WG tunnel                    │ WG tunnel
  ┌──────▼─────────────┐        ┌───────▼──────────────────────┐
  │ Deployra (panel)   │──wg──► │ Deployra Backend 10.66.0.N   │
- │ gdziekolwiek       │ HMAC   │ Docker, stacki, aplikacje,   │
+ │ anywhere           │ HMAC   │ Docker, stacks, apps,        │
  └────────────────────┘        │ Git, SFTP, terminal, Proxmox │
                                └──────────────────────────────┘
 ```
 
-Ruch publiczny idzie **jednym skokiem**: `nginx na bramce → wg0 → węzeł → kontener` (zamiast NPM → NPM-z-WG → host).
+Public traffic takes **a single hop**: `nginx on the gateway → wg0 → node → container` (instead of NPM → NPM-with-WG → host).
 
-## Co potrafi
+## Features
 
-| Obszar | Funkcje |
+| Area | What you get |
 |---|---|
-| **Aplikacje** | kreator: obraz Dockera, docker-compose, strona statyczna (ZIP + SFTP), repozytorium Git (build z Dockerfile, webhook GitHub/Gitea) · domena, rekord DNS w Cloudflare, Let's Encrypt i test przez tunel w jednym kroku · rollback |
-| **Docker** (zamiast Portainera) | kontenery, logi i statystyki na żywo, terminal w przeglądarce, obrazy, wolumeny, sieci, stacki compose |
-| **Proxmox** | backend na hoście Proxmoxa pokazuje **każdy kontener LXC z Dockerem** — bez instalowania agenta w każdym CT |
-| **Proxy** (zamiast NPM) | hosty proxy, przekierowania, hosty 404, streamy TCP/UDP, listy dostępu, własne lokacje, surowy `advanced` nginx z automatycznym rollbackiem |
-| **Import z NPM** | z pliku `database.sqlite` (razem z hasłami list dostępu) albo przez API; mapowanie starych adresów na węzły; certyfikaty przenoszone albo wystawiane na nowo |
-| **Tunel** | hub WireGuard, dołączanie węzłów tokenem, routing podsieci LAN (NAS, Home Assistant…), węzły widzą się nawzajem |
-| **Cloudflare** | rekordy A/AAAA per host (bez wildcarda), certyfikaty wildcard (DNS-01), **Cloudflare Tunnel** (cloudflared — bez publicznego IP i otwartych portów) |
-| **Odwiedziny** | unikalni i powracający per domena, wykresy jak w Cloudflare — bez ciasteczek, bez botów, liczone na bramce z logów nginx |
-| **Uptime** (à la Uptime Kuma) | monitory aplikacji, kontenerów, węzłów i URL, uptime 24 h / 7 dni / 30 dni, powiadomienia (panel, Discord, ntfy, Slack) |
-| **Panel** | FastAPI + Jinja2 + htmx + Alpine (bez NiceGUI, bez kroku build), ciemny kosmiczny motyw, użytkownicy i uprawnienia, SQLite albo MySQL/MariaDB |
-| **Aktualizacje** | panel sprawdza wydania, pokazuje baner „Dostępna aktualizacja” i na „Aktualizuj” podmienia w tle węzły, bramkę i siebie (albo robi to sam, jeśli włączysz automat) |
+| **Apps** | wizard: Docker image, docker-compose, static site (ZIP + SFTP), Git repository (Dockerfile build, GitHub/Gitea webhook) · domain, Cloudflare DNS record, Let's Encrypt and a test through the tunnel in one step · rollback |
+| **Docker** (instead of Portainer) | containers, live logs and stats, in-browser terminal, images, volumes, networks, compose stacks |
+| **Proxmox** | a backend on the Proxmox host shows **every LXC container running Docker** — no agent inside each CT |
+| **Proxy** (instead of NPM) | proxy hosts, redirects, 404 hosts, TCP/UDP streams, access lists, custom locations, raw `advanced` nginx with automatic rollback |
+| **Import from NPM** | from `database.sqlite` (including access list passwords) or through the API; map old targets to nodes; move certificates or reissue them |
+| **Tunnel** | WireGuard hub, join nodes with a token, LAN subnet routing (NAS, Home Assistant…), nodes can reach each other |
+| **Cloudflare** | per-host A/AAAA records (no wildcard needed), wildcard certificates (DNS-01), **Cloudflare Tunnel** (cloudflared — no public IP, no open ports) |
+| **Visits** | unique and returning visitors per domain, Cloudflare-style charts — no cookies, no bots, counted on the gateway from nginx logs |
+| **Uptime** (à la Uptime Kuma) | monitors for apps, containers, nodes and URLs, 24 h / 7 d / 30 d uptime, notifications (panel, Discord, ntfy, Slack) |
+| **Panel** | FastAPI + Jinja2 + htmx + Alpine (no build step), dark cosmic theme, users and permissions, SQLite or MySQL/MariaDB |
+| **Languages** | Polish and English — every user picks their own in the account menu; a new language is a single JSON file |
+| **Updates** | the panel checks for releases, shows an “Update available” banner and on “Update” replaces nodes, the gateway and itself in the background (or does it on its own if you enable auto-update) |
 
-## Szybki start
+## Quick start
 
-Wymagania: Linux z Dockerem i pluginem compose. Gotowe obrazy (amd64 + arm64) są w GHCR — nic nie budujesz.
-Który plik z `deploy/` do czego służy, opisuje [deploy/README.md](deploy/README.md).
+Requirements: Linux with Docker and the compose plugin. Ready-made images (amd64 + arm64) live in GHCR — nothing to build.
+Which file in `deploy/` is for what: [deploy/README.md](deploy/README.md).
 
-### 1. VPS — bramka i panel
+Add `DEPLOYRA_LANG=en` (in `deploy/.env` or in front of the commands) to get English container logs and visitor pages.
+
+### 1. VPS — gateway and panel
 
 ```bash
 git clone https://github.com/PanS4ge/deployra.git && cd deployra
-DEPLOYRA_PUBLIC_HOST=vps.example.com docker compose -f deploy/vps.compose.yml up -d
-docker logs deployra-wg | grep "Kod synchronizacji"
+DEPLOYRA_LANG=en DEPLOYRA_PUBLIC_HOST=vps.example.com docker compose -f deploy/vps.compose.yml up -d
+docker logs deployra-wg | grep "Sync code"
 ```
 
-Otwórz panel (np. przez `ssh -L 8080:127.0.0.1:8080 vps`), przejdź konfigurację, a potem w **Tunel** wpisz adres `127.0.0.1:51821`, kod
-i zaznacz „Panel działa na tym samym serwerze co bramka”. Panel wystawisz publicznie, dodając host proxy `deploy.example.com → 127.0.0.1:8080`.
+Open the panel (e.g. via `ssh -L 8080:127.0.0.1:8080 vps`), finish the setup, then on **Tunnel** enter `127.0.0.1:51821`, the code,
+and tick “The panel runs on the same server as the gateway”. Expose the panel publicly by adding a proxy host `deploy.example.com → 127.0.0.1:8080`.
 
-Porty na firewallu VPS: `80/tcp`, `443/tcp`, `51820/udp`, `51821/tcp` (bootstrap — wystarczy na czas dołączania węzłów).
+VPS firewall ports: `80/tcp`, `443/tcp`, `51820/udp`, `51821/tcp` (bootstrap — only needed while nodes join).
 
-Panel może też stać gdzie indziej (`deploy/panel.compose.yml`): wtedy sam zestawi tunel do bramki.
+The panel can also live elsewhere (`deploy/panel.compose.yml`): it then sets up its own tunnel to the gateway.
 
-### 2. Węzeł (np. domowy serwer)
+### 2. Node (e.g. a home server)
 
-W panelu: **Węzły → Dodaj węzeł → Przez tunel** — dostaniesz token i gotowy `node.compose.yml` (wystarczy sam ten plik,
-bez klonowania repo). Albo z repozytorium:
+In the panel: **Nodes → Add node → Through the tunnel** — you get a token and a ready `node.compose.yml` (that single file is enough,
+no need to clone the repo). Or from the repository:
 
 ```bash
 DEPLOYRA_GATEWAY=vps.example.com:51821 DEPLOYRA_JOIN=dplr1.… docker compose -f deploy/node.compose.yml up -d
 ```
 
-Węzeł generuje własny klucz WireGuard (prywatny nie opuszcza maszyny), dołącza do bramki, a panel sam dokończy parowanie.
+The node generates its own WireGuard key (the private key never leaves the machine), joins the gateway, and the panel finishes pairing.
 
 ### 3. Proxmox VE
 
-- z Dockerem na hoście: `docker compose -f deploy/proxmox.compose.yml up -d`
-- bez Dockera na hoście: `sudo bash deploy/install-native.sh` (usługa systemd, sam klient Dockera do stacków)
+- with Docker on the host: `docker compose -f deploy/proxmox.compose.yml up -d`
+- without Docker on the host: `sudo bash deploy/install-native.sh` (a systemd service, only the Docker CLI for stacks)
 
-Backend znajdzie działające CT (`/proc/*/cgroup`), ich gniazda Dockera (`/proc/<pid>/root/run/docker.sock`) i nazwy (`/etc/pve/lxc/*.conf`).
-W panelu na stronie węzła pojawi się przełącznik **Host / CT 101 · nextcloud / …**. Aplikacje wdrożone do CT są osiągalne pod IP kontenera —
-dodaj jego podsieć w „Podsieciach LAN” węzła, żeby bramka do niego trafiła.
+The backend finds running CTs (`/proc/*/cgroup`), their Docker sockets (`/proc/<pid>/root/run/docker.sock`) and names (`/etc/pve/lxc/*.conf`).
+The node page gets a **Host / CT 101 · nextcloud / …** switcher. Apps deployed into a CT are reachable at the container's IP —
+add its subnet under the node's “LAN subnets” so the gateway can reach it.
 
-## Aktualizacje
+## Updates
 
-Panel co 6 godzin sprawdza wydania w `PanS4ge/deployra` (Ustawienia → Aktualizacje, tam też zmienisz źródło). Gdy jest nowa wersja,
-pokazuje baner z wyborem **Aktualizuj / Później / Pomiń tę wersję**. „Aktualizuj” uruchamia zadanie w tle: najpierw węzły (równolegle),
-potem bramka, na końcu panel, a każdy krok czeka, aż komponent wstanie w nowej wersji. Jeśli coś się nie uda, panel zostaje w starej wersji.
+Every 6 hours the panel checks for releases in `PanS4ge/deployra` (Settings → Updates, where you can also change the source). When a new
+version appears it shows a banner: **Update / Later / Skip this version**. “Update” starts a background job: nodes first (in parallel),
+then the gateway, the panel last — each step waits until the component is back on the new version. If anything fails, the panel stays put.
 
-Podmianą zajmuje się kontener `*-updater` obok każdego komponentu (w spoczynku ~1 MB RAM, bez sieci). Tylko on ma `docker.sock`,
-panel i bramka go nie dostają. Działa w trzech trybach:
+A small `*-updater` container next to each component does the swap (~1 MB RAM when idle, no network). Only it gets `docker.sock` —
+the panel and the gateway don't. Three modes:
 
-- **obrazy z GHCR** (domyślnie): `docker compose pull` + `up -d`;
-- **ze źródeł** (`DEPLOYRA_IMAGES=deployra` w `deploy/.env`): `git` przewija repozytorium do taga `vX.Y.Z`, potem `build` + `up -d`;
-- **Proxmox bez Dockera**: `install-native.sh --update` przez `systemd-run`.
+- **GHCR images** (default): `docker compose pull` + `up -d`;
+- **from source** (`DEPLOYRA_IMAGES=deployra` in `deploy/.env`): `git` fast-forwards the repository to the `vX.Y.Z` tag, then `build` + `up -d`;
+- **Proxmox without Docker**: `install-native.sh --update` via `systemd-run`.
 
-### Wydawanie nowej wersji
+### Cutting a release
 
-1. Podbij `__version__` w `shared/`, `backend/`, `gateway/` i `frontend/` (`*/__init__.py`).
+1. Bump `__version__` in `shared/`, `backend/`, `gateway/` and `frontend/` (`*/__init__.py`).
 2. `git tag v1.1.0 && git push origin main v1.1.0`.
 
-GitHub Actions ([.github/workflows/build.yml](.github/workflows/build.yml)) puszcza testy, buduje cztery obrazy dla `amd64` i `arm64`,
-wypycha je do `ghcr.io/pans4ge/deployra-*` (`1.1.0`, `1.1`, `latest`) i tworzy wydanie z notatkami. Zwykły push uruchamia tylko testy;
-obrazy `:edge` z `main` zbudujesz ręcznie (Actions → Build → Run workflow).
+GitHub Actions ([.github/workflows/build.yml](.github/workflows/build.yml)) runs the tests, builds four images for `amd64` and `arm64`,
+pushes them to `ghcr.io/pans4ge/deployra-*` (`1.1.0`, `1.1`, `latest`) and creates a release with notes. A regular push only runs tests;
+build `:edge` images from `main` manually (Actions → Build → Run workflow).
 
-Gdy repozytorium jest prywatne, panel nie zobaczy wydań przez API GitHuba — wtedy sprawdza tagi publicznego obrazu
-`ghcr.io/pans4ge/deployra-panel`. Paczki w GHCR muszą być publiczne, żeby działał zwykły `docker pull` bez logowania.
+If the repository is private, the panel can't see releases through the GitHub API — it then checks the tags of the public
+`ghcr.io/pans4ge/deployra-panel` image. The GHCR packages must be public for a plain `docker pull` without logging in.
 
-## Przesiadka z Portainera i NPM
+## Languages
 
-1. Postaw bramkę i węzeł (wyżej). Istniejące kontenery od razu widać w zakładce **Kontenery**.
-2. **Import z NPM**: wgraj `database.sqlite` (`docker cp npm:/data/database.sqlite .`), wskaż, że stary adres (np. `10.8.0.2`
-   z drugiego NPM-a) to teraz węzeł „dom”, i zaimportuj.
-3. Przestaw DNS domen na IP bramki (albo zaznacz rekordy DNS / Cloudflare Tunnel). Certyfikaty wystawią się po imporcie.
-4. Gdy wszystko działa — wyłącz NPM-y i Portainera. 🎉
+The panel speaks Polish and English. Each user picks a language in the account menu (stored with the account); set the default in
+Settings → General or with `DEPLOYRA_LANG` — otherwise the panel follows the browser. The gateway and nodes receive the user's language
+with every request, so errors and deployment logs come back in English too. `DEPLOYRA_LANG` (pl / en) also sets the language of container
+logs and visitor-facing pages (“unknown host”, the placeholder of a new site).
 
-## Bezpieczeństwo
+Code and templates only contain keys (`t("nodes.add")`); the texts live in language packs:
 
-- **Synchronizacja** (dawne „Diffie-Hellman”): X25519 + HKDF, wiadomości pieczętowane HMAC-iem z jednorazowego kodu / tokenu —
-  nie da się podmienić kluczy bez kodu. Stare DH na liczbach pierwszych < 100 z XOR-em jest usunięte.
-- Każde żądanie panel → bramka/węzeł jest podpisane HMAC-SHA256 (znacznik czasu ±60 s, nonce przeciw powtórkom); ruch idzie tunelem WG.
-- API węzła i bramki słucha tylko na adresie w tunelu; pula portów aplikacji jest dostępna wyłącznie z `wg0` (reguła `DOCKER-USER`).
-- Hasła: scrypt z solą. Sesje: ciasteczko httponly + token CSRF. Sekrety (tokeny Cloudflare, klucze) zaszyfrowane AES-GCM w bazie.
-- Terminal, surowy nginx, tunel i usuwanie są osobnymi (ryzykownymi) uprawnieniami.
+- `frontend/deployra_panel/locales/<lang>.json` — the panel,
+- `shared/deployra_common/locales/<lang>.json` — the gateway, nodes and shared code (validation, pairing).
 
-## Zużycie RAM
+New language: copy both `en.json` files to e.g. `de.json` and translate the values — the panel adds it to the switcher by itself.
+Missing keys fall back to Polish. `frontend/tests/test_i18n.py` checks that the packs have the same keys and parameters, and that no page
+rendered in English contains Polish letters.
 
-Wszystko na `python:3.13-alpine`, jeden worker uvicorn, ciężkie biblioteki ładowane leniwie (np. asyncssh dopiero przy pierwszym koncie SFTP).
-Limity w plikach compose: panel 160 MB, backend 192 MB, Deployra-WG 128 MB, nginx 96 MB. Zmierzone (RSS) w środowisku
-deweloperskim na Windowsie (CPython 3.14, z narzutem DLL): panel ~87 MB, backend ~87 MB (bez SFTP; najwięcej waży docker-py),
-bramka ~72 MB. Na Linuksie/musl wychodzi zwykle mniej — sprawdź `docker stats` u siebie. Aktualizator to `sleep` w pętli
-(~1 MB + kilka MB narzutu Dockera na kontener).
+## Moving off Portainer and NPM
 
-## Rozwój
+1. Set up the gateway and a node (above). Your existing containers show up right away under **Containers**.
+2. **Import from NPM**: upload `database.sqlite` (`docker cp npm:/data/database.sqlite .`), point out that the old address (e.g. `10.8.0.2`
+   from the second NPM) is now the “home” node, and import.
+3. Point your domains' DNS at the gateway IP (or tick DNS records / Cloudflare Tunnel). Certificates are issued after the import.
+4. Once everything works — turn off the NPMs and Portainer. 🎉
+
+## Security
+
+- **Sync** (the former “Diffie-Hellman”): X25519 + HKDF, messages sealed with an HMAC of a one-time code / token —
+  keys can't be swapped without the code. The old DH on primes < 100 with XOR is gone.
+- Every panel → gateway/node request is signed with HMAC-SHA256 (±60 s timestamp, nonce against replays); traffic goes through the WG tunnel.
+- The node and gateway APIs only listen on the tunnel address; the app port pool is reachable only from `wg0` (`DOCKER-USER` rule).
+- Passwords: salted scrypt. Sessions: httponly cookie + CSRF token. Secrets (Cloudflare tokens, keys) are AES-GCM encrypted in the database.
+- Terminal, raw nginx, tunnel and deletion are separate (risky) permissions.
+
+## RAM usage
+
+Everything runs on `python:3.13-alpine` with a single uvicorn worker; heavy libraries load lazily (e.g. asyncssh only with the first SFTP account).
+Compose limits: panel 160 MB, backend 192 MB, Deployra-WG 128 MB, nginx 96 MB. Measured RSS in the Windows dev environment
+(CPython 3.14, with DLL overhead): panel ~87 MB, backend ~87 MB (without SFTP; docker-py weighs the most), gateway ~72 MB.
+Linux/musl usually comes in lower — check `docker stats` on your box. The updater is a `sleep` loop (~1 MB + a few MB of Docker overhead per container).
+
+## Development
 
 ```bash
 python -m venv .venv && .venv/Scripts/pip install -e shared fastapi uvicorn jinja2 python-multipart httpx cryptography docker psutil asyncssh pymysql loguru pyyaml websockets pytest
-python scripts/dev_stack.py --reset --seed   # bramka + węzeł (atrapa Dockera) + panel na localhoście, z przykładowymi danymi
+python scripts/dev_stack.py --reset --seed   # gateway + node (fake Docker) + panel on localhost, with sample data
 ```
 
-Panel: http://127.0.0.1:8080 (`admin@deployra.local` / `kosmos-demo`). Działa na Windowsie — bez WireGuarda, nginx i Dockera.
+Panel: http://127.0.0.1:8080 (`admin@deployra.local` / `kosmos-demo`). Works on Windows — no WireGuard, nginx or Docker needed.
 
-Testy: `pytest shared/tests`, `cd backend && pytest tests`, `cd gateway && pytest tests`, `cd frontend && pytest tests`,
-`bash updater/tests/test_updater.sh` (aktualizator z atrapą Dockera i prawdziwym gitem).
+Tests: `pytest shared/tests`, `cd backend && pytest tests`, `cd gateway && pytest tests`, `cd frontend && pytest tests`,
+`bash updater/tests/test_updater.sh` (the updater with a fake Docker and a real git).
 
-Struktura: `shared/` (podpisy, parowanie, WireGuard, zadania, schematy, aktualizacje) · `backend/` (węzeł) · `gateway/` (Deployra-WG) ·
-`frontend/` (panel) · `updater/` (sidecar aktualizacji) · `deploy/` (compose) · `docs/research/` (źródła decyzji).
-Stary kod (NiceGUI) został w historii gita.
+Layout: `shared/` (signatures, pairing, WireGuard, jobs, schemas, updates, i18n) · `backend/` (node) · `gateway/` (Deployra-WG) ·
+`frontend/` (panel) · `updater/` (update sidecar) · `deploy/` (compose) · `docs/research/` (sources behind the decisions).
+The old NiceGUI code lives on in the git history.
 
-## Znane ograniczenia
+## Known limitations
 
-- WireGuard, nginx, lego, cloudflared i sam aktualizator nie były jeszcze uruchomione na prawdziwym serwerze — testy pokrywają logikę.
-- Hosty za proxy Cloudflare (pomarańczowa chmurka, nie tunel) liczą odwiedzających po adresach krawędzi Cloudflare.
-- Stacki w CT na Proxmoxie: pliki compose leżą na hoście, więc montowania ścieżek względnych nie zadziałają — używaj wolumenów nazwanych.
-- Jedna bramka na panel (wiele bramek — w planach).
+- WireGuard, nginx, lego, cloudflared and the updater itself haven't run on a real server yet — the tests cover the logic.
+- Hosts behind the Cloudflare proxy (orange cloud, not the tunnel) count visitors by Cloudflare edge addresses.
+- Stacks inside a Proxmox CT: compose files live on the host, so relative path mounts won't work — use named volumes.
+- One gateway per panel (multiple gateways — planned).

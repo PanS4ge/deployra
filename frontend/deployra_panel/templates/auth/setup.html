@@ -1,45 +1,45 @@
 {% extends "auth_base.html" %}
-{% block tagline %}Pierwsza konfiguracja — kilka pól i lecimy{% endblock %}
+{% block tagline %}{{ t("setup.tagline") }}{% endblock %}
 {% block content %}
 <div class="card glow wide">
   <form hx-post="/setup" hx-swap="none">
-    <div class="card-head"><h2><i class="bi bi-person-badge"></i> Konto administratora</h2></div>
+    <div class="card-head"><h2><i class="bi bi-person-badge"></i> {{ t("setup.admin_account") }}</h2></div>
     <div class="card-body form-grid">
-      <div class="field"><label>Imię</label><input class="input" name="name" autocomplete="given-name"></div>
-      <div class="field"><label>Nazwisko</label><input class="input" name="surname" autocomplete="family-name"></div>
-      <div class="field full"><label>E-mail (login)</label><input class="input" name="email" type="email" value="admin@{{ base }}" required></div>
-      <div class="field"><label>Hasło</label><input class="input" name="password" type="password" minlength="8" autocomplete="new-password" required></div>
-      <div class="field"><label>Powtórz hasło</label><input class="input" name="password_repeat" type="password" minlength="8" autocomplete="new-password" required></div>
+      <div class="field"><label>{{ t("common.first_name") }}</label><input class="input" name="name" autocomplete="given-name"></div>
+      <div class="field"><label>{{ t("common.last_name") }}</label><input class="input" name="surname" autocomplete="family-name"></div>
+      <div class="field full"><label>{{ t("setup.email_login") }}</label><input class="input" name="email" type="email" value="admin@{{ base }}" required></div>
+      <div class="field"><label>{{ t("common.password") }}</label><input class="input" name="password" type="password" minlength="8" autocomplete="new-password" required></div>
+      <div class="field"><label>{{ t("common.password_repeat") }}</label><input class="input" name="password_repeat" type="password" minlength="8" autocomplete="new-password" required></div>
     </div>
 
-    <div class="card-head"><h2><i class="bi bi-globe2"></i> Domeny</h2></div>
+    <div class="card-head"><h2><i class="bi bi-globe2"></i> {{ t("setup.domains") }}</h2></div>
     <div class="card-body form-grid">
       <div class="field">
-        <label>Domena panelu</label>
+        <label>{{ t("settings.panel_domain") }}</label>
         <input class="input" name="panel_domain" value="{{ host if '.' in host and not host.replace('.', '').isdigit() else '' }}" placeholder="deploy.{{ base }}">
-        <div class="hint">Pod tym adresem bramka wystawi panel (potrzebne m.in. dla webhooków Gita).</div>
+        <div class="hint">{{ t("setup.panel_domain_hint") }}</div>
       </div>
       <div class="field">
-        <label>Domena bazowa aplikacji</label>
+        <label>{{ t("settings.base_domain") }}</label>
         <input class="input" name="base_domain" value="{{ base }}" placeholder="example.com">
-        <div class="hint">Aplikacje dostaną adresy <code>&lt;nazwa&gt;.{{ base }}</code>. Wildcard nie jest wymagany, jeśli podasz token Cloudflare.</div>
+        <div class="hint">{{ t("setup.base_domain_hint", base=base) }}</div>
       </div>
       <div class="field">
-        <label>E-mail do Let's Encrypt</label>
-        <input class="input" name="acme_email" type="email" placeholder="domyślnie e-mail administratora">
+        <label>{{ t("settings.acme_email") }}</label>
+        <input class="input" name="acme_email" type="email" placeholder="{{ t('setup.acme_email_placeholder') }}">
       </div>
       <div class="field">
-        <label>Token API Cloudflare (opcjonalnie)</label>
+        <label>{{ t("setup.cloudflare_token") }}</label>
         <input class="input" name="cloudflare_token" type="password" autocomplete="off" placeholder="Zone:Read + DNS:Edit">
-        <div class="hint">Rekordy DNS per aplikacja i certyfikaty wildcard (DNS-01).</div>
+        <div class="hint">{{ t("setup.cloudflare_hint") }}</div>
       </div>
       <div class="callout full">
         <i class="bi bi-database"></i>
-        <div class="small">Baza danych: <b>{{ "SQLite (plik w katalogu danych)" if db == "sqlite" else "MySQL/MariaDB" }}</b>. Zmienisz ją zmienną <code>DEPLOYRA_DB</code> przed pierwszym startem.</div>
+        <div class="small">{{ t("setup.database", db=t("setup.db_sqlite") if db == "sqlite" else "MySQL/MariaDB") }}</div>
       </div>
     </div>
     <div class="card-body row" style="justify-content: flex-end; border-top: 1px solid var(--border)">
-      <button class="btn primary" type="submit"><span class="spin"></span><i class="bi bi-stars"></i> Zaczynamy</button>
+      <button class="btn primary" type="submit"><span class="spin"></span><i class="bi bi-stars"></i> {{ t("setup.start") }}</button>
     </div>
   </form>
 </div>

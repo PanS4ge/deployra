@@ -17,6 +17,7 @@ import httpx
 
 from ..db import now
 from . import dns
+from ..i18n import t
 
 SERVICE = "http://localhost:80"
 
@@ -39,17 +40,17 @@ def state(panel: Any) -> dict[str, Any]:
 async def _account_id(cf: dns.Cloudflare) -> str:
     zones = await cf.zones()
     if not zones:
-        raise TunnelError("token nie widzi żadnej strefy — nie da się ustalić konta Cloudflare")
+        raise TunnelError(t("cf.no_zones"))
     return zones[0]["account"]["id"]
 
 
 async def enable(panel: Any) -> dict:
     cf = dns.client(panel)
     if not cf:
-        raise TunnelError("najpierw dodaj token API Cloudflare")
+        raise TunnelError(t("cf.add_token_first"))
     gateway = panel.gateway_client()
     if not gateway:
-        raise TunnelError("cloudflared uruchamia Deployra-WG — najpierw połącz bramkę")
+        raise TunnelError(t("cf.link_gateway_first"))
     try:
         account = panel.db.setting("cf_account_id") or await _account_id(cf)
         tunnel_id = panel.db.setting("cf_tunnel_id")
@@ -63,7 +64,7 @@ async def enable(panel: Any) -> dict:
     panel.db.set_setting("cf_tunnel_id", tunnel_id)
     await gateway.put("/api/cloudflared", json={"token": token})
     await sync(panel)
-    panel.notify("Cloudflare Tunnel uruchomiony na Deployra-WG", "ok")
+    panel.notify(t("cf.started"), "ok")
     return state(panel)
 
 
@@ -84,7 +85,7 @@ async def sync(panel: Any) -> list[str]:
         return []
     cf = dns.client(panel)
     if not cf:
-        raise TunnelError("brak tokenu Cloudflare")
+        raise TunnelError(t("msg.no_cf_token"))
     rules = [{"hostname": host, "service": SERVICE, "originRequest": {"httpHostHeader": host}} for host in info["hosts"]]
     rules.append({"service": "http_status:404"})
     done = []

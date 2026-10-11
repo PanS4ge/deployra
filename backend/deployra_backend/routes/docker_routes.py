@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSo
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel
 
+from deployra_common.i18n import tr
 from deployra_common.schemas import ContainerSpec, NetworkSpec, VolumeSpec
 
 from ..context import Context, get_ctx
@@ -53,7 +54,7 @@ async def create_container(spec: ContainerSpec, client: Any = Depends(dk), ctx: 
         if spec.pull:
             docker_svc.pull_image(client, job, spec.image)
         cid = docker_svc.run_container(client, spec)
-        job.log(f"Uruchomiono {spec.name} ({cid[:12]})")
+        job.log(tr("node.container_started", name=spec.name, id=cid[:12]))
         return {"id": cid}
 
     return job_response(ctx.jobs.start("container", f"Kontener {spec.name}", work))

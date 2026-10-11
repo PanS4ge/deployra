@@ -19,11 +19,13 @@ from loguru import logger
 from deployra_common.client import RemoteError
 
 from ..db import now
+from deployra_common import i18n as i18n_core
+
+from ..i18n import t
 
 TICK = 15
 RAW_KEEP = 48 * 3600
 HOURLY_KEEP = 90 * 86400
-KINDS = {"app": "Aplikacja", "container": "Kontener", "node": "Węzeł", "url": "URL"}
 
 
 # --- zarządzanie monitorami ---------------------------------------------------------------
@@ -159,19 +161,19 @@ class Checker:
             if kind == "node":
                 node = self.panel.node(monitor["ref_id"])
                 if not node or node["status"] != "paired":
-                    return None, None, "węzeł niesparowany"
+                    return None, None, t("uptime.msg.node_unpaired")
                 await self.panel.node_client(node).get("/api/vitals")
                 return True, elapsed(), "odpowiada"
             if kind == "container":
                 target = monitor.get("target") or {}
                 node = self.panel.node(target.get("node_id") or monitor.get("node_id"))
                 if not node:
-                    return False, None, "węzeł nie istnieje"
+                    return False, None, t("uptime.msg.node_missing")
                 for c in await self._containers_of(node, target.get("ep", "local")):
                     if c["name"] == target.get("name"):
                         ok = c["state"] == "running" and "unhealthy" not in (c.get("status") or "")
                         return ok, None, c.get("status") or c["state"]
-                return False, None, "kontener nie istnieje"
+                return False, None, t("uptime.msg.container_missing")
             if kind == "app":
                 return await self._check_app(monitor, elapsed)
             if kind == "url":
@@ -180,21 +182,21 @@ class Checker:
                 ok = response.status_code < 400
                 keyword = target.get("keyword")
                 if ok and keyword and keyword not in response.text:
-                    return False, elapsed(), f"HTTP {response.status_code}, brak słowa „{keyword}”"
+                    return False, elapsed(), t("uptime.msg.keyword_missing", status=response.status_code, keyword=keyword)
                 return ok, elapsed(), f"HTTP {response.status_code}"
         except (RemoteError, httpx.HTTPError, LookupError, asyncio.TimeoutError) as exc:
             return False, None, (getattr(exc, "detail", None) or str(exc) or type(exc).__name__)[:300]
-        return None, None, "nieznany rodzaj monitora"
+        return None, None, t("uptime.msg.unknown_kind")
 
     async def _check_app(self, monitor: dict, elapsed) -> tuple[bool | None, float | None, str]:
         app = self.panel.db.get("apps", monitor["ref_id"])
         if not app:
-            return False, None, "aplikacja nie istnieje"
+            return False, None, t("uptime.msg.app_missing")
         if app["status"] in ("deploying", "new"):
-            return None, None, "trwa wdrożenie"
+            return None, None, t("uptime.msg.deploying")
         node = self.panel.node(app["node_id"])
         if not node or not app.get("host_port"):
-            return False, None, "aplikacja nie jest wdrożona"
+            return False, None, t("uptime.msg.not_deployed")
         site = self.panel.db.get("sites", app["site_id"]) if app.get("site_id") else None
         host = ((site or {}).get("target") or {}).get("host") or self.panel.node_upstream_host(node)
         domain = (app.get("domains") or [None])[0]
@@ -203,7 +205,7 @@ class Checker:
         if gateway:
             result = await gateway.post("/api/check", json={"url": url, "host": domain})
             if result.get("status") is None:
-                return False, None, result.get("error") or "brak odpowiedzi"
+                return False, None, result.get("error") or t("uptime.msg.no_response")
             return bool(result.get("ok")), result.get("ms"), f"HTTP {result['status']}"
         response = await self._http.get(url, headers={"Host": domain} if domain else None)
         return response.status_code < 500, elapsed(), f"HTTP {response.status_code}"
@@ -241,7 +243,8 @@ def record(panel: Any, monitor: dict, ok: bool, latency: float | None, message: 
 
 async def notify_change(panel: Any, monitor: dict, status: str, message: str) -> None:
     icon = "🟢" if status == "up" else "🔴"
-    text = f"{icon} {KINDS.get(monitor['kind'], '')} {monitor['name']}: {'działa' if status == 'up' else 'NIE DZIAŁA'} — {message}"
+    state = t("uptime.msg.up" if status == "up" else "uptime.msg.down")
+    text = f"{icon} {t('uptime.kind.' + monitor['kind'])} {monitor['name']}: {state} — {message}"
     panel.notify(text, "ok" if status == "up" else "err")
     url = (panel.db.setting("notify_webhook") or "").strip()
     if not url:
@@ -289,6 +292,7 @@ def cleanup(panel: Any) -> None:
 
 
 async def loop(panel: Any) -> None:
+    i18n_core.current.set(panel.default_language or i18n_core.DEFAULT)  # powiadomienia z tła — w języku domyślnym panelu
     checker = Checker(panel)
     last_cleanup = 0.0
     try:

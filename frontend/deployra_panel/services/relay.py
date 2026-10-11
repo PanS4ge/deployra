@@ -10,6 +10,7 @@ import httpx
 
 from deployra_common.client import SignedClient
 from deployra_common.jobs import Job, JobFailed
+from ..i18n import t
 
 
 async def iter_sse(response: httpx.Response) -> AsyncIterator[tuple[str, str]]:
@@ -37,9 +38,9 @@ async def follow_remote_job(client: SignedClient, job_id: str, panel_job: Job, p
             elif event == "end":
                 snapshot = json.loads(data)
                 if snapshot.get("status") != "ok":
-                    raise JobFailed(snapshot.get("error") or "zdalne zadanie nie powiodło się")
+                    raise JobFailed(snapshot.get("error") or t("msg.remote_job_failed"))
                 return snapshot
-    raise JobFailed("zerwane połączenie ze zdalnym zadaniem")
+    raise JobFailed(t("msg.remote_job_lost"))
 
 
 async def start_and_follow(client: SignedClient, path: str, body: Any, panel_job: Job, prefix: str = "") -> dict[str, Any]:

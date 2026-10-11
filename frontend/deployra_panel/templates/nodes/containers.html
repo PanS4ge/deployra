@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block crumbs %}<div class="crumbs"><a href="/nodes">Węzły</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
-{% block heading %}Kontenery{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes">{{ t("nav.nodes") }}</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
+{% block heading %}{{ t("nodes.tab_containers") }}{% endblock %}
 {% block actions %}
-{% if has(user, P.ALLOW_MODIFY_DOCKERS) %}<a class="btn primary" href="/nodes/{{ node.id }}/containers/new{{ epq }}"><i class="bi bi-plus-lg"></i> Nowy kontener</a>{% endif %}
+{% if has(user, P.ALLOW_MODIFY_DOCKERS) %}<a class="btn primary" href="/nodes/{{ node.id }}/containers/new{{ epq }}"><i class="bi bi-plus-lg"></i> {{ t("containers.new") }}</a>{% endif %}
 {% endblock %}
 {% block content %}
 {% include "nodes/_tabs.html" %}
 <div class="card" x-data="{ q: '' }">
   <div class="card-head">
-    <input class="input" style="max-width: 320px" placeholder="Szukaj (nazwa, obraz, stack)…" x-model="q">
+    <input class="input" style="max-width: 320px" placeholder="{{ t('containers.search') }}" x-model="q">
     <span class="spacer"></span>
-    <span class="small muted">{{ items | selectattr("state", "equalto", "running") | list | length }} / {{ items | length }} działa</span>
+    <span class="small muted">{{ items | selectattr("state", "equalto", "running") | list | length }} / {{ t("dashboard.apps_running", count=items | length) }}</span>
   </div>
   <div id="containers" hx-get="/nodes/{{ node.id }}/containers{{ epq }}" hx-trigger="containers-changed from:body, every 15s [!document.hidden]" hx-target="this" hx-swap="innerHTML" hx-disinherit="*">
     {% include "nodes/_containers_table.html" %}

@@ -11,6 +11,7 @@ from loguru import logger
 
 from deployra_common import pairing, wg
 from deployra_common.hmac_auth import NonceCache
+from deployra_common.i18n import tr
 from deployra_common.jobs import JobRegistry
 from deployra_common.schemas import ProxyState
 from deployra_common.server import SignatureGuard
@@ -34,7 +35,7 @@ class Gate:
 
     def check(self) -> None:
         if time.time() < self.locked_until:
-            raise PermissionError("zbyt wiele nieudanych prób — spróbuj za kilka minut")
+            raise PermissionError(tr("gw.locked"))
 
     def fail(self) -> None:
         self.failures += 1
@@ -78,10 +79,10 @@ class Context:
 
     def pair_panel(self, body: dict) -> dict:
         if self.state.panel_secret:
-            raise LookupError("bramka jest już zsynchronizowana z panelem (reset: python -m deployra_gateway reset-pairing)")
+            raise LookupError(tr("gw.already_synced"))
         code = self.state.get("pairing_code")
         if not code:
-            raise LookupError("bramka nie czeka na synchronizację")
+            raise LookupError(tr("gw.not_waiting"))
         self.gate.check()
         try:
             request = pairing.unseal(code, body, "pair-gateway")
@@ -89,7 +90,7 @@ class Context:
                 raise ValueError
         except ValueError:
             self.gate.fail()
-            raise PermissionError("zły kod synchronizacji") from None
+            raise PermissionError(tr("gw.bad_code")) from None
         tunnel = None
         if request.get("wg_public_key"):
             address = self.hub.add_peer("panel", "panel", str(request.get("name") or "Deployra")[:40], request["wg_public_key"])
@@ -97,7 +98,7 @@ class Context:
         private, public = pairing.new_keypair()
         secret = pairing.derive_secret(private, request["x25519"], code, PANEL_CONTEXT)
         self.state.update(panel_secret=base64.b64encode(secret).decode(), pairing_code=None)
-        logger.success("Zsynchronizowano z panelem Deployry")
+        logger.success(tr("gw.log.synced"))
         return pairing.seal(
             code,
             {
@@ -125,7 +126,7 @@ class Context:
 
     def register_token(self, token_id: str, join_secret: str, name: str, lan_subnets: list[str], ttl_minutes: int) -> dict:
         if not token_id.isalnum() or len(token_id) > 32 or len(join_secret) < 16:
-            raise ValueError("nieprawidłowy token")
+            raise ValueError(tr("gw.bad_token"))
         for subnet in lan_subnets:
             wg.WgPeer(self.hub.public_key, [subnet])  # walidacja podsieci
         entry = {
@@ -147,17 +148,17 @@ class Context:
         token = self.state.get("join_tokens", {}).get(token_id)
         if not token:
             self.gate.fail()
-            raise PermissionError("nieznany token dołączenia")
+            raise PermissionError(tr("gw.unknown_token"))
         try:
             request = pairing.unseal(token["join_secret"], body, "join")
         except ValueError:
             self.gate.fail()
-            raise PermissionError("zły token dołączenia") from None
+            raise PermissionError(tr("srv.pair.bad_token")) from None
         public_key = request.get("wg_public_key", "")
         if token["used_by"] and token["used_by"] != public_key:
-            raise LookupError("ten token został już użyty przez inny węzeł")
+            raise LookupError(tr("gw.token_used"))
         if not token["used_by"] and time.time() > token["expires"]:
-            raise PermissionError("token wygasł — wygeneruj nowy w panelu")
+            raise PermissionError(tr("gw.token_expired"))
         address = self.hub.add_peer(token_id, "node", token["name"] or str(request.get("name", ""))[:60], public_key, token["lan_subnets"])
 
         def mark(tokens: dict) -> dict:
@@ -165,7 +166,7 @@ class Context:
             return tokens
 
         self.state.mutate("join_tokens", mark)
-        logger.success(f"Węzeł {token['name']} dołączył ({address})")
+        logger.success(tr("gw.log.node_joined", name=token["name"], address=address))
         return pairing.seal(
             token["join_secret"],
             {

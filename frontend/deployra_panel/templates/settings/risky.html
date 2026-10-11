@@ -2,10 +2,10 @@
 {% block content %}
 {% include "settings/_tabs.html" %}
 <div class="card" style="border-color: rgba(251, 113, 133, 0.4)">
-  <div class="card-head"><h3><i class="bi bi-radioactive"></i> Reset do ustawień fabrycznych</h3></div>
+  <div class="card-head"><h3><i class="bi bi-radioactive"></i> {{ t("settings.reset_title") }}</h3></div>
   <div class="card-body row between">
-    <div class="small dim" style="max-width: 680px">Restartuje panel do ustawień fabrycznych… albo deployowanych, jednakże usunie wszystko: użytkowników, aplikacje (z panelu — kontenery na węzłach zostają), hosty proxy, monitory i połączenie z bramką. Potem na węzłach i bramce wykonaj <code>reset-pairing</code>.</div>
-    <button class="btn danger" hx-post="/settings/risky/reset" hx-swap="none" hx-confirm="Na pewno zresetować panel do zera?" data-danger data-math><i class="bi bi-trash3"></i> Resetuj</button>
+    <div class="small dim" style="max-width: 680px">{{ t("settings.reset_hint") }}</div>
+    <button class="btn danger" hx-post="/settings/risky/reset" hx-swap="none" hx-confirm="{{ t('settings.reset_confirm') }}" data-danger data-math><i class="bi bi-trash3"></i> {{ t("settings.reset") }}</button>
   </div>
 </div>
 {% endblock %}

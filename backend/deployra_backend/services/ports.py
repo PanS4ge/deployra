@@ -5,6 +5,8 @@ from __future__ import annotations
 import socket
 from typing import Any
 
+from deployra_common.i18n import tr
+
 from ..state import State
 
 
@@ -46,7 +48,7 @@ def allocate(
         if port not in taken and (not check_host or _port_free(port)):
             state.mutate("ports", lambda ports: {**ports, key: port})
             return port
-    raise RuntimeError("brak wolnego portu w puli" if not preferred else f"port {preferred} jest zajęty")
+    raise RuntimeError(tr("node.no_free_port") if not preferred else tr("node.port_taken", port=preferred))
 
 
 def release(state: State, key: str) -> None:

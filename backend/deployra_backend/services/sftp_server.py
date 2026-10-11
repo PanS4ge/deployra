@@ -14,6 +14,7 @@ from typing import Any
 import asyncssh
 from loguru import logger
 
+from deployra_common.i18n import tr
 from deployra_common.passwords import verify_password
 from deployra_common.schemas import check_slug
 
@@ -77,7 +78,7 @@ class SftpService:
             x11_forwarding=False,
             server_version="Deployra",
         )
-        logger.info(f"SFTP słucha na {host or '*'}:{port}")
+        logger.info(tr("node.log.sftp_listening", address=f"{host or '*'}:{port}"))
 
     async def stop(self) -> None:
         if self._acceptor:

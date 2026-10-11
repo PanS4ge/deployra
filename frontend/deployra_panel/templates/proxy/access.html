@@ -1,27 +1,27 @@
 {% extends "base.html" %}
 {% from "_macros.html" import empty %}
-{% block actions %}{% if has(user, P.ALLOW_PROXY) %}<a class="btn primary" href="/proxy/access/new"><i class="bi bi-plus-lg"></i> Nowa lista</a>{% endif %}{% endblock %}
+{% block actions %}{% if has(user, P.ALLOW_PROXY) %}<a class="btn primary" href="/proxy/access/new"><i class="bi bi-plus-lg"></i> {{ t("access.new") }}</a>{% endif %}{% endblock %}
 {% block content %}
 {% include "proxy/_tabs.html" %}
 <div class="card">
   {% if lists %}
   <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>Nazwa</th><th>Użytkownicy</th><th>Reguły IP</th><th>Tryb</th><th>Hosty</th><th></th></tr></thead>
+    <thead><tr><th>{{ t("common.name") }}</th><th>{{ t("nav.users") }}</th><th>{{ t("access.ip_rules") }}</th><th>{{ t("access.mode") }}</th><th>{{ t("dns.hosts") }}</th><th></th></tr></thead>
     <tbody>
     {% for a in lists %}
       <tr>
         <td class="name"><a href="/proxy/access/{{ a.id }}">{{ a.name }}</a></td>
         <td>{{ (a.users or []) | length }}</td>
         <td>{{ (a.clients or []) | length }}</td>
-        <td class="small">{{ "dowolny warunek" if a.satisfy_any else "wszystkie warunki" }}</td>
+        <td class="small">{{ t("access.any") if a.satisfy_any else t("access.all") }}</td>
         <td>{{ used.get(a.id, 0) }}</td>
-        <td class="actions">{% if has(user, P.ALLOW_PROXY) %}<button class="btn icon sm ghost" hx-post="/proxy/access/{{ a.id }}/delete" hx-swap="none" hx-confirm="Usunąć listę {{ a.name }}?" data-danger><i class="bi bi-trash"></i></button>{% endif %}</td>
+        <td class="actions">{% if has(user, P.ALLOW_PROXY) %}<button class="btn icon sm ghost" hx-post="/proxy/access/{{ a.id }}/delete" hx-swap="none" hx-confirm="{{ t('access.delete_confirm', name=a.name) }}" data-danger><i class="bi bi-trash"></i></button>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
-  {% else %}{{ empty("person-lock", "Brak list dostępu", "Hasło (basic auth) albo whitelista IP przed wybranymi hostami.") }}{% endif %}
+  {% else %}{{ empty("person-lock", t("access.empty_title"), t("access.empty_text")) }}{% endif %}
 </div>
 {% endblock %}

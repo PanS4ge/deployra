@@ -95,4 +95,9 @@ def v3(dialect: str) -> list[str]:
     return ["ALTER TABLE sites ADD COLUMN ingress VARCHAR(16) NOT NULL DEFAULT 'public'"]
 
 
-MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1), (2, v2), (3, v3)]
+def v4(dialect: str) -> list[str]:
+    """Język interfejsu wybrany przez użytkownika (NULL = domyślny panelu / przeglądarki)."""
+    return ["ALTER TABLE users ADD COLUMN lang VARCHAR(8)"]
+
+
+MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1), (2, v2), (3, v3), (4, v4)]

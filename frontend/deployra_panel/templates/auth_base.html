@@ -5,9 +5,14 @@
     <div class="hero">
       {% include "_logo.html" %}
       <h1>Deployra</h1>
-      <div class="muted">{% block tagline %}Coolify dla LowEndów — deploy, proxy i tunel w jednym miejscu{% endblock %}</div>
+      <div class="muted">{% block tagline %}{{ t("auth.tagline") }}{% endblock %}</div>
     </div>
     {% block content %}{% endblock %}
+    <div class="row small muted" style="justify-content: center; gap: 10px">
+      {% for code, name in LANGUAGES().items() %}
+        {% if code == LANG() %}<span>{{ name }}</span>{% else %}<a href="#" hx-post="/language" hx-vals='{"lang": "{{ code }}"}' hx-swap="none">{{ name }}</a>{% endif %}
+      {% endfor %}
+    </div>
   </div>
 </div>
 {% endblock %}

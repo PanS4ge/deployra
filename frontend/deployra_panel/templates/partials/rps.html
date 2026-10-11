@@ -1,9 +1,9 @@
 {% if walkover %}
-<span class="badge err">Węzeł poddał się walkowerem — nie odpowiedział.</span>
+<span class="badge err">{{ t("rps.walkover") }}</span>
 {% else %}
 <div class="row fade-in">
   <span style="font-size: 1.6rem">{{ you }}</span><span class="muted">vs.</span><span style="font-size: 1.6rem">{{ node }}</span>
-  {% if result == "win" %}<span class="badge ok">wygrana</span>{% elif result == "lose" %}<span class="badge err">przegrana</span>{% else %}<span class="badge warn">remis</span>{% endif %}
+  {% if result == "win" %}<span class="badge ok">{{ t("rps.win") }}</span>{% elif result == "lose" %}<span class="badge err">{{ t("rps.lose") }}</span>{% else %}<span class="badge warn">{{ t("rps.draw") }}</span>{% endif %}
   <span class="pill">{{ ms }} ms</span>
 </div>
 {% endif %}

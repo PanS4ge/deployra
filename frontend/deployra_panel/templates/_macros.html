@@ -1,19 +1,13 @@
 {% macro state_badge(state) -%}
-  {%- set map = {"running": ("ok", "działa"), "exited": ("err", "zatrzymany"), "created": ("info", "utworzony"),
-                 "paused": ("warn", "wstrzymany"), "restarting": ("warn", "restartuje"), "dead": ("err", "martwy"),
-                 "removing": ("warn", "usuwanie")} -%}
-  {%- set item = map.get(state, ("", state or "—")) -%}
-  <span class="badge {{ item[0] }}"><span class="dot {{ item[0] }}"></span>{{ item[1] }}</span>
+  {%- set cls = {"running": "ok", "exited": "err", "created": "info", "paused": "warn", "restarting": "warn", "dead": "err", "removing": "warn"}.get(state) -%}
+  <span class="badge {{ cls or '' }}"><span class="dot {{ cls or '' }}"></span>{{ t("state." ~ state) if cls is not none else (state or "—") }}</span>
 {%- endmacro %}
 
 {% macro status_badge(status) -%}
-  {%- set map = {"running": ("ok", "działa"), "deploying": ("info", "wdrażanie"), "error": ("err", "błąd"),
-                 "stopped": ("warn", "zatrzymana"), "pending": ("info", "oczekuje"), "paired": ("ok", "sparowany"),
-                 "joined": ("info", "w tunelu, czeka na parowanie"), "ok": ("ok", "ok"), "issuing": ("info", "wystawianie"),
-                 "valid": ("ok", "ważny"), "expiring": ("warn", "wygasa"), "expired": ("err", "wygasł"), "missing": ("warn", "brak pliku"),
-                 "new": ("", "nowa")} -%}
-  {%- set item = map.get(status, ("", status or "—")) -%}
-  <span class="badge {{ item[0] }}">{{ item[1] }}</span>
+  {%- set cls = {"running": "ok", "deploying": "info", "error": "err", "stopped": "warn", "pending": "info", "paired": "ok",
+                 "joined": "info", "ok": "ok", "issuing": "info", "valid": "ok", "expiring": "warn", "expired": "err", "missing": "warn",
+                 "new": ""}.get(status) -%}
+  <span class="badge {{ cls or '' }}">{{ t("status." ~ status) if cls is not none else (status or "—") }}</span>
 {%- endmacro %}
 
 {% macro meter(pct, label=None) -%}
@@ -50,7 +44,7 @@
 {%- endmacro %}
 
 {% macro copy_pill(value, mono=True) -%}
-  <span class="pill copy" data-copy="{{ value }}" title="Kliknij, aby skopiować">{{ value }} <i class="bi bi-clipboard"></i></span>
+  <span class="pill copy" data-copy="{{ value }}" title="{{ t('common.click_to_copy') }}">{{ value }} <i class="bi bi-clipboard"></i></span>
 {%- endmacro %}
 
 {% macro uptime_badge(value) -%}
@@ -62,6 +56,6 @@
   <div class="beats">
     {%- for b in beats -%}
       <span class="{{ 'up' if b.ok else 'down' }}" title="{{ b.ts | dt }} · {{ b.message }}{% if b.latency_ms is not none %} · {{ b.latency_ms }} ms{% endif %}"></span>
-    {%- else -%}<span class="muted small">brak danych</span>{%- endfor -%}
+    {%- else -%}<span class="muted small">{{ t("common.no_data") }}</span>{%- endfor -%}
   </div>
 {%- endmacro %}

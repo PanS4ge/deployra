@@ -8,6 +8,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from deployra_common.i18n import tr
 from deployra_common.jobs import Job, JobFailed
 
 from .compose import run_streaming
@@ -53,7 +54,7 @@ def checkout(job: Job, builds_dir: Path, data_dir: Path, slug: str, url: str, br
         _git(job, ["clone", "--depth", "1", "--branch", branch, url, str(repo)], None, env, token, f"git clone {_safe_url(url)} ({branch})")
     sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=False).stdout.strip()
     if not sha:
-        raise JobFailed("nie udało się odczytać commita")
+        raise JobFailed(tr("node.git.no_commit"))
     job.log(f"Commit {sha[:12]}")
     return repo, sha
 
@@ -67,7 +68,7 @@ def _safe_url(url: str) -> str:
 def inside(repo: Path, relative: str) -> Path:
     path = (repo / relative).resolve()
     if path != repo.resolve() and repo.resolve() not in path.parents:
-        raise JobFailed(f"ścieżka {relative!r} wychodzi poza repozytorium")
+        raise JobFailed(tr("node.git.path_escape", path=repr(relative)))
     return path
 
 
@@ -75,7 +76,7 @@ def build(job: Job, repo: Path, dockerfile: str, context: str, tag: str, env: di
     dockerfile_path = inside(repo, dockerfile)
     context_path = inside(repo, context)
     if not dockerfile_path.is_file():
-        raise JobFailed(f"brak pliku {dockerfile} w repozytorium")
+        raise JobFailed(tr("node.git.no_dockerfile", file=dockerfile))
     run_streaming(
         job,
         ["docker", "build", "--progress=plain", "-t", tag, "-f", str(dockerfile_path), str(context_path)],

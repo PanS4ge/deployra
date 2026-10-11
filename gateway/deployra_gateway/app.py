@@ -11,6 +11,8 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from deployra_common import i18n
+from deployra_common.i18n import tr
 from deployra_common.jobs import Job
 from deployra_common.schemas import CertRequest, CertUpload, ProxyState
 
@@ -40,6 +42,7 @@ def _errors(app: FastAPI) -> None:
 def create_bootstrap_app(ctx: Context) -> FastAPI:
     app = FastAPI(title="Deployra-WG bootstrap", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.ctx = ctx
+    i18n.language_middleware(app)
     _errors(app)
 
     @app.get("/health")
@@ -97,7 +100,7 @@ def _cert_job(ctx: Context, req: CertRequest):
     def work(job: Job) -> dict:
         certs.run_lego(job, ctx.config, req, "run")
         certs.remember(ctx.state, req)
-        job.log("Certyfikat zainstalowany — przeładowuję nginx")
+        job.log(tr("gw.cert_installed"))
         result = ctx.apply_proxy()
         job.log(f"nginx: {result.status} {result.message}".rstrip())
         return certs.read_info(ctx.config.certs_dir, req.id) or {}
@@ -112,7 +115,7 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
             try:
                 await renew_due(ctx)
             except Exception as exc:  # noqa: BLE001 — pętla odnowień nie może paść
-                logger.error(f"Odnawianie certyfikatów: {exc}")
+                logger.error(tr("gw.log.renew_error", error=exc))
             await asyncio.sleep(RENEW_INTERVAL)
 
     from contextlib import asynccontextmanager
@@ -134,6 +137,7 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
 
     app = FastAPI(title="Deployra-WG API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.ctx = ctx
+    i18n.language_middleware(app)
     _errors(app)
     router = APIRouter(prefix="/api", dependencies=[Depends(_signed)])
 
@@ -162,7 +166,7 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
     @router.post("/update")
     def update_start(body: UpdateRequest, ctx: Context = Depends(get_ctx)) -> dict:
         info = ctx.updates.request(body.version)
-        logger.info(f"Zlecono aktualizację bramki do {info['target']}")
+        logger.info(tr("gw.log.update_requested", version=info["target"]))
         return {"service": NAME, "version": __version__, **info}
 
     @router.get("/analytics")
@@ -178,7 +182,7 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
     @router.put("/cloudflared")
     def set_cloudflared(body: TunnelToken, ctx: Context = Depends(get_ctx)) -> dict:
         if body.token is not None and (len(body.token) < 20 or any(c.isspace() for c in body.token)):
-            raise HTTPException(400, "nieprawidłowy token tunelu")
+            raise HTTPException(400, tr("gw.bad_tunnel_token"))
         ctx.cloudflared.set_token(body.token)
         return ctx.cloudflared.status()
 
@@ -196,13 +200,13 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
         try:
             ctx.hub.update_subnets(peer_id, body.lan_subnets)
         except KeyError:
-            raise HTTPException(404, "nie ma takiego peera") from None
+            raise HTTPException(404, tr("gw.no_peer")) from None
         return {"ok": True}
 
     @router.delete("/peers/{peer_id}")
     def remove_peer(peer_id: str, ctx: Context = Depends(get_ctx)) -> dict:
         if peer_id == "panel":
-            raise HTTPException(400, "nie można usunąć panelu z tunelu")
+            raise HTTPException(400, tr("gw.cant_remove_panel"))
         ctx.hub.remove_peer(peer_id)
         ctx.drop_token(peer_id)
         return {"ok": True}
@@ -218,7 +222,7 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
 
     @router.post("/certs/issue")
     async def issue(body: CertRequest, ctx: Context = Depends(get_ctx)) -> dict:
-        return _job_response(ctx.jobs.start("cert", f"Certyfikat {', '.join(body.domains)}", _cert_job(ctx, body)))
+        return _job_response(ctx.jobs.start("cert", tr("gw.job.cert", domains=", ".join(body.domains)), _cert_job(ctx, body)))
 
     @router.post("/certs/upload")
     def upload(body: CertUpload, ctx: Context = Depends(get_ctx)) -> dict:
@@ -235,7 +239,7 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
     @router.post("/check")
     async def check(body: CheckRequest) -> dict:
         if not body.url.startswith(("http://", "https://")):
-            raise HTTPException(400, "adres musi zaczynać się od http:// lub https://")
+            raise HTTPException(400, tr("gw.url_scheme"))
         import httpx  # leniwie — bramka potrzebuje go tylko do testów HTTP
 
         started = time.perf_counter()
@@ -245,16 +249,16 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
                 response = await client.get(body.url, headers=headers)
             return {"ok": response.status_code < 500, "status": response.status_code, "ms": round((time.perf_counter() - started) * 1000)}
         except httpx.ConnectError:
-            return {"ok": False, "status": None, "error": "połączenie odrzucone — nic nie słucha na tym porcie (albo brak trasy przez tunel)"}
+            return {"ok": False, "status": None, "error": tr("gw.check_refused")}
         except httpx.TimeoutException:
-            return {"ok": False, "status": None, "error": "przekroczony czas odpowiedzi (10 s)"}
+            return {"ok": False, "status": None, "error": tr("gw.check_timeout")}
         except httpx.HTTPError as exc:
             return {"ok": False, "status": None, "error": str(exc) or type(exc).__name__}
 
     def _job(job_id: str, ctx: Context = Depends(get_ctx)) -> Job:
         found = ctx.jobs.get(job_id)
         if not found:
-            raise HTTPException(404, "nie ma takiego zadania")
+            raise HTTPException(404, tr("srv.no_job"))
         return found
 
     @router.get("/jobs/{job_id}")
@@ -295,11 +299,11 @@ async def renew_due(ctx: Context) -> None:
             changed = certs.run_lego(job, ctx.config, req, "renew")
             if changed:
                 ctx.apply_proxy()
-                job.log("Odnowiono i przeładowano nginx")
+                job.log(tr("gw.renewed"))
             return changed
 
-        job = ctx.jobs.start("renew", f"Odnowienie {', '.join(req.domains)}", work)
+        job = ctx.jobs.start("renew", tr("gw.job.renew", domains=", ".join(req.domains)), work)
         async for _ in job.follow():
             pass
         if job.status == "error":
-            logger.error(f"Nie udało się odnowić certyfikatu {cert_id}: {job.error}")
+            logger.error(tr("gw.log.renew_failed", id=cert_id, error=job.error))

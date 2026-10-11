@@ -24,6 +24,7 @@ services:
       DEPLOYRA_PROXMOX: "1"
       DEPLOYRA_GATEWAY: ${DEPLOYRA_GATEWAY:-}
       DEPLOYRA_JOIN: ${DEPLOYRA_JOIN:-}
+      DEPLOYRA_LANG: ${DEPLOYRA_LANG:-pl}           # język logów (pl / en)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/pve:/etc/pve:ro    # nazwy CT

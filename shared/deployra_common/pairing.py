@@ -20,6 +20,8 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
+from .i18n import tr
+
 _CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"  # bez 0/O, 1/I/L, U
 
 
@@ -35,7 +37,7 @@ def new_keypair() -> tuple[str, str]:
 def _decode_key(value: str) -> bytes:
     raw = base64.b64decode(value, validate=True)
     if len(raw) != 32:
-        raise ValueError("klucz musi mieć 32 bajty")
+        raise ValueError(tr("srv.pair.key_32"))
     return raw
 
 
@@ -63,7 +65,7 @@ def _canonical(payload: dict[str, Any]) -> bytes:
 def seal(psk: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Dodaje do wiadomości pole `mac` (HMAC-SHA256 kluczem z psk). Pole `kind` rozróżnia etapy."""
     if "kind" not in payload:
-        raise ValueError("wiadomość parowania musi mieć pole kind")
+        raise ValueError(tr("srv.pair.no_kind"))
     key = hashlib.sha256(psk.encode()).digest()
     return {**payload, "mac": hmac.new(key, _canonical(payload), hashlib.sha256).hexdigest()}
 
@@ -72,11 +74,11 @@ def unseal(psk: str, payload: dict[str, Any], kind: str) -> dict[str, Any]:
     """Sprawdza pieczęć i rodzaj wiadomości. Rzuca `ValueError`."""
     mac = payload.get("mac")
     if not isinstance(mac, str) or payload.get("kind") != kind:
-        raise ValueError("zła wiadomość parowania")
+        raise ValueError(tr("srv.pair.bad_message"))
     key = hashlib.sha256(psk.encode()).digest()
     expected = hmac.new(key, _canonical(payload), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, mac):
-        raise ValueError("zły kod parowania lub zmieniona wiadomość")
+        raise ValueError(tr("srv.pair.bad_code"))
     return {k: v for k, v in payload.items() if k != "mac"}
 
 
@@ -118,5 +120,5 @@ class JoinToken:
     def parse(cls, value: str) -> "JoinToken":
         parts = value.strip().split(".")
         if len(parts) != 4 or parts[0] != cls.PREFIX or not all(parts[1:]):
-            raise ValueError("zły token dołączenia")
+            raise ValueError(tr("srv.pair.bad_token"))
         return cls(parts[1], parts[2], parts[3])

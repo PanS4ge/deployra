@@ -1,45 +1,48 @@
-# deploy/ — który plik do czego
+# deploy/ — which file is for what
 
-Każdy plik to osobny „zestaw” do uruchomienia przez `docker compose -f deploy/<plik> up -d`.
-Wybierasz go według tego, **co stoi na danym serwerze**.
+**English** · [Polski](README.pl.md)
 
-| Plik | Gdzie uruchomić | Co stawia |
+Each file is a separate set you start with `docker compose -f deploy/<file> up -d`.
+Pick it based on **what runs on a given server**.
+
+| File | Where to run it | What it starts |
 |---|---|---|
-| `vps.compose.yml` | VPS z publicznym IP — **najczęstszy wybór** | bramkę Deployra-WG + nginx + panel (dołącza dwa pliki niżej) |
-| `gateway.compose.yml` | VPS z publicznym IP, gdy panel stoi gdzie indziej | tylko bramkę: hub WireGuard, nginx dla ruchu publicznego, certyfikaty |
-| `panel.compose.yml` | dowolny serwer (np. w domu), gdy bramka jest na innym VPS | tylko panel Deployry |
-| `node.compose.yml` | każdy serwer z Dockerem, na którym mają działać aplikacje (domowy serwer, drugi VPS) | Deployra Backend — węzeł |
-| `proxmox.compose.yml` | host Proxmox VE z Dockerem | węzeł, który widzi Docker hosta **i** każdy CT z Dockerem |
-| `install-native.sh` | host Proxmox VE **bez** Dockera | to samo co wyżej, jako usługa systemd |
+| `vps.compose.yml` | a VPS with a public IP — **the most common choice** | gateway Deployra-WG + nginx + panel (includes the two files below) |
+| `gateway.compose.yml` | a VPS with a public IP, when the panel lives elsewhere | just the gateway: WireGuard hub, nginx for public traffic, certificates |
+| `panel.compose.yml` | any server (e.g. at home), when the gateway is on another VPS | just the Deployra panel |
+| `node.compose.yml` | every server with Docker that should run apps (home server, a second VPS) | Deployra Backend — a node |
+| `proxmox.compose.yml` | a Proxmox VE host with Docker | a node that sees the host's Docker **and** every CT running Docker |
+| `install-native.sh` | a Proxmox VE host **without** Docker | the same as above, as a systemd service |
 
-Typowy układ: `vps.compose.yml` na VPS, `node.compose.yml` (albo `proxmox.compose.yml`) na każdym serwerze w domu.
+Typical setup: `vps.compose.yml` on the VPS, `node.compose.yml` (or `proxmox.compose.yml`) on each server at home.
 
 ```
- VPS:   vps.compose.yml  = gateway.compose.yml + panel.compose.yml
- Dom:   node.compose.yml  /  proxmox.compose.yml  /  install-native.sh
+ VPS:    vps.compose.yml  = gateway.compose.yml + panel.compose.yml
+ Home:   node.compose.yml  /  proxmox.compose.yml  /  install-native.sh
 ```
 
-## Aktualizator (usługi `*-updater`)
+## Updater (`*-updater` services)
 
-Każdy plik ma mały kontener `deployra-*-updater`: w spoczynku ~1 MB RAM, bez sieci, tylko z `docker.sock`.
-Panel pokazuje baner „Dostępna aktualizacja”. Po kliknięciu „Aktualizuj” prosi o nią po kolei węzły, bramkę i na końcu siebie,
-a aktualizator każdego z nich pobiera nowe obrazy i podmienia kontenery. Panel i bramka nie mają dostępu do Dockera.
+Every file includes a small `deployra-*-updater` container: ~1 MB RAM when idle, no network, only `docker.sock`.
+The panel shows an “Update available” banner. After you click “Update” it asks the nodes, the gateway and finally itself to update,
+and each component's updater pulls the new images and replaces the containers. The panel and the gateway get no access to Docker.
 
-## Obrazy
+## Images
 
-Domyślnie gotowe obrazy z GHCR (`linux/amd64` i `linux/arm64`), więc nic nie trzeba budować:
+Ready-made images from GHCR by default (`linux/amd64` and `linux/arm64`), so there's nothing to build:
 
 ```
 ghcr.io/pans4ge/deployra-panel     ghcr.io/pans4ge/deployra-wg
 ghcr.io/pans4ge/deployra-backend   ghcr.io/pans4ge/deployra-updater
 ```
 
-Zmienne w `deploy/.env` (obok plików compose):
+Variables in `deploy/.env` (next to the compose files):
 
-| Zmienna | Domyślnie | Po co |
+| Variable | Default | Purpose |
 |---|---|---|
-| `DEPLOYRA_PUBLIC_HOST` | — (wymagana dla bramki) | publiczny adres/IP VPS |
-| `DEPLOYRA_IMAGES` | `ghcr.io/pans4ge/deployra` | prefiks obrazów; `deployra` = budowanie z repo (`up -d --build`, aktualizacja przez git) |
-| `DEPLOYRA_VERSION` | `latest` | przypięcie wersji, np. `1.0.0` (aktualizator przestawi pin sam) |
-| `DEPLOYRA_NAME`, `DEPLOYRA_GATEWAY`, `DEPLOYRA_JOIN` | — | dołączanie węzła; gotowe wartości daje panel (Węzły → Dodaj węzeł) |
-| `DEPLOYRA_UPDATE_REPO` | `PanS4ge/deployra` | skąd panel sprawdza wydania |
+| `DEPLOYRA_PUBLIC_HOST` | — (required for the gateway) | the VPS's public address/IP |
+| `DEPLOYRA_IMAGES` | `ghcr.io/pans4ge/deployra` | image prefix; `deployra` = build from the repo (`up -d --build`, updates via git) |
+| `DEPLOYRA_VERSION` | `latest` | pin a version, e.g. `1.0.0` (the updater moves the pin by itself) |
+| `DEPLOYRA_NAME`, `DEPLOYRA_GATEWAY`, `DEPLOYRA_JOIN` | — | joining a node; the panel gives you the values (Nodes → Add node) |
+| `DEPLOYRA_UPDATE_REPO` | `PanS4ge/deployra` | where the panel checks for releases |
+| `DEPLOYRA_LANG` | `pl` (panel: from the browser) | language of logs, visitor pages and the panel default (`pl` / `en`) |

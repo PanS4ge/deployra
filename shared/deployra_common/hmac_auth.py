@@ -15,6 +15,8 @@ import time
 from collections import OrderedDict
 from collections.abc import Mapping
 
+from .i18n import tr
+
 H_KEY = "X-Deployra-Key"
 H_TS = "X-Deployra-Ts"
 H_NONCE = "X-Deployra-Nonce"
@@ -112,23 +114,23 @@ def verify(
     nonce = _header(headers, H_NONCE)
     sig = _header(headers, H_SIG)
     if not (key_id and ts_raw and nonce and sig):
-        raise SignatureError("brak nagłówków podpisu")
+        raise SignatureError(tr("srv.auth.no_headers"))
     try:
         ts = int(ts_raw)
     except ValueError as exc:
-        raise SignatureError("zły znacznik czasu") from exc
+        raise SignatureError(tr("srv.auth.bad_ts")) from exc
     now = time.time() if now is None else now
     if abs(now - ts) > window:
-        raise SignatureError("znacznik czasu poza oknem (sprawdź zegar/NTP)")
+        raise SignatureError(tr("srv.auth.ts_window"))
     if body is None:
         digest = _header(headers, H_BODY)
         if not digest:
-            raise SignatureError("brak skrótu body")
+            raise SignatureError(tr("srv.auth.no_body_digest"))
     else:
         digest = hashlib.sha256(body).hexdigest()
     expected = hmac.new(secret, _canonical(method, path, ts, nonce, digest), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, sig):
-        raise SignatureError("zły podpis")
+        raise SignatureError(tr("srv.auth.bad_signature"))
     if nonces is not None and not nonces.check_and_add(nonce, now):
-        raise SignatureError("powtórzone żądanie")
+        raise SignatureError(tr("srv.auth.replay"))
     return key_id

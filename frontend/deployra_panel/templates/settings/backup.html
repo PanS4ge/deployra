@@ -3,20 +3,20 @@
 {% include "settings/_tabs.html" %}
 <div class="grid grid-2">
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-download"></i> Eksport</h3></div>
+    <div class="card-head"><h3><i class="bi bi-download"></i> {{ t("backup.export") }}</h3></div>
     <div class="card-body stack">
-      <div class="small dim">Ustawienia, hosty proxy, przekierowania, streamy, listy dostępu, certyfikaty (metadane) i monitory — jako JSON. Węzłów i bramki nie eksportujemy: po przywróceniu trzeba je sparować ponownie.</div>
+      <div class="small dim">{{ t("backup.export_hint") }}</div>
       <div class="row">
-        <a class="btn primary" href="/settings/backup/export" hx-boost="false"><i class="bi bi-filetype-json"></i> Pobierz kopię</a>
-        <a class="btn" href="/settings/backup/export?secrets_included=true" hx-boost="false" title="Z jawnym tokenem Cloudflare"><i class="bi bi-key"></i> Z sekretami</a>
+        <a class="btn primary" href="/settings/backup/export" hx-boost="false"><i class="bi bi-filetype-json"></i> {{ t("backup.download") }}</a>
+        <a class="btn" href="/settings/backup/export?secrets_included=true" hx-boost="false" title="{{ t('backup.with_secrets_hint') }}"><i class="bi bi-key"></i> {{ t("backup.with_secrets") }}</a>
       </div>
     </div>
   </div>
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-upload"></i> Przywracanie</h3></div>
-    <form class="card-body stack" hx-post="/settings/backup/import" hx-encoding="multipart/form-data" hx-swap="none" hx-confirm="Przywrócenie zastąpi obecne hosty, streamy, listy dostępu i certyfikaty. Kontynuować?" data-danger>
+    <div class="card-head"><h3><i class="bi bi-upload"></i> {{ t("backup.restore_title") }}</h3></div>
+    <form class="card-body stack" hx-post="/settings/backup/import" hx-encoding="multipart/form-data" hx-swap="none" hx-confirm="{{ t('backup.restore_confirm') }}" data-danger>
       <input class="input" type="file" name="file" accept=".json" required>
-      <div class="row" style="justify-content: flex-end"><button class="btn danger"><i class="bi bi-arrow-counterclockwise"></i> Przywróć</button></div>
+      <div class="row" style="justify-content: flex-end"><button class="btn danger"><i class="bi bi-arrow-counterclockwise"></i> {{ t("backup.restore") }}</button></div>
     </form>
   </div>
 </div>

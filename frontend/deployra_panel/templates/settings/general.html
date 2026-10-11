@@ -3,20 +3,27 @@
 {% include "settings/_tabs.html" %}
 <form class="card" hx-post="/settings" hx-swap="none">
   <div class="card-body form-grid">
-    <div class="field"><label>Domena panelu</label><input class="input" name="panel_domain" value="{{ s.panel_domain or '' }}" placeholder="deploy.example.com"><div class="hint">Używana w adresach webhooków Gita.</div></div>
-    <div class="field"><label>Domena bazowa aplikacji</label><input class="input" name="base_domain" value="{{ s.base_domain or '' }}" placeholder="example.com"><div class="hint">Nowe aplikacje dostają <code>&lt;nazwa&gt;.{{ s.base_domain or "example.com" }}</code>.</div></div>
-    <div class="field"><label>E-mail do Let's Encrypt</label><input class="input" name="acme_email" type="email" value="{{ s.acme_email or '' }}"></div>
-    <div class="field" style="justify-content: flex-end"><label class="check"><input type="checkbox" name="acme_staging" value="1" {{ "checked" if s.acme_staging }}><span class="sw"></span><span>Tryb testowy Let's Encrypt (staging)</span></label></div>
-    <div class="field"><label>Strona dla nieznanych hostów</label>
-      <select class="select" name="default_page"><option value="deployra" {{ "selected" if s.default_page != "404" }}>Kosmiczna „Nieznany host”</option><option value="404" {{ "selected" if s.default_page == "404" }}>Goły 404</option></select>
+    <div class="field"><label>{{ t("settings.panel_domain") }}</label><input class="input" name="panel_domain" value="{{ s.panel_domain or '' }}" placeholder="deploy.example.com"><div class="hint">{{ t("settings.panel_domain_hint") }}</div></div>
+    <div class="field"><label>{{ t("settings.base_domain") }}</label><input class="input" name="base_domain" value="{{ s.base_domain or '' }}" placeholder="example.com"><div class="hint">{{ t("settings.base_domain_hint", base=s.base_domain or "example.com") }}</div></div>
+    <div class="field"><label>{{ t("settings.acme_email") }}</label><input class="input" name="acme_email" type="email" value="{{ s.acme_email or '' }}"></div>
+    <div class="field" style="justify-content: flex-end"><label class="check"><input type="checkbox" name="acme_staging" value="1" {{ "checked" if s.acme_staging }}><span class="sw"></span><span>{{ t("settings.acme_staging") }}</span></label></div>
+    <div class="field"><label>{{ t("settings.default_language") }}</label>
+      <select class="select" name="language">
+        <option value="" {{ "selected" if not s.language }}>{{ t("settings.language_auto") }}</option>
+        {% for code, name in LANGUAGES().items() %}<option value="{{ code }}" {{ "selected" if s.language == code }}>{{ name }}</option>{% endfor %}
+      </select>
+      <div class="hint">{{ t("settings.default_language_hint") }}</div>
     </div>
-    <div class="field"><label>Domyślny awatar (Gravatar)</label>
+    <div class="field"><label>{{ t("settings.default_page") }}</label>
+      <select class="select" name="default_page"><option value="deployra" {{ "selected" if s.default_page != "404" }}>{{ t("settings.default_page_cosmic") }}</option><option value="404" {{ "selected" if s.default_page == "404" }}>{{ t("settings.default_page_404") }}</option></select>
+    </div>
+    <div class="field"><label>{{ t("settings.gravatar") }}</label>
       <select class="select" name="gravatar_default">{% for g in ["identicon", "retro", "robohash", "monsterid", "wavatar", "mp"] %}<option {{ "selected" if s.gravatar_default == g }}>{{ g }}</option>{% endfor %}</select>
     </div>
-    <div class="field"><label>Obrazy Deployry w instrukcjach dołączania</label><input class="input mono" name="image_prefix" value="{{ s.image_prefix or '' }}" placeholder="ghcr.io/pans4ge/deployra"><div class="hint">Prefiks: <code>…-backend</code>, <code>…-updater</code>. Własny rejestr albo fork — zmień tutaj.</div></div>
-    <div class="field"><label>Webhook powiadomień (Discord / ntfy / Slack)</label><input class="input" name="notify_webhook" value="{{ s.notify_webhook or '' }}" placeholder="https://discord.com/api/webhooks/…"><div class="hint">Zmiany stanu monitorów uptime.</div></div>
-    <div class="callout full"><i class="bi bi-database"></i><div class="small">Baza: <b>{{ "SQLite" if db == "sqlite" else "MySQL/MariaDB" }}</b> · dane panelu w <code>{{ panel.config.data_dir }}</code></div></div>
+    <div class="field"><label>{{ t("settings.image_prefix") }}</label><input class="input mono" name="image_prefix" value="{{ s.image_prefix or '' }}" placeholder="ghcr.io/pans4ge/deployra"><div class="hint">{{ t("settings.image_prefix_hint") }}</div></div>
+    <div class="field"><label>{{ t("settings.webhook") }}</label><input class="input" name="notify_webhook" value="{{ s.notify_webhook or '' }}" placeholder="https://discord.com/api/webhooks/…"><div class="hint">{{ t("settings.webhook_hint") }}</div></div>
+    <div class="callout full"><i class="bi bi-database"></i><div class="small">{{ t("settings.database", db="SQLite" if db == "sqlite" else "MySQL/MariaDB", path=panel.config.data_dir) }}</div></div>
   </div>
-  <div class="card-body row" style="justify-content: flex-end; border-top: 1px solid var(--border)"><button class="btn primary"><i class="bi bi-check2"></i> Zapisz</button></div>
+  <div class="card-body row" style="justify-content: flex-end; border-top: 1px solid var(--border)"><button class="btn primary"><i class="bi bi-check2"></i> {{ t("common.save") }}</button></div>
 </form>
 {% endblock %}

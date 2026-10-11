@@ -1,21 +1,21 @@
 {% if offer.pending %}
 <div class="update-banner running">
   <span class="spin"></span>
-  <div class="text">Trwa aktualizacja Deployry do <b>{{ offer.pending.target }}</b> — w tle, możesz dalej pracować.</div>
-  {% if offer.pending.job_id %}<a class="btn sm ghost" href="/jobs/{{ offer.pending.job_id }}"><i class="bi bi-activity"></i> Podgląd</a>{% endif %}
+  <div class="text">{{ t("updates.banner_running", version=offer.pending.target) }}</div>
+  {% if offer.pending.job_id %}<a class="btn sm ghost" href="/jobs/{{ offer.pending.job_id }}"><i class="bi bi-activity"></i> {{ t("updates.preview") }}</a>{% endif %}
 </div>
 {% else %}
 <div class="update-banner" id="update-banner">
   <i class="bi bi-stars"></i>
-  <div class="text">Dostępna aktualizacja <b>Deployra {{ offer.version }}</b> <span class="muted">· masz {{ offer.current }}</span></div>
+  <div class="text">{{ t("updates.banner", version=offer.version, current=offer.current) }}</div>
   <div class="actions">
-    <a class="btn sm ghost" href="/settings/updates#notes">Co nowego</a>
+    <a class="btn sm ghost" href="/settings/updates#notes">{{ t("updates.whats_new_short") }}</a>
     <button class="btn sm primary" hx-post="/settings/updates/start" hx-vals='{"target": "{{ offer.version }}"}' hx-swap="none"
-            hx-confirm="Zaktualizować wszystkie komponenty do {{ offer.version }}?&#10;&#10;Aktualizacja idzie w tle: węzły → bramka → panel. Panel zrestartuje się na końcu."
-            data-confirm-title="Aktualizacja do {{ offer.version }}"><i class="bi bi-cloud-arrow-down"></i> Aktualizuj</button>
+            hx-confirm="{{ t('updates.confirm_all', version=offer.version) }}"
+            data-confirm-title="{{ t('updates.confirm_title', version=offer.version) }}"><i class="bi bi-cloud-arrow-down"></i> {{ t("updates.update") }}</button>
     <button class="btn sm ghost" hx-post="/updates/snooze" hx-swap="none"
-            hx-on::after-request="if (event.detail.successful) document.getElementById('update-banner').remove()">Później</button>
-    <button class="btn sm ghost icon" title="Pomiń tę wersję" aria-label="Pomiń tę wersję" hx-post="/updates/skip" hx-vals='{"version": "{{ offer.version }}"}' hx-swap="none"
+            hx-on::after-request="if (event.detail.successful) document.getElementById('update-banner').remove()">{{ t("updates.later") }}</button>
+    <button class="btn sm ghost icon" title="{{ t('updates.skip') }}" aria-label="{{ t('updates.skip') }}" hx-post="/updates/skip" hx-vals='{"version": "{{ offer.version }}"}' hx-swap="none"
             hx-on::after-request="if (event.detail.successful) document.getElementById('update-banner').remove()"><i class="bi bi-x-lg"></i></button>
   </div>
 </div>

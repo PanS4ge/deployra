@@ -8,6 +8,7 @@ import subprocess
 from loguru import logger
 
 from deployra_common import wg
+from deployra_common.i18n import tr
 
 
 def default_iface() -> str:
@@ -55,7 +56,7 @@ def build_config(conf: dict, lan_iface: str | None = None) -> str:
 
 def bring_up(conf: dict, iface_name: str = "wg0") -> bool:
     if not wg.WgControl.tools_available():
-        logger.error("Brak wireguard-tools (wg, wg-quick) — tunel nie wystartuje")
+        logger.error(tr("node.log.no_wg_tools"))
         return False
     control = wg.WgControl(iface_name)
     control.write_conf(build_config(conf))
@@ -64,7 +65,7 @@ def bring_up(conf: dict, iface_name: str = "wg0") -> bool:
     except RuntimeError as exc:
         logger.error(str(exc))
         return False
-    logger.success(f"Tunel {iface_name} działa: {conf['address']} ↔ {conf['hub_endpoint']}")
+    logger.success(tr("node.log.tunnel_up", iface=iface_name, address=conf["address"], hub=conf["hub_endpoint"]))
     return True
 
 

@@ -7,6 +7,8 @@ import subprocess
 
 from loguru import logger
 
+from deployra_common.i18n import tr
+
 COMMENT = "deployra-pool"
 
 
@@ -23,7 +25,7 @@ def _rule(pool: tuple[int, int], iface: str) -> list[str]:
 
 def restrict_pool(pool: tuple[int, int], iface: str = "wg0") -> bool:
     if not shutil.which("iptables"):
-        logger.warning("Brak iptables — pula portów nie jest ograniczona do tunelu")
+        logger.warning(tr("node.log.no_iptables"))
         return False
     rule = _rule(pool, iface)
     check = subprocess.run(["iptables", "-C", *rule], capture_output=True, text=True)
@@ -31,7 +33,7 @@ def restrict_pool(pool: tuple[int, int], iface: str = "wg0") -> bool:
         return True
     result = subprocess.run(["iptables", "-I", *rule], capture_output=True, text=True)
     if result.returncode != 0:
-        logger.warning(f"Nie udało się dodać reguły DOCKER-USER: {result.stderr.strip()}")
+        logger.warning(tr("node.log.docker_user_failed", error=result.stderr.strip()))
         return False
-    logger.info(f"Pula portów {pool[0]}-{pool[1]} dostępna tylko przez {iface}")
+    logger.info(tr("node.log.pool_restricted", pool=f"{pool[0]}-{pool[1]}", iface=iface))
     return True

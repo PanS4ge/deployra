@@ -9,13 +9,13 @@
 {% block heading %}Terminal{% endblock %}
 {% block actions %}
 <select class="select" id="shell" style="width: auto">
-  <option value="auto">auto (bash → sh)</option><option value="sh">sh</option><option value="bash">bash</option><option value="ash">ash</option>
+  <option value="auto">{{ t("terminal.auto") }}</option><option value="sh">sh</option><option value="bash">bash</option><option value="ash">ash</option>
 </select>
-<button class="btn sm" id="reconnect"><i class="bi bi-arrow-repeat"></i> Połącz ponownie</button>
+<button class="btn sm" id="reconnect"><i class="bi bi-arrow-repeat"></i> {{ t("terminal.reconnect") }}</button>
 {% endblock %}
 {% block content %}
 <div class="card"><div class="card-body"><div id="term" class="terminal"></div></div></div>
-<div class="small muted">Sesja działa w kontenerze przez <code>docker exec</code>. Zamknięcie karty kończy proces powłoki.</div>
+<div class="small muted">{{ t("terminal.hint") }}</div>
 <script>
 (function () {
   const el = document.getElementById("term");
@@ -45,14 +45,14 @@
       if (typeof e.data === "string") {
         try {
           const msg = JSON.parse(e.data);
-          if (msg.type === "exit") term.write("\r\n\x1b[35m[sesja zakończona]\x1b[0m\r\n");
+          if (msg.type === "exit") term.write(`\r\n\x1b[35m[${I18N.session_ended}]\x1b[0m\r\n`);
           if (msg.type === "error") term.write(`\r\n\x1b[31m${msg.message}\x1b[0m\r\n`);
         } catch (_) { term.write(e.data); }
       } else {
         term.write(new Uint8Array(e.data));
       }
     };
-    ws.onclose = (e) => { if (e.code >= 4400) term.write(`\r\n\x1b[31m[odmowa: ${e.code === 4401 ? "brak uprawnień" : "błędne żądanie"}]\x1b[0m\r\n`); };
+    ws.onclose = (e) => { if (e.code >= 4400) term.write(`\r\n\x1b[31m[${e.code === 4401 ? I18N.denied_permission : I18N.denied_request}]\x1b[0m\r\n`); };
   }
 
   term.onData((d) => { if (ws && ws.readyState === 1) ws.send(enc.encode(d)); });

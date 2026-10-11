@@ -16,6 +16,7 @@ from deployra_common.passwords import hash_password
 
 from ..context import Panel, get_panel
 from ..db import now
+from ..i18n import catalog, t
 from ..deps import current_user, require
 from ..permissions import LABELS, RISKY, Permission, encode, grantable, has, parse
 from ..security import SESSION_COOKIE
@@ -24,12 +25,12 @@ from ..web import redirect, render, toast
 
 router = APIRouter(dependencies=[Depends(current_user)])
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-GENERAL_KEYS = ("panel_domain", "base_domain", "acme_email", "default_page", "gravatar_default", "image_prefix", "notify_webhook")
+GENERAL_KEYS = ("panel_domain", "base_domain", "acme_email", "default_page", "gravatar_default", "image_prefix", "notify_webhook", "language")
 
 
 @router.get("/settings")
 def general(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
-    return render(request, "settings/general.html", title="Ustawienia", tab="general", s=panel.db.settings(), db=panel.db.dialect)
+    return render(request, "settings/general.html", title=t("nav.settings"), tab="general", s=panel.db.settings(), db=panel.db.dialect)
 
 
 @router.post("/settings")
@@ -40,10 +41,13 @@ async def save_general(request: Request, panel: Panel = Depends(get_panel), user
         if key == "base_domain":
             value = value.lower().removeprefix("*.").strip(".")
         if key == "notify_webhook" and value and not value.startswith(("http://", "https://")):
-            return toast("Webhook musi być adresem http(s)", "err", status=400)
+            return toast(t("msg.webhook_http"), "err", status=400)
+        if key == "language":
+            value = catalog.supported(value) or ""
+            panel.default_language = value or panel.config.language or None
         panel.db.set_setting(key, value)
     panel.db.set_setting("acme_staging", bool(form.get("acme_staging")))
-    return toast("Zapisano ustawienia")
+    return toast(t("msg.settings_saved"))
 
 
 # --- DNS i Cloudflare -------------------------------------------------------------------------
@@ -52,7 +56,7 @@ async def save_general(request: Request, panel: Panel = Depends(get_panel), user
 @router.get("/settings/dns")
 def dns_page(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
     s = panel.db.settings()
-    return render(request, "settings/dns.html", title="DNS i Cloudflare", tab="dns", s=s, has_token=bool(s.get("cloudflare_token")),
+    return render(request, "settings/dns.html", title=t("settings.tab_dns"), tab="dns", s=s, has_token=bool(s.get("cloudflare_token")),
                   tunnel=cloudflared.state(panel))  # fmt: skip
 
 
@@ -72,25 +76,25 @@ async def save_dns(request: Request, panel: Panel = Depends(get_panel), user: di
         try:
             ipaddress.ip_address(public_ip)
         except ValueError:
-            return toast("Nieprawidłowy adres IP", "err", status=400)
+            return toast(t("msg.bad_ip"), "err", status=400)
     panel.db.set_setting("public_ip", public_ip)
-    return redirect(request, "/settings/dns", "Zapisano ustawienia DNS")
+    return redirect(request, "/settings/dns", t("msg.dns_saved"))
 
 
 @router.post("/settings/dns/verify")
 async def verify_token(panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
     cf = dns.client(panel)
     if not cf:
-        return toast("Brak tokenu Cloudflare", "warn")
+        return toast(t("msg.no_cf_token"), "warn")
     try:
         active = await cf.verify()
         zones = await cf.zones()
     except (dns.DnsError, httpx.HTTPError) as exc:
-        return toast(f"Token nie działa: {exc}", "err", status=400)
+        return toast(t("msg.token_broken", error=exc), "err", status=400)
     finally:
         await cf.aclose()
-    names = ", ".join(z["name"] for z in zones) or "brak stref"
-    return toast(f"Token {'aktywny' if active else 'NIEAKTYWNY'} · strefy: {names}", "ok" if active else "warn")
+    names = ", ".join(z["name"] for z in zones) or t("msg.no_zones")
+    return toast(t("msg.token_active" if active else "msg.token_inactive", zones=names), "ok" if active else "warn")
 
 
 @router.post("/settings/dns/tunnel")
@@ -98,14 +102,14 @@ async def enable_tunnel(request: Request, panel: Panel = Depends(get_panel), use
     try:
         await cloudflared.enable(panel)
     except (cloudflared.TunnelError, dns.DnsError, RemoteError, httpx.HTTPError) as exc:
-        return toast(f"Cloudflare Tunnel: {getattr(exc, 'detail', exc)}", "err", status=400)
-    return redirect(request, "/settings/dns", "Cloudflare Tunnel działa na Deployra-WG ✔")
+        return toast(f"Cloudflare Tunnel: {getattr(exc, 'detail', exc)}", "err", status=400)  # nazwa własna + szczegóły błędu
+    return redirect(request, "/settings/dns", t("msg.cf_tunnel_on"))
 
 
 @router.post("/settings/dns/tunnel/disable")
 async def disable_tunnel(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_TUNNEL))):
     await cloudflared.disable(panel)
-    return redirect(request, "/settings/dns", "Wyłączono cloudflared na bramce (tunel w Cloudflare zostaje)", "warn")
+    return redirect(request, "/settings/dns", t("msg.cf_tunnel_off"), "warn")
 
 
 # --- użytkownicy ------------------------------------------------------------------------------
@@ -114,7 +118,7 @@ async def disable_tunnel(request: Request, panel: Panel = Depends(get_panel), us
 @router.get("/settings/users")
 def users_page(request: Request, panel: Panel = Depends(get_panel)):
     rows = panel.db.all("users")
-    return render(request, "settings/users.html", title="Użytkownicy", tab="users", users=rows, labels=LABELS, risky=RISKY,
+    return render(request, "settings/users.html", title=t("nav.users"), tab="users", users=rows, labels=LABELS, risky=RISKY,
                   parse=parse, grantable=grantable)  # fmt: skip
 
 
@@ -124,22 +128,22 @@ async def save_user(request: Request, panel: Panel = Depends(get_panel), user: d
     user_id = int(form.get("id") or 0) or None
     target = panel.db.get("users", user_id) if user_id else None
     if user_id and not target:
-        raise HTTPException(404, "Nie ma takiego użytkownika")
+        raise HTTPException(404, t("msg.no_user"))
     if target and target["id"] != user["id"] and not has(user, Permission.ALLOW_MODIFYING_USERS):
-        return toast("Brak uprawnień do edycji użytkowników", "err", status=403)
+        return toast(t("msg.no_perm_edit_users"), "err", status=403)
     if not target and not has(user, Permission.ALLOW_CREATING_USERS_SETTING):
-        return toast("Brak uprawnień do tworzenia użytkowników", "err", status=403)
+        return toast(t("msg.no_perm_create_users"), "err", status=403)
     email = str(form.get("email") or "").strip().lower()
     password = str(form.get("password") or "")
     if not EMAIL.match(email):
-        return toast("Podaj poprawny e-mail", "err", status=400)
+        return toast(t("msg.bad_email"), "err", status=400)
     clash = panel.db.fetchone("SELECT id FROM users WHERE email = ?", [email])
     if clash and (not target or clash["id"] != target["id"]):
-        return toast("Taki użytkownik już istnieje", "err", status=400)
+        return toast(t("msg.user_exists"), "err", status=400)
     if not target and len(password) < 8:
-        return toast("Hasło musi mieć co najmniej 8 znaków", "err", status=400)
+        return toast(t("msg.password_short"), "err", status=400)
     if password and len(password) < 8:
-        return toast("Hasło musi mieć co najmniej 8 znaków", "err", status=400)
+        return toast(t("msg.password_short"), "err", status=400)
     # uprawnienia: można nadać tylko te, które samemu się ma (ryzykowne — tylko z ALLOW_RISKY_PERMISSIONS)
     requested = {p for p in Permission if form.get(f"perm_{p.name}")}
     current = parse(target["permissions"]) if target else set()
@@ -163,21 +167,21 @@ async def save_user(request: Request, panel: Panel = Depends(get_panel), user: d
             panel.sessions.destroy_for_user(target["id"])  # zmiana hasła wylogowuje inne sesje tego konta
     else:
         panel.db.insert("users", undeletable=0, created_at=now(), **values)
-    return redirect(request, "/settings/users", "Zapisano użytkownika")
+    return redirect(request, "/settings/users", t("msg.user_saved"))
 
 
 @router.post("/settings/users/{user_id}/delete")
 def delete_user(request: Request, user_id: int, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_DELETING_USERS))):
     target = panel.db.get("users", user_id)
     if not target:
-        raise HTTPException(404, "Nie ma takiego użytkownika")
+        raise HTTPException(404, t("msg.no_user"))
     if target.get("undeletable"):
-        return toast("Pierwszego administratora nie da się usunąć", "err", status=400)
+        return toast(t("msg.first_admin"), "err", status=400)
     if target["id"] == user["id"]:
-        return toast("Nie usuniesz samego siebie", "err", status=400)
+        return toast(t("msg.delete_self"), "err", status=400)
     panel.sessions.destroy_for_user(target["id"])
     panel.db.delete("users", target["id"])
-    return redirect(request, "/settings/users", f"Usunięto {target['email']}")
+    return redirect(request, "/settings/users", t("msg.user_deleted", email=target["email"]))
 
 
 # --- kopia zapasowa -----------------------------------------------------------------------------
@@ -187,7 +191,7 @@ BACKUP_TABLES = ("settings", "access_lists", "certificates", "sites", "streams",
 
 @router.get("/settings/backup")
 def backup_page(request: Request, user: dict = Depends(require(Permission.ALLOW_RISKY_SETTINGS))):
-    return render(request, "settings/backup.html", title="Kopia zapasowa", tab="backup")
+    return render(request, "settings/backup.html", title=t("settings.tab_backup"), tab="backup")
 
 
 @router.get("/settings/backup/export")
@@ -218,7 +222,7 @@ async def import_backup(request: Request, file: UploadFile, panel: Panel = Depen
         data = json.loads(await file.read())
         assert data.get("deployra") == 1
     except (ValueError, AssertionError):
-        return toast("To nie jest kopia zapasowa Deployry", "err", status=400)
+        return toast(t("msg.not_backup"), "err", status=400)
     restored = 0
     with panel.db.transaction():
         for row in data["tables"].get("settings", []):
@@ -235,7 +239,7 @@ async def import_backup(request: Request, file: UploadFile, panel: Panel = Depen
 
     result = await proxy_state.push(panel)
     message, level = proxy_state.push_message(result)
-    return redirect(request, "/settings/backup", f"Przywrócono {restored} obiektów. {message}", level)
+    return redirect(request, "/settings/backup", t("msg.restored", count=restored) + " " + message, level)
 
 
 # --- strefa ryzyka ---------------------------------------------------------------------------------
@@ -243,7 +247,7 @@ async def import_backup(request: Request, file: UploadFile, panel: Panel = Depen
 
 @router.get("/settings/risky")
 def risky_page(request: Request, user: dict = Depends(require(Permission.ALLOW_RISKY_SETTINGS))):
-    return render(request, "settings/risky.html", title="Strefa ryzyka", tab="risky")
+    return render(request, "settings/risky.html", title=t("settings.tab_risky"), tab="risky")
 
 
 @router.post("/settings/risky/reset")
@@ -254,6 +258,6 @@ def factory_reset(request: Request, panel: Panel = Depends(get_panel), user: dic
                       "certificates", "nodes", "gateway", "notifications", "settings", "sessions", "users"):
             panel.db.execute(f"DELETE FROM {table}")
     panel._clients.clear()
-    response = redirect(request, "/setup", "Panel zresetowany. Węzły i bramkę zresetuj poleceniem reset-pairing.", "warn")
+    response = redirect(request, "/setup", t("msg.factory_reset"), "warn")
     response.delete_cookie(SESSION_COOKIE, path="/")
     return response

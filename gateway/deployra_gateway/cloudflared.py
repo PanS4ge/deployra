@@ -16,6 +16,8 @@ from typing import Any
 
 from loguru import logger
 
+from deployra_common.i18n import tr
+
 
 class Cloudflared:
     def __init__(self, state: Any, binary: str = "cloudflared") -> None:
@@ -68,7 +70,7 @@ class Cloudflared:
             token = self.token
             if not token or not self.available():
                 if token and not self.available():
-                    logger.error("Brak programu cloudflared w obrazie bramki")
+                    logger.error(tr("gw.log.no_cloudflared"))
                 await self._changed.wait()
                 continue
             env = {**os.environ, "TUNNEL_TOKEN": token}
@@ -77,7 +79,7 @@ class Cloudflared:
                 env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
             )  # fmt: skip
             self.started = time.time()
-            logger.info("cloudflared uruchomiony")
+            logger.info(tr("gw.log.cloudflared_started"))
             pump = asyncio.create_task(self._pump(self.proc))
             waiter = asyncio.create_task(self.proc.wait())
             changed = asyncio.create_task(self._changed.wait())
@@ -89,7 +91,7 @@ class Cloudflared:
                 changed.cancel()
                 code = self.proc.returncode
                 lived = time.time() - (self.started or time.time())
-                logger.warning(f"cloudflared zakończył się (kod {code}) — restart za {backoff} s")
+                logger.warning(tr("gw.log.cloudflared_exited", code=code, delay=backoff))
                 backoff = 5 if lived > 300 else min(backoff * 2, 120)
                 try:
                     await asyncio.wait_for(self._changed.wait(), timeout=backoff)

@@ -4,77 +4,77 @@
 <div class="grid grid-2">
   <div class="card">
     <div class="card-head">
-      <h3><i class="bi bi-stars"></i> Wersja</h3>
+      <h3><i class="bi bi-stars"></i> {{ t("updates.version") }}</h3>
       <span class="spacer"></span>
-      <button class="btn sm" hx-post="/settings/updates/check" hx-swap="none" {{ "disabled" if not source }}><i class="bi bi-arrow-repeat"></i> Sprawdź teraz</button>
+      <button class="btn sm" hx-post="/settings/updates/check" hx-swap="none" {{ "disabled" if not source }}><i class="bi bi-arrow-repeat"></i> {{ t("updates.check_now") }}</button>
     </div>
     <div class="card-body stack">
       <div class="update-versions">
-        <div><div class="small muted">Masz</div><div class="update-ver">{{ current }}</div></div>
+        <div><div class="small muted">{{ t("updates.you_have") }}</div><div class="update-ver">{{ current }}</div></div>
         <i class="bi bi-arrow-right muted"></i>
-        <div><div class="small muted">Najnowsza</div><div class="update-ver {{ 'new' if newer }}">{{ latest.version or "—" }}</div></div>
+        <div><div class="small muted">{{ t("updates.latest") }}</div><div class="update-ver {{ 'new' if newer }}">{{ latest.version or "—" }}</div></div>
       </div>
       {% if pending %}
-        <div class="callout"><span class="spin"></span><div>Trwa aktualizacja do <b>{{ pending.target }}</b>. {% if pending.job_id %}<a href="/jobs/{{ pending.job_id }}">Podgląd na żywo</a>{% endif %}</div></div>
+        <div class="callout"><span class="spin"></span><div>{{ t("updates.in_progress", version=pending.target) }} {% if pending.job_id %}<a href="/jobs/{{ pending.job_id }}">{{ t("updates.live_view") }}</a>{% endif %}</div></div>
       {% elif newer %}
-        <div class="callout ok"><i class="bi bi-rocket-takeoff"></i><div>Dostępna <b>{{ latest.name or latest.version }}</b>{% if latest.published_at %} · wydana {{ latest.published_at | dt }}{% endif %}.
-          Aktualizacja idzie w tle: najpierw węzły, potem bramka, na końcu panel.</div></div>
+        <div class="callout ok"><i class="bi bi-rocket-takeoff"></i><div>{{ t("updates.available", name=latest.name or latest.version) }}{% if latest.published_at %} · {{ t("updates.released", date=latest.published_at | dt) }}{% endif %}.
+          {{ t("updates.order_hint") }}</div></div>
         <div class="row">
           <button class="btn primary" hx-post="/settings/updates/start" hx-vals='{"target": "{{ latest.version }}"}' hx-swap="none"
-                  hx-confirm="Zaktualizować wszystkie komponenty do {{ latest.version }}?&#10;&#10;Kolejność: węzły → bramka → panel. Panel zrestartuje się na końcu, aplikacje działają dalej (ruch przez bramkę zatrzyma się na kilka sekund)."
-                  data-confirm-title="Aktualizacja do {{ latest.version }}"><i class="bi bi-cloud-arrow-down"></i> Aktualizuj teraz</button>
+                  hx-confirm="{{ t('updates.confirm_all', version=latest.version) }}"
+                  data-confirm-title="{{ t('updates.confirm_title', version=latest.version) }}"><i class="bi bi-cloud-arrow-down"></i> {{ t("updates.update_now") }}</button>
           {% if skipped != latest.version %}
-          <button class="btn ghost" hx-post="/updates/skip" hx-vals='{"version": "{{ latest.version }}"}' hx-swap="none"><i class="bi bi-skip-forward"></i> Pomiń tę wersję</button>
+          <button class="btn ghost" hx-post="/updates/skip" hx-vals='{"version": "{{ latest.version }}"}' hx-swap="none"><i class="bi bi-skip-forward"></i> {{ t("updates.skip") }}</button>
           {% endif %}
-          {% if latest.url %}<a class="btn ghost" href="{{ latest.url }}" target="_blank" rel="noopener" hx-boost="false"><i class="bi bi-box-arrow-up-right"></i> Wydanie</a>{% endif %}
+          {% if latest.url %}<a class="btn ghost" href="{{ latest.url }}" target="_blank" rel="noopener" hx-boost="false"><i class="bi bi-box-arrow-up-right"></i> {{ t("updates.release") }}</a>{% endif %}
         </div>
-        {% if skipped == latest.version %}<div class="small muted">Ta wersja jest pominięta — baner się nie pokazuje. <a href="#" hx-post="/updates/unskip" hx-swap="none">Cofnij</a></div>{% endif %}
+        {% if skipped == latest.version %}<div class="small muted">{{ t("updates.skipped") }} <a href="#" hx-post="/updates/unskip" hx-swap="none">{{ t("common.undo") }}</a></div>{% endif %}
       {% elif latest.version %}
-        <div class="callout ok"><i class="bi bi-check2-circle"></i><div>Masz najnowszą wersję.</div></div>
+        <div class="callout ok"><i class="bi bi-check2-circle"></i><div>{{ t("updates.up_to_date") }}</div></div>
       {% elif not source %}
-        <div class="callout"><i class="bi bi-info-circle"></i><div class="small">Wpisz źródło wydań obok, żeby panel mógł sprawdzać nowe wersje.</div></div>
+        <div class="callout"><i class="bi bi-info-circle"></i><div class="small">{{ t("updates.no_source") }}</div></div>
       {% endif %}
       {% if latest.error %}<div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div class="small">{{ latest.error }}</div></div>{% endif %}
-      {% if latest.checked_at %}<div class="small muted">Ostatnie sprawdzenie: {{ latest.checked_at | ago }}{% if latest.source %} · {{ latest.source }}{% endif %}</div>{% endif %}
+      {% if latest.checked_at %}<div class="small muted">{{ t("updates.last_check", ago=latest.checked_at | ago) }}{% if latest.source %} · {{ latest.source }}{% endif %}</div>{% endif %}
     </div>
   </div>
 
   <form class="card" hx-post="/settings/updates" hx-swap="none">
-    <div class="card-head"><h3><i class="bi bi-sliders"></i> Ustawienia</h3></div>
+    <div class="card-head"><h3><i class="bi bi-sliders"></i> {{ t("nav.settings") }}</h3></div>
     <div class="card-body stack">
-      <div class="field"><label>Źródło wydań</label>
-        <input class="input mono" name="update_repo" value="{{ s.update_repo or '' }}" placeholder="{{ env_source or 'twoj-login/deployra' }}">
-        <div class="hint">Repozytorium na GitHubie (<code>owner/repo</code>) albo adres JSON z polami <code>version</code>, <code>notes</code>, <code>url</code>.{% if env_source %} Puste = <code>{{ env_source }}</code> z DEPLOYRA_UPDATE_REPO.{% endif %}</div>
+      <div class="field"><label>{{ t("updates.source") }}</label>
+        <input class="input mono" name="update_repo" value="{{ s.update_repo or '' }}" placeholder="{{ env_source or 'owner/deployra' }}">
+        <div class="hint">{{ t("updates.source_hint") }}{% if env_source %} {{ t("updates.source_env", source=env_source) }}{% endif %}</div>
       </div>
-      <label class="check"><input type="checkbox" name="update_check" value="1" {{ "checked" if s.get("update_check", true) }}><span class="sw"></span><span>Sprawdzaj nowe wersje co 6 godzin</span></label>
-      <label class="check"><input type="checkbox" name="update_auto" value="1" {{ "checked" if s.update_auto }}><span class="sw"></span><span>Instaluj automatycznie (w tle, bez pytania)</span></label>
-      <div class="hint">Bez automatu panel pokaże baner „Dostępna aktualizacja” i zapyta: aktualizować czy nie.</div>
+      <label class="check"><input type="checkbox" name="update_check" value="1" {{ "checked" if s.get("update_check", true) }}><span class="sw"></span><span>{{ t("updates.auto_check") }}</span></label>
+      <label class="check"><input type="checkbox" name="update_auto" value="1" {{ "checked" if s.update_auto }}><span class="sw"></span><span>{{ t("updates.auto_install") }}</span></label>
+      <div class="hint">{{ t("updates.auto_install_hint") }}</div>
     </div>
-    <div class="card-body row" style="justify-content: flex-end; border-top: 1px solid var(--border)"><button class="btn primary"><i class="bi bi-check2"></i> Zapisz</button></div>
+    <div class="card-body row" style="justify-content: flex-end; border-top: 1px solid var(--border)"><button class="btn primary"><i class="bi bi-check2"></i> {{ t("common.save") }}</button></div>
   </form>
 </div>
 
 <div class="card">
-  <div class="card-head"><h3><i class="bi bi-boxes"></i> Komponenty</h3><span class="spacer"></span><span class="small muted">docelowo {{ target }}</span></div>
+  <div class="card-head"><h3><i class="bi bi-boxes"></i> {{ t("updates.components") }}</h3><span class="spacer"></span><span class="small muted">{{ t("updates.target", version=target) }}</span></div>
   <div id="update-components" hx-get="/settings/updates/components" hx-trigger="load, every {{ '5s' if pending else '30s' }} [!document.hidden]" hx-swap="innerHTML" hx-disinherit="*">
-    <div class="card-body muted small">Pytam komponenty o wersje…</div>
+    <div class="card-body muted small">{{ t("updates.asking") }}</div>
   </div>
 </div>
 
 {% if newer and notes %}
 <div class="card" id="notes">
-  <div class="card-head"><h3><i class="bi bi-journal-text"></i> Co nowego w {{ latest.version }}</h3></div>
+  <div class="card-head"><h3><i class="bi bi-journal-text"></i> {{ t("updates.whats_new", version=latest.version) }}</h3></div>
   <div class="card-body release-notes">{{ notes }}</div>
 </div>
 {% endif %}
 
 <div class="card">
-  <div class="card-head"><h3><i class="bi bi-question-circle"></i> Jak to działa</h3></div>
+  <div class="card-head"><h3><i class="bi bi-question-circle"></i> {{ t("common.how_it_works") }}</h3></div>
   <div class="card-body small dim stack" style="gap: 8px">
-    <div>Każdy komponent ma obok siebie mały kontener <code>*-updater</code> (w spoczynku ~1 MB RAM, bez sieci). Tylko on ma dostęp do Dockera — panel i bramka nie.</div>
-    <div><b>Obrazy z rejestru</b> (<code>DEPLOYRA_IMAGES=ghcr.io/…/deployra</code> w <code>deploy/.env</code>): <code>docker compose pull</code> + <code>up -d</code>, zwykle kilkanaście sekund.</div>
-    <div><b>Ze źródeł</b> (domyślnie): <code>git</code> przewija repozytorium do taga <code>vX.Y.Z</code> i przebudowuje obrazy — wolniej, ale bez rejestru.</div>
-    <div><b>Proxmox bez Dockera</b>: <code>install-native.sh --update</code> uruchamiany przez <code>systemd-run</code>.</div>
+    <div>{{ t("updates.how_1") }}</div>
+    <div>{{ t("updates.how_image") }}</div>
+    <div>{{ t("updates.how_source") }}</div>
+    <div>{{ t("updates.how_native") }}</div>
   </div>
 </div>
 {% endblock %}

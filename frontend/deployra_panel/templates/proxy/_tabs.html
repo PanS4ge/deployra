@@ -1,7 +1,7 @@
 <nav class="tabs">
-  <a href="/proxy/hosts" class="{{ 'active' if tab == 'hosts' }}"><i class="bi bi-signpost-split"></i> Hosty proxy</a>
-  <a href="/proxy/redirects" class="{{ 'active' if tab == 'redirects' }}"><i class="bi bi-arrow-return-right"></i> Przekierowania</a>
-  <a href="/proxy/dead" class="{{ 'active' if tab == 'dead' }}"><i class="bi bi-sign-stop"></i> Hosty 404</a>
-  <a href="/proxy/streams" class="{{ 'active' if tab == 'streams' }}"><i class="bi bi-ethernet"></i> Streamy</a>
-  <a href="/proxy/access" class="{{ 'active' if tab == 'access' }}"><i class="bi bi-person-lock"></i> Listy dostępu</a>
+  <a href="/proxy/hosts" class="{{ 'active' if tab == 'hosts' }}"><i class="bi bi-signpost-split"></i> {{ t("dashboard.proxy_hosts") }}</a>
+  <a href="/proxy/redirects" class="{{ 'active' if tab == 'redirects' }}"><i class="bi bi-arrow-return-right"></i> {{ t("proxy.tab_redirects") }}</a>
+  <a href="/proxy/dead" class="{{ 'active' if tab == 'dead' }}"><i class="bi bi-sign-stop"></i> {{ t("proxy.tab_dead") }}</a>
+  <a href="/proxy/streams" class="{{ 'active' if tab == 'streams' }}"><i class="bi bi-ethernet"></i> {{ t("proxy.tab_streams") }}</a>
+  <a href="/proxy/access" class="{{ 'active' if tab == 'access' }}"><i class="bi bi-person-lock"></i> {{ t("proxy.tab_access") }}</a>
 </nav>

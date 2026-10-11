@@ -1,53 +1,50 @@
 {% extends "base.html" %}
-{% block crumbs %}<div class="crumbs"><a href="/apps">Aplikacje</a> /</div>{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="/apps">{{ t("nav.apps") }}</a> /</div>{% endblock %}
 {% block content %}
 {% if not nodes %}
-<div class="card"><div class="empty"><i class="bi bi-hdd-network"></i><h3>Najpierw dodaj węzeł</h3><p>Aplikacja musi gdzieś działać.</p><a class="btn primary" href="/nodes/add">Dodaj węzeł</a></div></div>
+<div class="card"><div class="empty"><i class="bi bi-hdd-network"></i><h3>{{ t("apps.no_nodes_title") }}</h3><p>{{ t("apps.no_nodes_text") }}</p><a class="btn primary" href="/nodes/add">{{ t("nodes.add") }}</a></div></div>
 {% else %}
 {% set node_eps = {} %}
 {% for n in nodes %}{% set _ = node_eps.update({n.id|string: (n.info or {}).get("endpoints") or [{"id": "local", "name": "Host"}]}) %}{% endfor %}
+{% set pipeline = {"image": t("apps.pipeline_image"), "compose": "docker compose up", "static": t("apps.pipeline_static"), "git": t("apps.pipeline_git")} %}
 <form hx-post="/apps/new" hx-swap="none" class="stack"
       x-data="{
         step: 1, kind: 'image', name: '', slug: '', slugEdited: false, domains: '', domainsEdited: false,
         base: {{ base_domain | tojson | forceescape }}, node: '{{ nodes[0].id }}', endpoint: '',
-        eps: {{ node_eps | tojson | forceescape }},
+        eps: {{ node_eps | tojson | forceescape }}, pipeline: {{ pipeline | tojson | forceescape }},
         slugify(t) { return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); },
         sync() { if (!this.slugEdited) this.slug = this.slugify(this.name); if (!this.domainsEdited && this.base && this.slug) this.domains = this.slug + '.' + this.base; },
         get static() { return this.kind === 'static'; },
         firstEp() { this.endpoint = ((this.eps[this.node] || [])[0] || { id: 'local' }).id; },
       }" x-init="firstEp()">
   <div class="steps">
-    {% for n, label in [(1, "Źródło"), (2, "Gdzie"), (3, "Szczegóły"), (4, "Domena")] %}
+    {% for n, label in [(1, t("apps.step_source")), (2, t("apps.step_where")), (3, t("apps.step_details")), (4, t("apps.step_domain"))] %}
     <div class="step" :class="{ on: step === {{ n }}, done: step > {{ n }} }"><b>{{ n }}</b> {{ label }}</div>
     {% endfor %}
   </div>
 
-  <!-- 1. źródło -->
+  {# 1. źródło #}
   <div class="card" x-show="step === 1">
-    <div class="card-head"><h2>Skąd bierzemy aplikację?</h2></div>
+    <div class="card-head"><h2>{{ t("apps.source_question") }}</h2></div>
     <div class="card-body grid grid-2">
       <input type="hidden" name="kind" :value="kind">
-      {% for key, icon, title, text in [
-        ("image", "box", "Obraz Dockera", "Gotowy obraz z Docker Hub, GHCR albo własnego rejestru."),
-        ("compose", "layers", "docker-compose", "Wiele usług naraz — wklej plik, wybierz usługę do wystawienia."),
-        ("static", "file-earmark-code", "Strona statyczna", "HTML/CSS/JS z ZIP-a albo przez SFTP — zamiast osobnej strony z FTP."),
-        ("git", "git", "Repozytorium Git", "Build z Dockerfile na węźle, redeploy po pushu (webhook).")] %}
+      {% for key, icon in [("image", "box"), ("compose", "layers"), ("static", "file-earmark-code"), ("git", "git")] %}
       <div class="choice" :class="kind === '{{ key }}' && 'on'" @click="kind = '{{ key }}'">
-        <i class="bi bi-{{ icon }}"></i><div><b>{{ title }}</b><span>{{ text }}</span></div>
+        <i class="bi bi-{{ icon }}"></i><div><b>{{ t("apps.kind." ~ key) }}</b><span>{{ t("apps.kind_hint." ~ key) }}</span></div>
       </div>
       {% endfor %}
     </div>
   </div>
 
-  <!-- 2. gdzie -->
+  {# 2. gdzie #}
   <div class="card" x-show="step === 2" x-cloak>
-    <div class="card-head"><h2>Nazwa i miejsce</h2></div>
+    <div class="card-head"><h2>{{ t("apps.name_and_place") }}</h2></div>
     <div class="card-body form-grid">
-      <div class="field"><label>Nazwa</label><input class="input" name="name" x-model="name" @input="sync()" placeholder="Mój blog" required maxlength="60"></div>
-      <div class="field"><label>Identyfikator (slug)</label><input class="input mono" name="slug" x-model="slug" @input="slugEdited = true; sync()" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" maxlength="40" required></div>
-      <div class="field"><label>Węzeł</label>
+      <div class="field"><label>{{ t("common.name") }}</label><input class="input" name="name" x-model="name" @input="sync()" placeholder="{{ t('uptime.name_placeholder') }}" required maxlength="60"></div>
+      <div class="field"><label>{{ t("apps.slug") }}</label><input class="input mono" name="slug" x-model="slug" @input="slugEdited = true; sync()" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" maxlength="40" required></div>
+      <div class="field"><label>{{ t("apps.node") }}</label>
         <select class="select" name="node_id" x-model="node" @change="firstEp()">
-          {% for n in nodes %}<option value="{{ n.id }}">{{ n.name }}{{ " (tunel)" if n.transport == "tunnel" }}</option>{% endfor %}
+          {% for n in nodes %}<option value="{{ n.id }}">{{ n.name }}{{ (" (" ~ t("nodes.via_tunnel") ~ ")") if n.transport == "tunnel" }}</option>{% endfor %}
         </select>
       </div>
       <div class="field" x-show="(eps[node] || []).length > 1">
@@ -55,53 +52,53 @@
         <select class="select" name="endpoint" x-model="endpoint">
           <template x-for="e in (eps[node] || [])" :key="e.id"><option :value="e.id" x-text="e.id === 'local' ? 'Host' : (e.name + ' · CT ' + e.vmid + (e.ip ? ' · ' + e.ip : ''))"></option></template>
         </select>
-        <div class="hint" x-show="endpoint !== 'local' && static" style="color: var(--warn)">Strony statyczne działają tylko na Dockerze hosta.</div>
+        <div class="hint" x-show="endpoint !== 'local' && static" style="color: var(--warn)">{{ t("apps.static_host_only") }}</div>
       </div>
     </div>
   </div>
 
-  <!-- 3. szczegóły -->
+  {# 3. szczegóły #}
   <div class="card" x-show="step === 3" x-cloak>
-    <div class="card-head"><h2>Szczegóły</h2></div>
+    <div class="card-head"><h2>{{ t("apps.step_details") }}</h2></div>
     <div class="card-body stack">
       {% set spec = None %}
       {% include "apps/_source_fields.html" %}
       <details x-show="!static">
-        <summary class="small muted" style="cursor: pointer"><i class="bi bi-sliders"></i> Zmienne, wolumeny i limity</summary>
+        <summary class="small muted" style="cursor: pointer"><i class="bi bi-sliders"></i> {{ t("apps.env_volumes_limits") }}</summary>
         <div class="form-grid" style="margin-top: 12px">
-          <div class="field full"><label>Zmienne środowiskowe (KLUCZ=wartość)</label><textarea class="textarea" name="env" style="min-height: 90px" placeholder="TZ=Europe/Warsaw"></textarea></div>
-          <div class="field full"><label>Wolumeny (wolumen_lub_/ścieżka:/w/kontenerze[:ro])</label><textarea class="textarea" name="volumes" style="min-height: 70px" placeholder="dane-bloga:/var/lib/ghost/content"></textarea></div>
-          <div class="field"><label>Limit RAM (MB)</label><input class="input" name="memory_mb" type="number" min="16" placeholder="bez limitu"></div>
-          <div class="field"><label>Limit CPU (rdzenie)</label><input class="input" name="cpus" type="number" step="0.1" min="0.1" placeholder="bez limitu"></div>
+          <div class="field full"><label>{{ t("apps.env") }}</label><textarea class="textarea" name="env" style="min-height: 90px" placeholder="TZ=Europe/Warsaw"></textarea></div>
+          <div class="field full"><label>{{ t("apps.volumes") }}</label><textarea class="textarea" name="volumes" style="min-height: 70px" placeholder="{{ t('apps.volumes_placeholder') }}"></textarea></div>
+          <div class="field"><label>{{ t("containers.memory") }}</label><input class="input" name="memory_mb" type="number" min="16" placeholder="{{ t('containers.no_limit') }}"></div>
+          <div class="field"><label>{{ t("apps.cpus") }}</label><input class="input" name="cpus" type="number" step="0.1" min="0.1" placeholder="{{ t('containers.no_limit') }}"></div>
         </div>
       </details>
     </div>
   </div>
 
-  <!-- 4. domena -->
+  {# 4. domena #}
   <div class="card" x-show="step === 4" x-cloak>
-    <div class="card-head"><h2>Domena i HTTPS</h2></div>
+    <div class="card-head"><h2>{{ t("apps.domain_https") }}</h2></div>
     <div class="card-body stack">
-      {% if not has_gateway %}<div class="callout warn"><i class="bi bi-diagram-3"></i><div class="small">Brak Deployra-WG — aplikacja wstanie na węźle, ale nie zostanie wystawiona publicznie, dopóki nie <a href="/tunnel">połączysz bramki</a>.</div></div>{% endif %}
+      {% if not has_gateway %}<div class="callout warn"><i class="bi bi-diagram-3"></i><div class="small">{{ t("apps.no_gateway") }}</div></div>{% endif %}
       <div class="field">
-        <label>Domeny (po jednej w linii)</label>
+        <label>{{ t("apps.domains") }}</label>
         <textarea class="textarea" name="domains" style="min-height: 70px" x-model="domains" @input="domainsEdited = true" placeholder="blog.example.com"></textarea>
-        <div class="hint">Zostaw puste, jeśli aplikacja ma działać tylko w tunelu / sieci lokalnej.</div>
+        <div class="hint">{{ t("apps.domains_hint") }}</div>
       </div>
       <div class="row" style="gap: 22px">
-        <label class="check"><input type="checkbox" name="https" value="1" checked><span class="sw"></span><span>HTTPS (Let's Encrypt)</span></label>
-        <label class="check"><input type="checkbox" name="force_ssl" value="1" checked><span class="sw"></span><span>Wymuś HTTPS</span></label>
-        <label class="check"><input type="checkbox" name="dns" value="1" {% if has_cf %}checked{% else %}disabled{% endif %}><span class="sw"></span><span>Rekord DNS w Cloudflare{% if not has_cf %} <span class="muted small">(dodaj token w ustawieniach)</span>{% endif %}</span></label>
+        <label class="check"><input type="checkbox" name="https" value="1" checked><span class="sw"></span><span>{{ t("apps.https_le") }}</span></label>
+        <label class="check"><input type="checkbox" name="force_ssl" value="1" checked><span class="sw"></span><span>{{ t("apps.force_https") }}</span></label>
+        <label class="check"><input type="checkbox" name="dns" value="1" {% if has_cf %}checked{% else %}disabled{% endif %}><span class="sw"></span><span>{{ t("apps.dns_record") }}{% if not has_cf %} <span class="muted small">{{ t("apps.add_token_hint") }}</span>{% endif %}</span></label>
       </div>
-      <div class="callout"><i class="bi bi-rocket-takeoff"></i><div class="small">Po kliknięciu „Wdróż” zobaczysz log na żywo: <span x-text="{image: 'pobranie obrazu', compose: 'docker compose up', static: 'serwer stron', git: 'klon i build'}[kind]"></span> → host proxy na bramce → DNS → certyfikat → test przez tunel.</div></div>
+      <div class="callout"><i class="bi bi-rocket-takeoff"></i><div class="small">{{ t("apps.pipeline_hint_before") }} <span x-text="pipeline[kind]"></span> → {{ t("apps.pipeline_hint_after") }}</div></div>
     </div>
   </div>
 
   <div class="row between">
-    <button type="button" class="btn ghost" x-show="step > 1" @click="step--"><i class="bi bi-arrow-left"></i> Wstecz</button>
+    <button type="button" class="btn ghost" x-show="step > 1" @click="step--"><i class="bi bi-arrow-left"></i> {{ t("apps.prev") }}</button>
     <span class="spacer"></span>
-    <button type="button" class="btn primary" x-show="step < 4" @click="if (step === 2 && !name) { toast('Podaj nazwę aplikacji', 'warn'); return; } step++; sync()">Dalej <i class="bi bi-arrow-right"></i></button>
-    <button type="submit" class="btn primary" x-show="step === 4"><span class="spin"></span><i class="bi bi-rocket-takeoff"></i> Wdróż</button>
+    <button type="button" class="btn primary" x-show="step < 4" @click="if (step === 2 && !name) { toast(I18N.app_name_required, 'warn'); return; } step++; sync()">{{ t("apps.next") }} <i class="bi bi-arrow-right"></i></button>
+    <button type="submit" class="btn primary" x-show="step === 4"><span class="spin"></span><i class="bi bi-rocket-takeoff"></i> {{ t("dashboard.deploy") }}</button>
   </div>
 </form>
 {% endif %}

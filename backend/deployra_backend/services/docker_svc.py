@@ -7,6 +7,7 @@ import threading
 from collections.abc import AsyncIterator
 from typing import Any
 
+from deployra_common.i18n import tr
 from deployra_common.jobs import Job, JobFailed
 from deployra_common.schemas import ContainerSpec, NetworkSpec, VolumeSpec
 
@@ -70,14 +71,14 @@ def inspect_container(client: Any, cid: str) -> dict:
 
 def container_action(client: Any, cid: str, action: str) -> None:
     if action not in CONTAINER_ACTIONS:
-        raise ValueError(f"nieznana akcja: {action}")
+        raise ValueError(tr("node.unknown_action", action=action))
     getattr(client.api, action)(cid)
 
 
 def remove_container(client: Any, cid: str, *, force: bool, volumes: bool) -> None:
     info = client.api.inspect_container(cid)
     if (info.get("Config", {}).get("Labels") or {}).get(SYSTEM_LABEL):
-        raise PermissionError("to kontener systemowy Deployry — usuń go przez docker compose")
+        raise PermissionError(tr("node.system_container"))
     client.api.remove_container(cid, force=force, v=volumes)
 
 
@@ -213,11 +214,11 @@ def pull_image(client: Any, job: Job, image: str) -> str:
 
     repo, tag = parse_repository_tag(image)
     tag = tag or "latest"
-    job.log(f"Pobieram {repo}:{tag}")
+    job.log(tr("node.pulling", image=f"{repo}:{tag}"))
     last: dict[str, str] = {}
     for event in client.api.pull(repo, tag=tag, stream=True, decode=True):
         if "error" in event:
-            raise JobFailed(event.get("error") or "błąd pobierania")
+            raise JobFailed(event.get("error") or tr("node.pull_error"))
         status, layer = event.get("status", ""), event.get("id", "")
         if not layer:
             job.log(status)
@@ -311,7 +312,7 @@ def create_network(client: Any, spec: NetworkSpec) -> dict:
 def remove_network(client: Any, network_id: str) -> None:
     info = client.api.inspect_network(network_id)
     if info.get("Name") in PROTECTED_NETWORKS:
-        raise PermissionError("tej sieci nie można usunąć")
+        raise PermissionError(tr("node.network_protected"))
     client.api.remove_network(network_id)
 
 

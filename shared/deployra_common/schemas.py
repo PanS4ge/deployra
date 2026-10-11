@@ -14,6 +14,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from .i18n import tr
+
 _HOSTNAME = re.compile(r"^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 _UPSTREAM_HOST = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9._-]{0,251}[A-Za-z0-9])?$")
 _URL_PATH = re.compile(r"^/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$")
@@ -28,7 +30,7 @@ Port = Annotated[int, Field(ge=1, le=65535)]
 def check_domain(value: str) -> str:
     value = value.strip().lower().rstrip(".")
     if len(value) > 253 or not _HOSTNAME.match(value):
-        raise ValueError(f"nieprawidłowa domena: {value!r}")
+        raise ValueError(tr("srv.schema.bad_domain", value=repr(value)))
     return value
 
 
@@ -39,32 +41,32 @@ def check_upstream_host(value: str) -> str:
     except ValueError:
         pass
     if not _UPSTREAM_HOST.match(value):
-        raise ValueError(f"nieprawidłowy host docelowy: {value!r}")
+        raise ValueError(tr("srv.schema.bad_host", value=repr(value)))
     return value
 
 
 def check_slug(value: str) -> str:
     if not _SLUG.match(value):
-        raise ValueError("slug: małe litery, cyfry i myślniki (maks. 40 znaków)")
+        raise ValueError(tr("srv.schema.bad_slug"))
     return value
 
 
 def check_name(value: str) -> str:
     if not _NAME.match(value):
-        raise ValueError(f"nieprawidłowa nazwa: {value!r}")
+        raise ValueError(tr("srv.schema.bad_name", value=repr(value)))
     return value
 
 
 def check_image(value: str) -> str:
     value = value.strip()
     if not _IMAGE.match(value):
-        raise ValueError("nieprawidłowa nazwa obrazu")
+        raise ValueError(tr("srv.schema.bad_image"))
     return value
 
 
 def _no_newlines(value: str) -> str:
     if "\n" in value or "\r" in value or "\x00" in value:
-        raise ValueError("wartość nie może zawierać nowych linii")
+        raise ValueError(tr("srv.schema.no_newlines"))
     return value
 
 
@@ -92,7 +94,7 @@ class VolumeMount(BaseModel):
     @classmethod
     def _abs(cls, v: str) -> str:
         if not v.startswith("/"):
-            raise ValueError("ścieżka w kontenerze musi być absolutna")
+            raise ValueError(tr("srv.schema.abs_container_path"))
         return _no_newlines(v)
 
     @field_validator("source")
@@ -100,7 +102,7 @@ class VolumeMount(BaseModel):
     def _src(cls, v: str) -> str:
         v = _no_newlines(v)
         if not v.startswith("/") and not _NAME.match(v):
-            raise ValueError("źródło: nazwa wolumenu albo ścieżka absolutna")
+            raise ValueError(tr("srv.schema.volume_source"))
         return v
 
 
@@ -135,7 +137,7 @@ class ContainerSpec(BaseModel):
     def _env(cls, v: dict[str, str]) -> dict[str, str]:
         for key in v:
             if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
-                raise ValueError(f"nieprawidłowa zmienna środowiskowa: {key!r}")
+                raise ValueError(tr("srv.schema.bad_env", key=repr(key)))
         return v
 
 
@@ -202,17 +204,17 @@ class AppSource(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> "AppSource":
         if self.kind == "image" and not self.image:
-            raise ValueError("podaj obraz")
+            raise ValueError(tr("srv.schema.need_image"))
         if self.kind == "compose" and not self.compose:
-            raise ValueError("podaj plik docker-compose")
+            raise ValueError(tr("srv.schema.need_compose"))
         if self.kind == "git":
             if not self.git_url or not re.match(r"^(https://|git@|ssh://)[^\s]+$", self.git_url):
-                raise ValueError("podaj adres repozytorium (https:// lub ssh)")
+                raise ValueError(tr("srv.schema.need_repo"))
             if not re.match(r"^[A-Za-z0-9._/-]{1,100}$", self.git_branch):
-                raise ValueError("nieprawidłowa gałąź")
+                raise ValueError(tr("srv.schema.bad_branch"))
             for rel in (self.dockerfile, self.build_context, self.git_static_dir or "."):
                 if rel.startswith("/") or ".." in rel.split("/"):
-                    raise ValueError("ścieżki w repozytorium muszą być względne")
+                    raise ValueError(tr("srv.schema.relative_paths"))
         if self.image:
             self.image = check_image(self.image)
         return self
@@ -243,14 +245,14 @@ class AppSpec(BaseModel):
     @model_validator(mode="after")
     def _ports(self) -> "AppSpec":
         if not re.match(r"^(local|ct-\d{1,9})$", self.endpoint):
-            raise ValueError("endpoint: local albo ct-<vmid>")
+            raise ValueError(tr("srv.schema.bad_endpoint"))
         static = self.source.kind == "static" or (self.source.kind == "git" and self.source.git_static_dir)
         if static and self.endpoint != "local":
-            raise ValueError("strony statyczne działają na Dockerze hosta węzła (endpoint local)")
+            raise ValueError(tr("srv.schema.static_local"))
         if self.source.kind in ("image", "compose") and not self.container_port:
-            raise ValueError("podaj port, na którym słucha aplikacja")
+            raise ValueError(tr("srv.schema.need_port"))
         if self.source.kind == "git" and not self.source.git_static_dir and not self.container_port:
-            raise ValueError("podaj port, na którym słucha aplikacja")
+            raise ValueError(tr("srv.schema.need_port"))
         return self
 
 
@@ -272,7 +274,7 @@ class Upstream(BaseModel):
     @classmethod
     def _path(cls, v: str) -> str:
         if v and not _URL_PATH.match(v):
-            raise ValueError("nieprawidłowa ścieżka docelowa")
+            raise ValueError(tr("srv.schema.bad_target_path"))
         return v
 
 
@@ -285,7 +287,7 @@ class ProxyLocation(BaseModel):
     @classmethod
     def _path(cls, v: str) -> str:
         if not _URL_PATH.match(v):
-            raise ValueError("nieprawidłowa ścieżka lokacji")
+            raise ValueError(tr("srv.schema.bad_location_path"))
         return v
 
 
@@ -309,7 +311,7 @@ class AccessUser(BaseModel):
     @classmethod
     def _user(cls, v: str) -> str:
         if not _USERNAME.match(v):
-            raise ValueError("nieprawidłowa nazwa użytkownika")
+            raise ValueError(tr("srv.schema.bad_username"))
         return v
 
     @field_validator("htpasswd")
@@ -317,7 +319,7 @@ class AccessUser(BaseModel):
     def _hash(cls, v: str) -> str:
         v = _no_newlines(v)
         if ":" in v or not v:
-            raise ValueError("nieprawidłowy hash hasła")
+            raise ValueError(tr("srv.schema.bad_hash"))
         return v
 
 
@@ -372,9 +374,9 @@ class Site(BaseModel):
     @model_validator(mode="after")
     def _kind(self) -> "Site":
         if self.kind == "proxy" and self.upstream is None:
-            raise ValueError("host proxy wymaga celu (upstream)")
+            raise ValueError(tr("srv.schema.proxy_needs_upstream"))
         if self.kind == "redirect" and self.redirect is None:
-            raise ValueError("przekierowanie wymaga domeny docelowej")
+            raise ValueError(tr("srv.schema.redirect_needs_domain"))
         return self
 
 
@@ -419,15 +421,15 @@ class CertRequest(BaseModel):
     @classmethod
     def _email(cls, v: str) -> str:
         if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
-            raise ValueError("nieprawidłowy e-mail")
+            raise ValueError(tr("srv.schema.bad_email"))
         return v
 
     @model_validator(mode="after")
     def _wildcard(self) -> "CertRequest":
         if any(d.startswith("*.") for d in self.domains) and self.challenge != "dns-cloudflare":
-            raise ValueError("certyfikat wildcard wymaga wyzwania DNS (Cloudflare)")
+            raise ValueError(tr("srv.schema.wildcard_dns"))
         if self.challenge == "dns-cloudflare" and not self.cloudflare_token:
-            raise ValueError("wyzwanie DNS wymaga tokenu Cloudflare")
+            raise ValueError(tr("srv.schema.dns_needs_token"))
         return self
 
 

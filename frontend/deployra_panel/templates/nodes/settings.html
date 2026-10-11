@@ -1,39 +1,39 @@
 {% extends "base.html" %}
-{% block crumbs %}<div class="crumbs"><a href="/nodes">Węzły</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
-{% block heading %}Ustawienia węzła{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes">{{ t("nav.nodes") }}</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
+{% block heading %}{{ t("nodes.settings_title") }}{% endblock %}
 {% block content %}
 {% include "nodes/_tabs.html" %}
 <div class="grid grid-2">
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-pencil"></i> Nazwa</h3></div>
+    <div class="card-head"><h3><i class="bi bi-pencil"></i> {{ t("common.name") }}</h3></div>
     <form class="card-body row" hx-post="/nodes/{{ node.id }}/rename" hx-swap="none">
       <input class="input" style="flex: 1" name="name" value="{{ node.name }}" required maxlength="60">
-      <button class="btn">Zapisz</button>
+      <button class="btn">{{ t("common.save") }}</button>
     </form>
   </div>
   {% if node.transport == "tunnel" %}
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-router"></i> Podsieci LAN za węzłem</h3></div>
+    <div class="card-head"><h3><i class="bi bi-router"></i> {{ t("nodes.lan_behind") }}</h3></div>
     <form class="card-body stack" hx-post="/nodes/{{ node.id }}/subnets" hx-swap="none">
       <textarea class="textarea" name="lan_subnets" style="min-height: 70px" placeholder="192.168.1.0/24">{{ (node.lan_subnets or []) | join("\n") }}</textarea>
-      <div class="hint small muted">Bramka będzie routować te podsieci przez ten węzeł (np. hosty bez Dockera albo kontenery LXC na Proxmoxie z własnym IP).</div>
-      <div class="row" style="justify-content: flex-end"><button class="btn">Zapisz</button></div>
+      <div class="hint small muted">{{ t("nodes.lan_behind_hint") }}</div>
+      <div class="row" style="justify-content: flex-end"><button class="btn">{{ t("common.save") }}</button></div>
     </form>
   </div>
   {% endif %}
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-link"></i> Ponowne parowanie</h3></div>
+    <div class="card-head"><h3><i class="bi bi-link"></i> {{ t("nodes.repair") }}</h3></div>
     <form class="card-body stack" hx-post="/nodes/{{ node.id }}/repair" hx-swap="none">
-      <div class="small dim">Na węźle uruchom <code>docker exec deployra-backend python -m deployra_backend reset-pairing</code> i wpisz nowy kod.</div>
-      <div class="row"><input class="input mono" style="flex: 1" name="code" placeholder="DPLR-XXXX-XXXX-XXXX" required><button class="btn">Sparuj</button></div>
+      <div class="small dim">{{ t("nodes.repair_hint") }}</div>
+      <div class="row"><input class="input mono" style="flex: 1" name="code" placeholder="DPLR-XXXX-XXXX-XXXX" required><button class="btn">{{ t("nodes.pair") }}</button></div>
     </form>
   </div>
   {% if has(user, P.ALLOW_DELETE_DOCKERS) %}
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-exclamation-octagon"></i> Usunięcie węzła</h3></div>
+    <div class="card-head"><h3><i class="bi bi-exclamation-octagon"></i> {{ t("nodes.delete_title") }}</h3></div>
     <div class="card-body row between">
-      <div class="small dim">Usuwa węzeł z panelu i jego peera z tunelu. Kontenery na węźle zostają.</div>
-      <button class="btn danger" hx-post="/nodes/{{ node.id }}/delete" hx-swap="none" hx-confirm="Usunąć węzeł {{ node.name }}?" data-danger data-math><i class="bi bi-trash"></i> Usuń</button>
+      <div class="small dim">{{ t("nodes.delete_hint") }}</div>
+      <button class="btn danger" hx-post="/nodes/{{ node.id }}/delete" hx-swap="none" hx-confirm="{{ t('nodes.delete_confirm', name=node.name) }}" data-danger data-math><i class="bi bi-trash"></i> {{ t("common.delete") }}</button>
     </div>
   </div>
   {% endif %}

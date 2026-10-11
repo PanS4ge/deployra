@@ -12,6 +12,7 @@ from typing import Any
 
 from cryptography import x509
 
+from deployra_common.i18n import tr
 from deployra_common.jobs import Job, JobFailed
 from deployra_common.schemas import CertRequest, CertUpload
 
@@ -65,12 +66,12 @@ def install_upload(certs_dir: Path, upload: CertUpload) -> dict:
         chain = x509.load_pem_x509_certificates(upload.fullchain.encode())
         key = serialization.load_pem_private_key(upload.privkey.encode(), password=None)
     except ValueError as exc:
-        raise ValueError(f"nieprawidłowy PEM: {exc}") from exc
+        raise ValueError(tr("gw.bad_pem", error=exc)) from exc
     spki = serialization.PublicFormat.SubjectPublicKeyInfo
     if chain[0].public_key().public_bytes(serialization.Encoding.PEM, spki) != key.public_key().public_bytes(
         serialization.Encoding.PEM, spki
     ):
-        raise ValueError("klucz prywatny nie pasuje do certyfikatu")
+        raise ValueError(tr("gw.key_mismatch"))
     _install(certs_dir, upload.id, upload.fullchain.encode(), upload.privkey.encode())
     return read_info(certs_dir, upload.id) or {}
 
@@ -101,7 +102,7 @@ def _crt_key(data_dir: Path, first_domain: str) -> tuple[Path, Path]:
 def run_lego(job: Job, cfg: Any, req: CertRequest, action: str) -> bool:
     """Uruchamia lego; zwraca True, jeśli pliki certyfikatu się zmieniły."""
     if not shutil.which(cfg.lego_bin):
-        raise JobFailed("brak programu lego w obrazie bramki")
+        raise JobFailed(tr("gw.no_lego"))
     cmd, env = lego_command(cfg.lego_bin, cfg.data_dir, cfg.acme_dir, req, action)
     crt, key = _crt_key(cfg.data_dir, req.domains[0])
     before = crt.stat().st_mtime if crt.exists() else None
@@ -113,9 +114,9 @@ def run_lego(job: Job, cfg: Any, req: CertRequest, action: str) -> bool:
     for line in proc.stdout:
         job.log(line.rstrip("\n"))
     if proc.wait() != 0:
-        raise JobFailed("lego zakończyło się błędem (sprawdź DNS domeny i dostępność portu 80)")
+        raise JobFailed(tr("gw.lego_failed"))
     if not crt.exists() or not key.exists():
-        raise JobFailed("lego nie utworzyło plików certyfikatu")
+        raise JobFailed(tr("gw.lego_no_files"))
     changed = before is None or crt.stat().st_mtime != before
     if changed or not is_ready(cfg.certs_dir, req.id):
         _install(cfg.certs_dir, req.id, crt.read_bytes(), key.read_bytes())

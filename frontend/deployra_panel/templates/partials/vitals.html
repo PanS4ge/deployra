@@ -7,7 +7,7 @@
   <div class="row small"><span class="dot ok"></span><span class="dim">online · {{ v.uptime | duration }}</span></div>
   <div class="row small" style="gap: 6px"><span class="muted" style="width: 38px">CPU</span><div style="flex: 1">{{ meter(v.cpu) }}</div><span class="mono" style="width: 46px; text-align: right">{{ "%.0f" | format(v.cpu) }}%</span></div>
   <div class="row small" style="gap: 6px"><span class="muted" style="width: 38px">RAM</span><div style="flex: 1">{{ meter(v.ram) }}</div><span class="mono" style="width: 46px; text-align: right">{{ "%.0f" | format(v.ram) }}%</span></div>
-  {% if v.disk is not none %}<div class="row small" style="gap: 6px"><span class="muted" style="width: 38px">Dysk</span><div style="flex: 1">{{ meter(v.disk) }}</div><span class="mono" style="width: 46px; text-align: right">{{ "%.0f" | format(v.disk) }}%</span></div>{% endif %}
+  {% if v.disk is not none %}<div class="row small" style="gap: 6px"><span class="muted" style="width: 38px">{{ t("stats.disk") }}</span><div style="flex: 1">{{ meter(v.disk) }}</div><span class="mono" style="width: 46px; text-align: right">{{ "%.0f" | format(v.disk) }}%</span></div>{% endif %}
 </div>
 {% else %}
 <div class="grid grid-4">
@@ -15,27 +15,27 @@
     <div class="label"><i class="bi bi-cpu"></i> CPU</div>
     <div class="value">{{ "%.1f" | format(v.cpu) }}<small>%</small></div>
     {{ meter(v.cpu) }}
-    <div class="cores" style="margin-top: 6px">{% for c in v.cores %}<span style="--h: {{ c }}%" title="rdzeń {{ loop.index0 }}: {{ c }}%"></span>{% endfor %}</div>
+    <div class="cores" style="margin-top: 6px">{% for c in v.cores %}<span style="--h: {{ c }}%" title="{{ t('stats.core', index=loop.index0, value=c) }}"></span>{% endfor %}</div>
   </div>
   <div class="card stat">
     <div class="label"><i class="bi bi-memory"></i> RAM</div>
     <div class="value">{{ "%.1f" | format(v.ram) }}<small>%</small></div>
     {{ meter(v.ram) }}
-    <div class="small muted">{{ v.ram_used | bytes }} z {{ v.ram_total | bytes }}{% if v.swap %} · swap {{ "%.0f" | format(v.swap) }}%{% endif %}</div>
+    <div class="small muted">{{ t("stats.used_of", used=v.ram_used | bytes, total=v.ram_total | bytes) }}{% if v.swap %} · swap {{ "%.0f" | format(v.swap) }}%{% endif %}</div>
   </div>
   <div class="card stat">
-    <div class="label"><i class="bi bi-device-hdd"></i> Dysk</div>
+    <div class="label"><i class="bi bi-device-hdd"></i> {{ t("stats.disk") }}</div>
     {% if v.disk is not none %}
     <div class="value">{{ "%.1f" | format(v.disk) }}<small>%</small></div>
     {{ meter(v.disk) }}
-    <div class="small muted">{{ v.disk_used | bytes }} z {{ v.disk_total | bytes }}</div>
+    <div class="small muted">{{ t("stats.used_of", used=v.disk_used | bytes, total=v.disk_total | bytes) }}</div>
     {% else %}<div class="value">—</div>{% endif %}
   </div>
   <div class="card stat">
-    <div class="label"><i class="bi bi-activity"></i> Obciążenie</div>
+    <div class="label"><i class="bi bi-activity"></i> {{ t("stats.load") }}</div>
     <div class="value" style="font-size: 1.4rem">{{ (v.load or [0, 0, 0]) | map("round", 2) | join(" · ") }}</div>
     <div class="small muted">uptime {{ v.uptime | duration }}</div>
-    <div class="small muted">sieć ↓ {{ v.net_rx | bytes }} · ↑ {{ v.net_tx | bytes }}</div>
+    <div class="small muted">{{ t("stats.network_short") }} ↓ {{ v.net_rx | bytes }} · ↑ {{ v.net_tx | bytes }}</div>
   </div>
 </div>
 {% endif %}

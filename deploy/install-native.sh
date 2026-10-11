@@ -23,34 +23,35 @@ if [ "${1:-}" = "--update" ]; then
   DATA_DIR="$(sed -n 's/^DEPLOYRA_DATA=//p' "$ENV_FILE" 2>/dev/null | tail -n 1)"
   STATUS_DIR="${DATA_DIR:-/var/lib/deployra}/update"
   mkdir -p "$STATUS_DIR"
+  # status <state> <krok> [szczegóły] — krok tłumaczy panel (te same kody co w updater/deployra-updater.sh)
   status() {
-    printf 'state=%s\nversion=%s\nmessage=%s\nupdated=%s\n' "$1" "$UPDATE_VERSION" "$2" "$(date +%s)" >"$STATUS_DIR/.status.tmp"
+    printf 'state=%s\nversion=%s\nstep=%s\nmessage=%s\nupdated=%s\n' "$1" "$UPDATE_VERSION" "$2" "${3:-}" "$(date +%s)" >"$STATUS_DIR/.status.tmp"
     mv -f "$STATUS_DIR/.status.tmp" "$STATUS_DIR/status"
   }
-  fail() { echo "✖ $*"; status error "$*"; exit 1; }
-  trap 'status error "aktualizacja przerwana (linia $LINENO) — szczegóły w $STATUS_DIR/log"' ERR
+  fail() { echo "✖ $1 ${2:-}"; status error "$1" "${2:-}"; exit 1; }
+  trap 'status error install_failed "line $LINENO"' ERR
 
   if [ -z "${DEPLOYRA_UPDATE_STAGE:-}" ]; then
     : >"$STATUS_DIR/log"
     exec >>"$STATUS_DIR/log" 2>&1
-    echo "$(date '+%F %T') Aktualizacja do $UPDATE_VERSION (instalacja natywna, repo $REPO_DIR)"
+    echo "$(date '+%F %T') Updating to $UPDATE_VERSION (native install, repo $REPO_DIR)"
     git_() { git -c safe.directory='*' -C "$REPO_DIR" "$@"; }
-    status running "pobieram kod (git fetch)"
-    git_ fetch --tags --force --quiet origin || fail "git fetch nie powiódł się — brak sieci albo dostępu do repozytorium"
+    status running fetching
+    git_ fetch --tags --force --quiet origin || fail fetch_failed
     ref="v$UPDATE_VERSION"
     git_ rev-parse -q --verify "refs/tags/$ref^{commit}" >/dev/null || ref="$UPDATE_VERSION"
-    git_ rev-parse -q --verify "refs/tags/$ref^{commit}" >/dev/null || fail "w repozytorium nie ma taga v$UPDATE_VERSION"
-    git_ diff --quiet HEAD -- || fail "lokalne zmiany w $REPO_DIR — zatwierdź je albo zaktualizuj ręcznie"
+    git_ rev-parse -q --verify "refs/tags/$ref^{commit}" >/dev/null || fail no_tag "v$UPDATE_VERSION"
+    git_ diff --quiet HEAD -- || fail local_changes "$REPO_DIR"
     branch="$(git_ symbolic-ref -q --short HEAD || true)"
     if [ -n "$branch" ]; then
-      git_ merge --ff-only --quiet "$ref" || fail "gałęzi $branch nie da się przewinąć do $ref"
+      git_ merge --ff-only --quiet "$ref" || fail ff_failed "$branch → $ref"
     else
-      git_ -c advice.detachedHead=false checkout --quiet "$ref" || fail "nie udało się przełączyć na $ref"
+      git_ -c advice.detachedHead=false checkout --quiet "$ref" || fail checkout_failed "$ref"
     fi
-    echo "Kod: $(git_ log -1 --format='%h %s')"
+    echo "Code: $(git_ log -1 --format='%h %s')"
     DEPLOYRA_UPDATE_STAGE=install exec bash "$REPO_DIR/deploy/install-native.sh" --update "$UPDATE_VERSION"
   fi
-  status running "instaluję nową wersję"
+  status running installing
 fi
 
 echo "» Pakiety systemowe"
@@ -85,6 +86,7 @@ DEPLOYRA_DATA=/var/lib/deployra
 DEPLOYRA_SRV=/srv/deployra
 DEPLOYRA_GATEWAY=${DEPLOYRA_GATEWAY:-}
 DEPLOYRA_JOIN=${DEPLOYRA_JOIN:-}
+DEPLOYRA_LANG=${DEPLOYRA_LANG:-pl}
 EOF
   chmod 600 "$ENV_FILE"
 fi
@@ -112,7 +114,7 @@ EOF
 systemctl daemon-reload
 if [ -n "$UPDATE_VERSION" ]; then
   systemctl restart deployra-backend
-  status done "zaktualizowano do $UPDATE_VERSION"
+  status done done
   echo "✔ Zaktualizowano do $UPDATE_VERSION"
 else
   systemctl enable --now deployra-backend

@@ -10,6 +10,7 @@ from typing import Any
 from loguru import logger
 
 from deployra_common import pairing, wg
+from deployra_common.i18n import tr
 from deployra_common.schemas import TunnelConfig
 
 PAIR_CONTEXT = "panel-node"
@@ -43,10 +44,10 @@ def join_gateway(ctx: Any) -> None:
 
     response = httpx.post(bootstrap_url(cfg.gateway) + "/join", json=request, timeout=20)
     if response.status_code != 200:
-        raise RuntimeError(f"bramka odrzuciła dołączenie ({response.status_code}): {response.text[:300]}")
+        raise RuntimeError(tr("node.join_rejected", code=response.status_code, error=response.text[:300]))
     data = pairing.unseal(token.join_secret, response.json(), "join-ok")
     if data.get("nonce") != request["nonce"]:
-        raise RuntimeError("odpowiedź bramki nie pasuje do żądania")
+        raise RuntimeError(tr("node.gateway_mismatch"))
     tunnel = TunnelConfig(**data["tunnel"])
     lan = [str(s) for s in data.get("lan_subnets") or []]
     state.update(
@@ -63,7 +64,7 @@ def join_gateway(ctx: Any) -> None:
         join={"id": token.id, "pair_secret": token.pair_secret},
         wg_pending_private=None,
     )
-    logger.success(f"Dołączono do Deployra-WG: adres w tunelu {tunnel.address}")
+    logger.success(tr("node.log.joined", address=tunnel.address))
 
 
 def join_with_retry(ctx: Any) -> None:
@@ -73,7 +74,7 @@ def join_with_retry(ctx: Any) -> None:
             join_gateway(ctx)
             return
         except Exception as exc:  # noqa: BLE001 — bramka niedostępna, zły token, sieć: ponawiamy z narastającym odstępem
-            logger.warning(f"Dołączenie do bramki nie powiodło się: {exc}. Ponawiam za {delay} s")
+            logger.warning(tr("node.log.join_retry", error=exc, delay=delay))
             time.sleep(delay)
             delay = min(delay * 2, 60)
 
@@ -105,7 +106,7 @@ class PairingGate:
 
     def check(self) -> None:
         if time.time() < self.locked_until:
-            raise PermissionError("zbyt wiele nieudanych prób parowania — spróbuj za kilka minut")
+            raise PermissionError(tr("node.pair_locked"))
 
     def fail(self) -> None:
         self.failures += 1
@@ -117,19 +118,19 @@ class PairingGate:
 def pair(ctx: Any, gate: PairingGate, body: dict) -> dict:
     state = ctx.state
     if state.paired:
-        raise LookupError("węzeł jest już sparowany — zresetuj parowanie na węźle")
+        raise LookupError(tr("node.already_paired"))
     gate.check()
     join = state.get("join")
     psk = join["pair_secret"] if join else state.get("pairing_code")
     if not psk:
-        raise LookupError("węzeł nie czeka na parowanie")
+        raise LookupError(tr("node.not_waiting"))
     try:
         request = pairing.unseal(psk, body, "pair-node")
         if not wg.valid_key(request.get("x25519", "")):
-            raise ValueError("zły klucz")
+            raise ValueError(tr("node.bad_key"))
     except ValueError:
         gate.fail()
-        raise PermissionError("zły kod parowania") from None
+        raise PermissionError(tr("node.bad_code")) from None
     private, public = pairing.new_keypair()
     secret = pairing.derive_secret(private, request["x25519"], psk, PAIR_CONTEXT)
     state.update(api_secret=base64.b64encode(secret).decode(), pairing_code=None, join=None)

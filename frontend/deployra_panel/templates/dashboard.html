@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% from "_macros.html" import status_badge %}
-{% block actions %}{% if has(user, P.ALLOW_DEPLOYMENT) %}<a class="btn primary" href="/apps/new"><i class="bi bi-rocket-takeoff"></i> Wdróż</a>{% endif %}{% endblock %}
+{% block actions %}{% if has(user, P.ALLOW_DEPLOYMENT) %}<a class="btn primary" href="/apps/new"><i class="bi bi-rocket-takeoff"></i> {{ t("dashboard.deploy") }}</a>{% endif %}{% endblock %}
 {% block content %}
 {% if not (onboarding | selectattr("done") | list | length == 3) %}
 <div class="card glow">
-  <div class="card-head"><h2><i class="bi bi-stars"></i> Start w trzech krokach</h2></div>
+  <div class="card-head"><h2><i class="bi bi-stars"></i> {{ t("dashboard.onboarding") }}</h2></div>
   <div class="card-body grid grid-3">
     {% for s in onboarding %}
     <a class="choice {{ 'on' if not s.done and loop.index0 == (onboarding | selectattr('done') | list | length) }}" href="{{ s.href }}" style="color: inherit">
@@ -18,63 +18,63 @@
 
 <div class="grid grid-4">
   <a class="card stat" href="/apps" style="color: inherit">
-    <div class="label"><i class="bi bi-rocket-takeoff"></i> Aplikacje</div>
-    <div class="value">{{ stats.apps_running }}<small> / {{ stats.apps }} działa</small></div>
-    {% if stats.apps_error %}<span class="badge err">{{ stats.apps_error }} z błędem</span>{% endif %}
+    <div class="label"><i class="bi bi-rocket-takeoff"></i> {{ t("nav.apps") }}</div>
+    <div class="value">{{ stats.apps_running }}<small> / {{ t("dashboard.apps_running", count=stats.apps) }}</small></div>
+    {% if stats.apps_error %}<span class="badge err">{{ t("dashboard.apps_error", count=stats.apps_error) }}</span>{% endif %}
   </a>
   <a class="card stat" href="/nodes" style="color: inherit">
-    <div class="label"><i class="bi bi-hdd-network"></i> Węzły</div>
+    <div class="label"><i class="bi bi-hdd-network"></i> {{ t("nav.nodes") }}</div>
     <div class="value">{{ stats.nodes_paired }}<small> / {{ stats.nodes }}</small></div>
   </a>
   <a class="card stat" href="/proxy" style="color: inherit">
-    <div class="label"><i class="bi bi-signpost-split"></i> Hosty proxy</div>
+    <div class="label"><i class="bi bi-signpost-split"></i> {{ t("dashboard.proxy_hosts") }}</div>
     <div class="value">{{ stats.sites }}</div>
   </a>
   <a class="card stat" href="/certs" style="color: inherit">
-    <div class="label"><i class="bi bi-shield-lock"></i> Certyfikaty</div>
+    <div class="label"><i class="bi bi-shield-lock"></i> {{ t("nav.certs") }}</div>
     <div class="value">{{ stats.certs }}</div>
-    {% if stats.certs_warn %}<span class="badge warn">{{ stats.certs_warn }} wymaga uwagi</span>{% endif %}
+    {% if stats.certs_warn %}<span class="badge warn">{{ t("dashboard.certs_warn", count=stats.certs_warn) }}</span>{% endif %}
   </a>
 </div>
 
 <div class="card" hx-get="/analytics/chart?all=1&days=30" hx-trigger="load" hx-swap="innerHTML" hx-disinherit="*">
-  <div class="card-body small muted">Ładowanie statystyk odwiedzin…</div>
+  <div class="card-body small muted">{{ t("dashboard.loading_visits") }}</div>
 </div>
 
 <div class="grid grid-2">
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-hdd-network"></i> Węzły</h3><a class="btn sm ghost" href="/nodes">wszystkie</a></div>
+    <div class="card-head"><h3><i class="bi bi-hdd-network"></i> {{ t("nav.nodes") }}</h3><a class="btn sm ghost" href="/nodes">{{ t("common.all") }}</a></div>
     <div class="card-body stack">
       {% for n in nodes if n.status == "paired" %}
       <div>
         <div class="row between"><a class="name" href="/nodes/{{ n.id }}">{{ n.name }}</a><span class="small muted">{{ n.tunnel_ip or n.api_url }}</span></div>
         <div hx-get="/nodes/{{ n.id }}/vitals?compact=1" hx-trigger="load, every 10s [!document.hidden]" hx-swap="innerHTML" hx-disinherit="*"><span class="small muted">…</span></div>
       </div>
-      {% else %}<div class="muted small">Brak sparowanych węzłów.</div>{% endfor %}
+      {% else %}<div class="muted small">{{ t("dashboard.no_nodes") }}</div>{% endfor %}
     </div>
   </div>
   <div class="card" hx-get="/dashboard/tunnel" hx-trigger="load, every 30s [!document.hidden]" hx-swap="innerHTML" hx-disinherit="*">
-    <div class="card-head"><h3><i class="bi bi-diagram-3"></i> Tunel</h3></div>
-    <div class="card-body small muted">Sprawdzam bramkę…</div>
+    <div class="card-head"><h3><i class="bi bi-diagram-3"></i> {{ t("dashboard.tunnel") }}</h3></div>
+    <div class="card-body small muted">{{ t("dashboard.checking_gateway") }}</div>
   </div>
 </div>
 
 <div class="grid grid-2">
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-rocket-takeoff"></i> Ostatnie aplikacje</h3><a class="btn sm ghost" href="/apps">wszystkie</a></div>
+    <div class="card-head"><h3><i class="bi bi-rocket-takeoff"></i> {{ t("dashboard.recent_apps") }}</h3><a class="btn sm ghost" href="/apps">{{ t("common.all") }}</a></div>
     <div class="card-body stack" style="gap: 10px">
       {% for a in apps %}
       <div class="row between"><a class="name" href="/apps/{{ a.id }}">{{ a.name }}</a>{{ status_badge(a.status) }}</div>
-      {% else %}<div class="muted small">Jeszcze nic nie wdrożono.</div>{% endfor %}
+      {% else %}<div class="muted small">{{ t("dashboard.no_apps") }}</div>{% endfor %}
     </div>
   </div>
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-activity"></i> Ostatnie zadania</h3><a class="btn sm ghost" href="/jobs">wszystkie</a></div>
+    <div class="card-head"><h3><i class="bi bi-activity"></i> {{ t("dashboard.recent_jobs") }}</h3><a class="btn sm ghost" href="/jobs">{{ t("common.all") }}</a></div>
     <div class="card-body stack" style="gap: 10px">
       {% for j in jobs %}
       <div class="row between"><a href="/jobs/{{ j.id }}" class="trunc" style="max-width: 70%">{{ j.title }}</a>
-        {% if j.status == "ok" %}<span class="badge ok">ok</span>{% elif j.status == "error" %}<span class="badge err">błąd</span>{% else %}<span class="badge info">trwa</span>{% endif %}</div>
-      {% else %}<div class="muted small">Brak zadań od startu panelu.</div>{% endfor %}
+        {% if j.status == "ok" %}<span class="badge ok">ok</span>{% elif j.status == "error" %}<span class="badge err">{{ t("jobs.error") }}</span>{% else %}<span class="badge info">{{ t("jobs.running") }}</span>{% endif %}</div>
+      {% else %}<div class="muted small">{{ t("dashboard.no_jobs") }}</div>{% endfor %}
     </div>
   </div>
 </div>

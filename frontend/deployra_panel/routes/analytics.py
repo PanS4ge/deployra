@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request
 
 from ..context import Panel, get_panel
 from ..deps import current_user
+from ..i18n import t
 from ..services import analytics, charts
 from ..web import render
 
@@ -35,8 +36,8 @@ async def chart(request: Request, domains: str = "", all: int = 0, days: int = 3
         if data:
             svg = charts.area_chart(
                 data["labels"],
-                [("Unikalni", [r["uniques"] for r in data["series"]], "#22d3ee", True),
-                 ("Zapytania", [r["requests"] for r in data["series"]], "#8b5cf6", False)],
+                [(t("analytics.uniques"), [r["uniques"] for r in data["series"]], "#22d3ee", True),
+                 (t("analytics.requests"), [r["requests"] for r in data["series"]], "#8b5cf6", False)],
             )  # fmt: skip
     else:
         data = await analytics.daily(panel, names, days)
@@ -45,8 +46,8 @@ async def chart(request: Request, domains: str = "", all: int = 0, days: int = 3
             labels = [d[5:].replace("-", ".") for d in data["labels"]]
             svg = charts.area_chart(
                 labels,
-                [("Unikalni", [r["uniques"] for r in data["series"]], "#22d3ee", True),
-                 ("Powracający", [r["returning"] for r in data["series"]], "#f472b6", False)],
+                [(t("analytics.uniques"), [r["uniques"] for r in data["series"]], "#22d3ee", True),
+                 (t("analytics.returning"), [r["returning"] for r in data["series"]], "#f472b6", False)],
             )  # fmt: skip
     query = "all=1" if all else f"domains={','.join(names or [])}"
     return render(request, "partials/analytics_chart.html", data=data, svg=svg, days=days, query=query, short=charts.short_number)

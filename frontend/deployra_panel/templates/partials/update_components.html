@@ -1,30 +1,30 @@
 <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>Komponent</th><th>Wersja</th><th>Aktualizator</th><th>Stan</th><th></th></tr></thead>
+    <thead><tr><th>{{ t("updates.col_component") }}</th><th>{{ t("updates.col_version") }}</th><th>{{ t("updates.col_updater") }}</th><th>{{ t("common.state") }}</th><th></th></tr></thead>
     <tbody>
     {% for c in items %}
       {% set u = c.update or {} %}
       <tr>
         <td><div class="row" style="gap: 8px"><i class="bi bi-{{ c.icon }} muted"></i><span class="name">{{ c.name }}</span></div></td>
         <td class="mono nowrap">
-          {% if c.version %}{{ c.version }}{% if c.behind %} <span class="badge warn">starsza</span>{% endif %}
+          {% if c.version %}{{ c.version }}{% if c.behind %} <span class="badge warn">{{ t("updates.older") }}</span>{% endif %}
           {% else %}<span class="muted">—</span>{% endif %}
         </td>
         <td class="small">
           {% if not c.online %}<span class="badge err">{{ c.error or "offline" }}</span>
-          {% elif u.available %}<span class="badge info">{{ modes.get(u.mode, u.mode) }}</span>
-          {% else %}<span class="badge" title="Uruchom komponent z pliku compose z katalogu deploy/ (usługa *-updater) albo aktualizuj ręcznie">brak</span>{% endif %}
+          {% elif u.available %}<span class="badge info">{{ t("updates.mode." ~ u.mode) }}</span>
+          {% else %}<span class="badge" title="{{ t('updates.no_updater_hint') }}">{{ t("updates.none") }}</span>{% endif %}
         </td>
         <td class="small">
-          {% if u.state in ("queued", "running") %}<span class="row" style="gap: 6px"><span class="spin"></span>{{ u.message or "w toku" }}</span>
-          {% elif u.state == "error" %}<span class="badge err">błąd</span> <span class="muted">{{ u.message }}</span>
+          {% if u.state in ("queued", "running") %}<span class="row" style="gap: 6px"><span class="spin"></span>{{ describe(u) or t("jobs.running") }}</span>
+          {% elif u.state == "error" %}<span class="badge err">{{ t("jobs.error") }}</span> <span class="muted">{{ describe(u) }}</span>
           {% elif u.state == "done" and u.target %}<span class="badge ok">{{ u.target }}</span> <span class="muted">{{ u.updated | ago }}</span>
           {% else %}<span class="muted">—</span>{% endif %}
         </td>
         <td class="right">
           {% if c.behind and c.online and u.available and not pending and u.state not in ("queued", "running") %}
           <button class="btn sm" hx-post="/settings/updates/start" hx-vals='{"target": "{{ target }}", "only": "{{ c.key }}"}' hx-swap="none"
-                  hx-confirm="Zaktualizować {{ c.name }} do {{ target }}?"><i class="bi bi-cloud-arrow-down"></i> Aktualizuj</button>
+                  hx-confirm="{{ t('updates.confirm_one', name=c.name, version=target) }}"><i class="bi bi-cloud-arrow-down"></i> {{ t("updates.update") }}</button>
           {% endif %}
         </td>
       </tr>
@@ -34,5 +34,5 @@
 </div>
 {% set manual = [] %}{% for c in items if c.online and not (c.update or {}).available %}{% set _ = manual.append(c) %}{% endfor %}
 {% if manual %}
-<div class="card-body"><div class="callout warn"><i class="bi bi-info-circle"></i><div class="small">Bez aktualizatora: {{ manual | map(attribute="name") | join(", ") }}. Zaktualizujesz je ręcznie: <code>docker compose -f deploy/&lt;plik&gt;.yml pull</code> i <code>up -d</code> (ze źródeł: <code>git pull</code> i <code>up -d --build</code>). Pliki z <code>deploy/</code> mają już usługę <code>*-updater</code>, więc kolejne aktualizacje pójdą z panelu.</div></div></div>
+<div class="card-body"><div class="callout warn"><i class="bi bi-info-circle"></i><div class="small">{{ t("updates.manual_hint", names=manual | map(attribute="name") | join(", ")) }}</div></div></div>
 {% endif %}

@@ -9,6 +9,7 @@ from deployra_common.schemas import CertRequest
 
 from ..db import now
 from . import relay
+from ..i18n import t
 
 
 def create(panel: Any, domains: list[str], challenge: str | None = None, name: str | None = None) -> int:
@@ -48,18 +49,18 @@ def request_for(panel: Any, cert: dict) -> CertRequest:
 async def issue(panel: Any, job: Job, cert_id: int) -> dict:
     cert = panel.db.get("certificates", cert_id)
     if not cert:
-        raise JobFailed("nie ma takiego certyfikatu")
+        raise JobFailed(t("msg.no_cert"))
     if cert["challenge"] == "custom":
-        raise JobFailed("własnego certyfikatu nie wystawia się automatycznie — wgraj nowe pliki PEM")
+        raise JobFailed(t("certs.msg.custom_no_reissue"))
     client = panel.gateway_client()
     if not client:
-        raise JobFailed("brak Deployra-WG — certyfikaty wystawia bramka")
+        raise JobFailed(t("msg.no_gateway_certs"))
     try:
         request = request_for(panel, cert)
     except ValueError as exc:
-        raise JobFailed(f"nie da się wystawić certyfikatu: {exc}") from exc
+        raise JobFailed(t("certs.msg.issue_failed", error=exc)) from exc
     panel.db.update("certificates", cert_id, status="issuing", error=None, last_job=job.id)
-    job.log(f"🔐 Wystawiam certyfikat dla {', '.join(cert['domains'])} ({cert['challenge']})")
+    job.log(t("certs.msg.issuing", domains=", ".join(cert["domains"]), challenge=cert["challenge"]))
     try:
         snapshot = await relay.start_and_follow(client, "/api/certs/issue", request.model_dump(mode="json"), job, "  ")
     except JobFailed as exc:

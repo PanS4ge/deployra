@@ -109,7 +109,7 @@ check "bez builda w trybie image" '! grep -q " build " "$FAKE_LOG"'
 
 echo "apply: błąd pobierania"
 FAKE_COMPOSE_FAIL=pull DEPLOYRA_IMAGES=ghcr.io/ktos/deployra sh "$SCRIPT" apply 1.2.1
-check "status error z komunikatem" '[ "$(status_of state)" = error ] && status_of message | grep -q "pobieranie"'
+check "status error z kodem kroku" '[ "$(status_of state)" = error ] && [ "$(status_of step)" = pull_failed ]'
 check "nieudana aktualizacja nie rusza pinu" 'grep -qx "DEPLOYRA_VERSION=1.2.0" "$T/repo/deploy/.env"'
 
 echo "apply: ze źródeł (git + build)"
@@ -122,11 +122,11 @@ check "build przed up" 'grep -n "build --pull deployra-backend updater" "$FAKE_L
 
 echo "apply: brak taga i lokalne zmiany"
 DEPLOYRA_IMAGES=deployra sh "$SCRIPT" apply 9.9.9
-check "brak taga → error" '[ "$(status_of state)" = error ] && status_of message | grep -q "taga"'
+check "brak taga → error" '[ "$(status_of state)" = error ] && [ "$(status_of step)" = no_tag ] && [ "$(status_of message)" = v9.9.9 ]'
 git -C "$T/origin-src" commit -q --allow-empty -m "1.3.0" && git -C "$T/origin-src" tag v1.3.0 && git -C "$T/origin-src" push -q "$T/origin.git" main v1.3.0
 echo "zmiana" >>"$T/repo/VERSION"
 DEPLOYRA_IMAGES=deployra sh "$SCRIPT" apply 1.3.0
-check "lokalne zmiany → error" '[ "$(status_of state)" = error ] && status_of message | grep -q "lokalne zmiany"'
+check "lokalne zmiany → error" '[ "$(status_of state)" = error ] && [ "$(status_of step)" = local_changes ]'
 
 if [ "$FAILS" -gt 0 ]; then
     echo "Niepowodzenia: $FAILS"

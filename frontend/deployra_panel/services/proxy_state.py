@@ -9,6 +9,8 @@ from pydantic import ValidationError
 
 from deployra_common.schemas import AccessClient, AccessList, AccessUser, ProxyLocation, ProxyState, Site, Stream, Upstream
 
+from ..i18n import t
+
 
 def resolve_target(panel: Any, target: dict | None, nodes: dict[int, dict]) -> Upstream | None:
     """Cel w bazie → Upstream z adresem widzianym przez bramkę (IP węzła w tunelu)."""
@@ -98,7 +100,7 @@ async def push(panel: Any) -> dict:
     """Wysyła pełny stan do bramki. Zwraca {ok, status, message}."""
     client = panel.gateway_client()
     if not client:
-        return {"ok": False, "status": "no-gateway", "message": "Brak połączenia z Deployra-WG — konfiguracja zapisana w panelu"}
+        return {"ok": False, "status": "no-gateway", "message": t("proxy.msg.no_gateway")}
     state = build_state(panel)
     result = await client.put("/api/proxy", json=state.model_dump(mode="json"))
     if result.get("status") != "rejected" and panel.db.setting("cf_tunnel_id"):
@@ -114,11 +116,11 @@ async def push(panel: Any) -> dict:
 def push_message(result: dict) -> tuple[str, str]:
     status = result.get("status")
     if status == "applied":
-        return "Zapisano i przeładowano nginx ✔", "ok"
+        return t("proxy.msg.applied"), "ok"
     if status == "written":
-        return "Zapisano konfigurację (nginx bez przeładowania)", "ok"
+        return t("proxy.msg.written"), "ok"
     if status == "pending":
-        return f"Zapisano, ale nginx nie odpowiada: {result.get('message')}", "warn"
+        return t("proxy.msg.pending", error=result.get("message")), "warn"
     if status == "no-gateway":
         return result["message"], "warn"
-    return f"nginx odrzucił konfigurację:\n{result.get('message')}", "err"
+    return t("proxy.msg.rejected", error=result.get("message")), "err"

@@ -17,6 +17,7 @@ from deployra_common.schemas import ContainerSpec, NetworkSpec, PortMap, StackSp
 
 from ..context import Panel, get_panel
 from ..deps import current_user, node_or_404, require
+from ..i18n import t
 from ..permissions import Permission
 from ..services import relay
 from ..web import redirect, render, templates, toast
@@ -48,7 +49,7 @@ def relay_job(panel: Panel, node: dict, title: str, method: str, path: str, body
 def ep_param(ep: str = "local") -> str:
     """Endpoint Dockera: `local` (host) albo `ct-<vmid>` (kontener LXC na Proxmoxie)."""
     if not re.match(r"^(local|ct-\d{1,9})$", ep):
-        raise HTTPException(400, "nieprawidłowy endpoint")
+        raise HTTPException(400, t("msg.bad_endpoint"))
     return ep
 
 
@@ -74,27 +75,27 @@ async def containers(request: Request, node: dict = Depends(node_or_404), ep: st
 
     monitors = uptime.container_stats(panel, node["id"], ep)
     template = "nodes/_containers_table.html" if request.headers.get("HX-Target") == "containers" else "nodes/containers.html"
-    return render(request, template, title=f"{node['name']} · kontenery", node=node, tab="containers", items=items, monitors=monitors)
+    return render(request, template, title=f"{node['name']} · {t('containers.crumb')}", node=node, tab="containers", items=items, monitors=monitors)
 
 
 @router.post("/nodes/{node_id}/containers/{cid}/action/{action}")
 async def container_action(request: Request, cid: str, action: str, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
                            user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
     await _client(panel, node).post(_p(f"/api/containers/{cid}/action/{action}", ep))
-    names = {"start": "Uruchomiono", "stop": "Zatrzymano", "restart": "Zrestartowano", "kill": "Zabito", "pause": "Wstrzymano", "unpause": "Wznowiono"}
-    return toast(f"{names.get(action, action)} kontener", extra={"containers-changed": True})
+    known = ("start", "stop", "restart", "kill", "pause", "unpause")
+    return toast(t("msg.container_" + action) if action in known else action, extra={"containers-changed": True})
 
 
 @router.post("/nodes/{node_id}/containers/{cid}/remove")
 async def container_remove(request: Request, cid: str, volumes: str = Form(""), node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
                            panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_DELETE_DOCKERS))):  # fmt: skip
     await _client(panel, node).delete(_p(f"/api/containers/{cid}", ep), params={"force": "true", "volumes": "true" if volumes else "false"})
-    return redirect(request, f"/nodes/{node['id']}/containers{_q(ep)}", "Usunięto kontener")
+    return redirect(request, f"/nodes/{node['id']}/containers{_q(ep)}", t("msg.container_removed"))
 
 
 @router.get("/nodes/{node_id}/containers/new")
 def container_new(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):
-    return render(request, "nodes/container_new.html", title="Nowy kontener", node=node, tab="containers")
+    return render(request, "nodes/container_new.html", title=t("containers.new"), node=node, tab="containers")
 
 
 @router.post("/nodes/{node_id}/containers/new")
@@ -115,7 +116,7 @@ async def container_create(request: Request, node: dict = Depends(node_or_404), 
         )
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc) if isinstance(exc, ValidationError) else str(exc), "err", status=400)
-    job = relay_job(panel, node, f"Kontener {spec.name} na {node['name']}", "POST", _p("/api/containers", ep), spec.model_dump(mode="json"))
+    job = relay_job(panel, node, t("jobs.title_container", name=spec.name, node=node["name"]), "POST", _p("/api/containers", ep), spec.model_dump(mode="json"))
     return redirect(request, f"/jobs/{job.id}")
 
 
@@ -155,13 +156,13 @@ async def stats_stream(cid: str, node: dict = Depends(node_or_404), ep: str = De
 @router.get("/nodes/{node_id}/images")
 async def images(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel)):
     items = await _client(panel, node).get(_p("/api/images", ep))
-    return render(request, "nodes/images.html", title=f"{node['name']} · obrazy", node=node, tab="images", items=items)
+    return render(request, "nodes/images.html", title=f"{node['name']} · {t('nodes.tab_images').lower()}", node=node, tab="images", items=items)
 
 
 @router.post("/nodes/{node_id}/images/pull")
 async def image_pull(request: Request, image: str = Form(...), node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
                      user: dict = Depends(require(Permission.ALLOW_PULL_IMAGES))):  # fmt: skip
-    job = relay_job(panel, node, f"Pobieranie {image} na {node['name']}", "POST", _p("/api/images/pull", ep), {"image": image.strip()})
+    job = relay_job(panel, node, t("jobs.title_pull", image=image, node=node["name"]), "POST", _p("/api/images/pull", ep), {"image": image.strip()})
     return redirect(request, f"/jobs/{job.id}")
 
 
@@ -169,7 +170,7 @@ async def image_pull(request: Request, image: str = Form(...), node: dict = Depe
 async def image_remove(request: Request, image_id: str = Form(...), node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
                        user: dict = Depends(require(Permission.ALLOW_DELETE_DOCKERS))):  # fmt: skip
     await _client(panel, node).delete(_p(f"/api/images/{image_id}", ep), params={"force": "false"})
-    return redirect(request, f"/nodes/{node['id']}/images{_q(ep)}", "Usunięto obraz")
+    return redirect(request, f"/nodes/{node['id']}/images{_q(ep)}", t("msg.image_removed"))
 
 
 @router.post("/nodes/{node_id}/images/prune")
@@ -187,7 +188,7 @@ async def image_prune(request: Request, all: str = Form(""), node: dict = Depend
 @router.get("/nodes/{node_id}/volumes")
 async def volumes(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel)):
     items = await _client(panel, node).get(_p("/api/volumes", ep))
-    return render(request, "nodes/volumes.html", title=f"{node['name']} · wolumeny", node=node, tab="volumes", items=items)
+    return render(request, "nodes/volumes.html", title=f"{node['name']} · {t('nodes.tab_volumes').lower()}", node=node, tab="volumes", items=items)
 
 
 @router.post("/nodes/{node_id}/volumes")
@@ -195,20 +196,20 @@ async def volume_create(request: Request, name: str = Form(...), driver: str = F
                         panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_CREATING_VOLUMES))):  # fmt: skip
     spec = VolumeSpec(name=name.strip(), driver=driver.strip() or "local")
     await _client(panel, node).post(_p("/api/volumes", ep), json=spec.model_dump())
-    return redirect(request, f"/nodes/{node['id']}/volumes{_q(ep)}", f"Utworzono wolumen {spec.name}")
+    return redirect(request, f"/nodes/{node['id']}/volumes{_q(ep)}", t("msg.volume_created", name=spec.name))
 
 
 @router.post("/nodes/{node_id}/volumes/remove")
 async def volume_remove(request: Request, name: str = Form(...), node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
                         user: dict = Depends(require(Permission.ALLOW_DELETING_VOLUMES))):  # fmt: skip
     await _client(panel, node).delete(_p(f"/api/volumes/{name}", ep))
-    return redirect(request, f"/nodes/{node['id']}/volumes{_q(ep)}", f"Usunięto wolumen {name}")
+    return redirect(request, f"/nodes/{node['id']}/volumes{_q(ep)}", t("msg.volume_removed", name=name))
 
 
 @router.get("/nodes/{node_id}/networks")
 async def networks(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel)):
     items = await _client(panel, node).get(_p("/api/networks", ep))
-    return render(request, "nodes/networks.html", title=f"{node['name']} · sieci", node=node, tab="networks", items=items)
+    return render(request, "nodes/networks.html", title=f"{node['name']} · {t('nodes.tab_networks').lower()}", node=node, tab="networks", items=items)
 
 
 @router.post("/nodes/{node_id}/networks")
@@ -221,14 +222,14 @@ async def network_create(request: Request, name: str = Form(...), driver: str = 
     except ValidationError as exc:
         return toast(_errors(exc), "err", status=400)
     await _client(panel, node).post(_p("/api/networks", ep), json=spec.model_dump())
-    return redirect(request, f"/nodes/{node['id']}/networks{_q(ep)}", f"Utworzono sieć {spec.name}")
+    return redirect(request, f"/nodes/{node['id']}/networks{_q(ep)}", t("msg.network_created", name=spec.name))
 
 
 @router.post("/nodes/{node_id}/networks/remove")
 async def network_remove(request: Request, network_id: str = Form(...), node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
                          user: dict = Depends(require(Permission.ALLOW_DELETING_NETWORKS))):  # fmt: skip
     await _client(panel, node).delete(_p(f"/api/networks/{network_id}", ep))
-    return redirect(request, f"/nodes/{node['id']}/networks{_q(ep)}", "Usunięto sieć")
+    return redirect(request, f"/nodes/{node['id']}/networks{_q(ep)}", t("msg.network_removed"))
 
 
 # --- stacki --------------------------------------------------------------------------------
@@ -238,13 +239,13 @@ async def network_remove(request: Request, network_id: str = Form(...), node: di
 async def stacks(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel)):
     items = await _client(panel, node).get(_p("/api/stacks", ep))
     apps = {a["slug"] for a in panel.db.fetchall("SELECT slug FROM apps WHERE node_id = ?", [node["id"]])}
-    return render(request, "nodes/stacks.html", title=f"{node['name']} · stacki", node=node, tab="stacks", items=items, apps=apps)
+    return render(request, "nodes/stacks.html", title=f"{node['name']} · {t('stacks.crumb')}", node=node, tab="stacks", items=items, apps=apps)
 
 
 @router.get("/nodes/{node_id}/stacks/new")
 def stack_new(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param)):
     sample = "services:\n  web:\n    image: nginx:alpine\n    restart: unless-stopped\n    ports:\n      - \"20080:80\"\n"
-    return render(request, "nodes/stack_edit.html", title="Nowy stack", node=node, tab="stacks", stack={"name": "", "compose": sample, "env": {}}, new=True)
+    return render(request, "nodes/stack_edit.html", title=t("stacks.new"), node=node, tab="stacks", stack={"name": "", "compose": sample, "env": {}}, new=True)
 
 
 @router.get("/nodes/{node_id}/stacks/{name}")
@@ -262,7 +263,7 @@ async def stack_save(request: Request, name: str = Form(...), compose: str = For
         spec = StackSpec(compose=compose.replace("\r\n", "\n"), env=_kv_lines(env))
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc) if isinstance(exc, ValidationError) else str(exc), "err", status=400)
-    job = relay_job(panel, node, f"Stack {name} na {node['name']}", "PUT", _p(f"/api/stacks/{name}?pull={'true' if pull else 'false'}", ep),
+    job = relay_job(panel, node, t("jobs.title_stack", name=name, node=node["name"]), "PUT", _p(f"/api/stacks/{name}?pull={'true' if pull else 'false'}", ep),
                     spec.model_dump())  # fmt: skip
     return redirect(request, f"/jobs/{job.id}")
 
@@ -272,8 +273,8 @@ async def stack_action(request: Request, name: str, verb: str, node: dict = Depe
                        user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):  # fmt: skip
     if verb == "remove":
         if not has_perm(user, Permission.ALLOW_DEPLOYMENT_DELETE):
-            return toast("Brak uprawnień do usuwania", "err", status=403)
-        job = relay_job(panel, node, f"Usuwanie stacka {name}", "DELETE", _p(f"/api/stacks/{name}", ep))
+            return toast(t("msg.no_perm_delete"), "err", status=403)
+        job = relay_job(panel, node, t("jobs.title_stack_remove", name=name), "DELETE", _p(f"/api/stacks/{name}", ep))
     else:
         job = relay_job(panel, node, f"Stack {name}: {verb}", "POST", _p(f"/api/stacks/{name}/{verb}", ep))
     return redirect(request, f"/jobs/{job.id}")
@@ -295,14 +296,14 @@ async def sftp_save(request: Request, username: str = Form(...), slug: str = For
                     user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
     body = {"slug": slug, "password": password or None, "keys": [k.strip() for k in keys.splitlines() if k.strip()] or None}
     await _client(panel, node).put(_p(f"/api/sftp/{username.strip().lower()}", ep), json=body)
-    return redirect(request, f"/nodes/{node['id']}/sftp{_q(ep)}", f"Zapisano konto SFTP {username}")
+    return redirect(request, f"/nodes/{node['id']}/sftp{_q(ep)}", t("msg.sftp_saved", name=username))
 
 
 @router.post("/nodes/{node_id}/sftp/{username}/delete")
 async def sftp_delete(request: Request, username: str, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
                       user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
     await _client(panel, node).delete(_p(f"/api/sftp/{username}", ep))
-    return redirect(request, f"/nodes/{node['id']}/sftp{_q(ep)}", f"Usunięto konto {username}")
+    return redirect(request, f"/nodes/{node['id']}/sftp{_q(ep)}", t("msg.sftp_deleted", name=username))
 
 
 # --- ustawienia węzła ------------------------------------------------------------------------
@@ -310,7 +311,7 @@ async def sftp_delete(request: Request, username: str, node: dict = Depends(node
 
 @router.get("/nodes/{node_id}/settings")
 def node_settings(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param)):
-    return render(request, "nodes/settings.html", title=f"{node['name']} · ustawienia", node=node, tab="settings")
+    return render(request, "nodes/settings.html", title=f"{node['name']} · {t('nav.settings').lower()}", node=node, tab="settings")
 
 
 # --- pomocnicze -------------------------------------------------------------------------------
@@ -330,7 +331,7 @@ def _kv_lines(text: str) -> dict[str, str]:
             continue
         key, sep, value = line.partition("=")
         if not sep:
-            raise ValueError(f"linia „{line}” — oczekiwano KLUCZ=wartość")
+            raise ValueError(t("msg.bad_env", line=line))
         out[key.strip()] = value.strip()
     return out
 

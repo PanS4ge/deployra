@@ -8,6 +8,8 @@ from collections.abc import Sequence
 
 from markupsafe import Markup
 
+from ..i18n import t
+
 _ids = itertools.count(1)
 
 
@@ -58,7 +60,7 @@ def area_chart(
     """Wykres: lista serii (nazwa, wartości, kolor, czy wypełniać). Podpowiedzi przez <title>."""
     n = len(labels)
     if n == 0:
-        return Markup('<div class="muted small">Brak danych</div>')
+        return Markup('<div class="muted small">{}</div>').format(t("common.no_data"))
     left, right, top, bottom = 44, 12, 12, 26
     inner_w, inner_h = width - left - right, height - top - bottom
     peak = max([max(values or [0]) for _, values, _, _ in series] + [1])

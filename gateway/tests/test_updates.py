@@ -42,3 +42,15 @@ def test_update_api(ctx, tmp_path):
     assert started["state"] == "queued" and started["target"] == "1.2.0"
     assert (tmp_path / "upd" / "request").exists()
     assert api.post("/api/update", json={"version": "1.2.0"}).status_code == 401  # bez podpisu
+
+
+def test_errors_follow_accept_language(ctx, tmp_path):
+    ctx.updates.dir = tmp_path / "upd2"
+    boot = TestClient(create_bootstrap_app(ctx))
+    secret, _ = _pair(boot, ctx)
+    api = TestClient(create_api_app(ctx, start_scheduler=False))
+    api.headers["Accept-Language"] = "en-US,en;q=0.9"
+    detail = _signed(api, secret, "POST", "/api/update", {"version": "1.2.0"}).json()["detail"]
+    assert detail.startswith("no updater")
+    api.headers["Accept-Language"] = "pl"
+    assert _signed(api, secret, "POST", "/api/update", {"version": "1.2.0"}).json()["detail"].startswith("brak aktualizatora")

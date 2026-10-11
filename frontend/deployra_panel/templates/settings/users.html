@@ -8,19 +8,19 @@
       <div class="card-head">
         <img class="avatar" src="{{ gravatar(u.email, 64, panel.db.setting('gravatar_default', 'identicon')) }}" alt="" referrerpolicy="no-referrer">
         <div style="flex: 1; min-width: 0"><div class="name trunc">{{ u.name }} {{ u.surname }}</div><div class="small muted trunc">{{ u.email }}</div></div>
-        {% if P.FULL_ACCESS in perms %}<span class="badge violet">pełny dostęp</span>{% endif %}
+        {% if P.FULL_ACCESS in perms %}<span class="badge violet">{{ t("users.full_access") }}</span>{% endif %}
       </div>
       <div class="card-body row between">
-        <span class="small muted">{{ perms | length }} uprawnień · od {{ u.created_at | dt }}</span>
+        <span class="small muted">{{ t("users.summary", count=perms | length, since=u.created_at | dt) }}</span>
         <div class="row" style="gap: 4px">
           {% if u.id == user.id or has(user, P.ALLOW_MODIFYING_USERS) %}<button class="btn sm" @click="edit = {{ u.id }}"><i class="bi bi-pencil"></i></button>{% endif %}
-          {% if has(user, P.ALLOW_DELETING_USERS) and not u.undeletable and u.id != user.id %}<button class="btn sm danger" hx-post="/settings/users/{{ u.id }}/delete" hx-swap="none" hx-confirm="Usunąć {{ u.email }}?" data-danger data-math><i class="bi bi-trash"></i></button>{% endif %}
+          {% if has(user, P.ALLOW_DELETING_USERS) and not u.undeletable and u.id != user.id %}<button class="btn sm danger" hx-post="/settings/users/{{ u.id }}/delete" hx-swap="none" hx-confirm="{{ t('users.delete_confirm', email=u.email) }}" data-danger data-math><i class="bi bi-trash"></i></button>{% endif %}
         </div>
       </div>
     </div>
     {% endfor %}
     {% if has(user, P.ALLOW_CREATING_USERS_SETTING) %}
-    <div class="card link" style="display: grid; place-items: center; min-height: 120px" @click="edit = 0"><div class="muted"><i class="bi bi-person-plus" style="font-size: 1.6rem"></i><div>Nowy użytkownik</div></div></div>
+    <div class="card link" style="display: grid; place-items: center; min-height: 120px" @click="edit = 0"><div class="muted"><i class="bi bi-person-plus" style="font-size: 1.6rem"></i><div>{{ t("users.new") }}</div></div></div>
     {% endif %}
   </div>
 
@@ -28,17 +28,17 @@
   <div class="modal-backdrop" x-show="edit === {{ u.id }}" x-cloak @keydown.escape.window="edit = null">
     <form class="card modal wide" hx-post="/settings/users/save" hx-swap="none" @click.outside="edit = null">
       <input type="hidden" name="id" value="{{ u.id or '' }}">
-      <div class="card-head"><h3>{{ "Edycja: " ~ u.email if u.id else "Nowy użytkownik" }}</h3></div>
+      <div class="card-head"><h3>{{ t("users.edit", email=u.email) if u.id else t("users.new") }}</h3></div>
       <div class="card-body form-grid">
-        <div class="field"><label>Imię</label><input class="input" name="name" value="{{ u.name or '' }}"></div>
-        <div class="field"><label>Nazwisko</label><input class="input" name="surname" value="{{ u.surname or '' }}"></div>
-        <div class="field"><label>E-mail</label><input class="input" name="email" type="email" value="{{ u.email }}" required></div>
-        <div class="field"><label>Hasło</label><input class="input" name="password" type="password" autocomplete="new-password" placeholder="{{ 'zostaw puste, aby nie zmieniać' if u.id else 'min. 8 znaków' }}"></div>
+        <div class="field"><label>{{ t("common.first_name") }}</label><input class="input" name="name" value="{{ u.name or '' }}"></div>
+        <div class="field"><label>{{ t("common.last_name") }}</label><input class="input" name="surname" value="{{ u.surname or '' }}"></div>
+        <div class="field"><label>{{ t("common.email") }}</label><input class="input" name="email" type="email" value="{{ u.email }}" required></div>
+        <div class="field"><label>{{ t("common.password") }}</label><input class="input" name="password" type="password" autocomplete="new-password" placeholder="{{ t('common.leave_empty_to_keep') if u.id else t('users.min_password') }}"></div>
         <div class="field full">
-          <label>Uprawnienia {% if u.id == user.id %}<span class="muted">(własnych nie zmienisz)</span>{% endif %}</label>
+          <label>{{ t("users.permissions") }} {% if u.id == user.id %}<span class="muted">{{ t("users.own_permissions") }}</span>{% endif %}</label>
           <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px">
             {% for perm, label in labels.items() %}
-            <label class="check small" title="{{ 'ryzykowne' if perm in risky }}">
+            <label class="check small" title="{{ t('users.risky') if perm in risky }}">
               <input type="checkbox" name="perm_{{ perm.name }}" value="1" {{ "checked" if perm in perms }} {{ "disabled" if not grantable(user, perm) or u.id == user.id or (u.undeletable and perm == P.FULL_ACCESS) }}>
               <span class="sw"></span><span style="{{ 'color: #fda4af' if perm in risky }}">{{ label }}</span>
             </label>
@@ -47,8 +47,8 @@
         </div>
       </div>
       <div class="card-body row" style="justify-content: flex-end; border-top: 1px solid var(--border)">
-        <button type="button" class="btn ghost" @click="edit = null">Anuluj</button>
-        <button class="btn primary"><i class="bi bi-check2"></i> Zapisz</button>
+        <button type="button" class="btn ghost" @click="edit = null">{{ t("common.cancel") }}</button>
+        <button class="btn primary"><i class="bi bi-check2"></i> {{ t("common.save") }}</button>
       </div>
     </form>
   </div>

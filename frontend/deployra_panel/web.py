@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
 from . import NAME, __version__
+from .i18n import catalog, lang, t, tm
 from .permissions import LABELS, Permission, has
 
 BASE = Path(__file__).parent
@@ -60,7 +61,7 @@ def ago(value: Any) -> str:
             break
     else:
         text = f"{delta} s"
-    return f"za {text}" if future else f"{text} temu"
+    return t("time.in", value=text) if future else t("time.ago", value=text)
 
 
 def duration(seconds: Any) -> str:
@@ -106,9 +107,14 @@ def update_offer(panel: Any) -> dict | None:
     return updates.offer(panel)
 
 
+def js_i18n() -> dict[str, str]:
+    """Teksty dla app.js (window.I18N) — klucze `js.*` z paczki bieżącego języka."""
+    return {key[3:]: catalog.raw(key) for key in catalog.pack(catalog.default) if key.startswith("js.")}
+
+
 templates.env.globals.update(
     NAME=NAME, VERSION=__version__, P=Permission, PERM_LABELS=LABELS, has=has, gravatar=gravatar, now=time.time,
-    update_offer=update_offer,
+    update_offer=update_offer, t=tm, LANG=lang, LANGUAGES=catalog.names, JS_I18N=js_i18n,
 )
 
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from deployra_common import i18n
 from deployra_common.schemas import AccessList, ProxyState, Site, Stream, Upstream
 
 ROOT = "/etc/nginx/deployra"
@@ -59,12 +60,16 @@ add_header X-Deployra-Cache $upstream_cache_status;
 """,
 }
 
-DEPLOYRA_PAGE = (
-    "<!DOCTYPE html><html lang=pl><meta charset=utf-8><title>Deployra</title>"
-    "<body style='margin:0;min-height:100vh;display:grid;place-items:center;background:#05060f;color:#e6e8ff;"
-    "font-family:system-ui'><div style=text-align:center><h1>Nieznany host</h1>"
-    "<p style=color:#8b90b8>Ta domena nie jest skonfigurowana w Deployrze.</p></div></body></html>"
-)
+def deployra_page() -> str:
+    """Kosmiczna strona „nieznany host” — dla odwiedzających, więc w stałym języku bramki (DEPLOYRA_LANG)."""
+    lang = i18n.default_language()
+    title, text = (i18n.server.raw(f"gw.unknown_host.{key}", lang).replace('"', "'") for key in ("title", "text"))
+    return (
+        f"<!DOCTYPE html><html lang={lang}><meta charset=utf-8><title>Deployra</title>"
+        "<body style='margin:0;min-height:100vh;display:grid;place-items:center;background:#05060f;color:#e6e8ff;"
+        f"font-family:system-ui'><div style=text-align:center><h1>{title}</h1>"
+        f"<p style=color:#8b90b8>{text}</p></div></body></html>"
+    )
 
 
 def _ind(text: str, level: int = 1) -> str:
@@ -195,7 +200,7 @@ def render_stream(stream: Stream, ipv6: bool) -> str:
 
 def render_default(ipv6: bool, page: str, root: str = ROOT) -> str:
     body = (
-        f"default_type text/html;\n    return 404 \"{DEPLOYRA_PAGE}\";"
+        f"default_type text/html;\n    return 404 \"{deployra_page()}\";"
         if page == "deployra"
         else "return 404;"
     )

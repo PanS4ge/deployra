@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import status_badge, empty, uptime_badge, heartbeat %}
-{% block actions %}{% if has(user, P.ALLOW_DEPLOYMENT) %}<a class="btn primary" href="/apps/new"><i class="bi bi-rocket-takeoff"></i> Nowa aplikacja</a>{% endif %}{% endblock %}
+{% block actions %}{% if has(user, P.ALLOW_DEPLOYMENT) %}<a class="btn primary" href="/apps/new"><i class="bi bi-rocket-takeoff"></i> {{ t("apps.new") }}</a>{% endif %}{% endblock %}
 {% block content %}
 {% set icons = {"image": "box", "compose": "layers", "static": "file-earmark-code", "git": "git"} %}
 {% if apps %}
@@ -22,6 +22,6 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="card">{{ empty("rocket-takeoff", "Jeszcze nic tu nie lata", "Wdróż pierwszą aplikację: obraz z rejestru, docker-compose, stronę statyczną albo repozytorium Git — z domeną i HTTPS w jednym kroku.") }}</div>
+<div class="card">{{ empty("rocket-takeoff", t("apps.empty_title"), t("apps.empty_text")) }}</div>
 {% endif %}
 {% endblock %}

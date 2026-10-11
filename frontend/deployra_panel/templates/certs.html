@@ -1,30 +1,30 @@
 {% extends "base.html" %}
 {% from "_macros.html" import status_badge, empty %}
 {% block content %}
-{% if sync_error %}<div class="callout warn"><i class="bi bi-wifi-off"></i><div class="small">Nie udało się pobrać stanu z bramki: {{ sync_error }}</div></div>{% endif %}
-{% if not acme_email %}<div class="callout warn"><i class="bi bi-envelope-exclamation"></i><div class="small">Ustaw e-mail do Let's Encrypt w <a href="/settings">ustawieniach</a>.</div></div>{% endif %}
-{% if staging %}<div class="callout warn"><i class="bi bi-cone-striped"></i><div class="small">Włączony tryb testowy Let's Encrypt (staging) — certyfikaty nie będą zaufane przez przeglądarki.</div></div>{% endif %}
+{% if sync_error %}<div class="callout warn"><i class="bi bi-wifi-off"></i><div class="small">{{ t("certs.sync_error", error=sync_error) }}</div></div>{% endif %}
+{% if not acme_email %}<div class="callout warn"><i class="bi bi-envelope-exclamation"></i><div class="small">{{ t("certs.no_email") }}</div></div>{% endif %}
+{% if staging %}<div class="callout warn"><i class="bi bi-cone-striped"></i><div class="small">{{ t("certs.staging") }}</div></div>{% endif %}
 <div class="grid grid-2">
   {% if has(user, P.ALLOW_PROXY) %}
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-stars"></i> Nowy z Let's Encrypt</h3></div>
+    <div class="card-head"><h3><i class="bi bi-stars"></i> {{ t("certs.new_le") }}</h3></div>
     <form class="card-body stack" hx-post="/certs" hx-swap="none">
       <textarea class="textarea" name="domains" style="min-height: 70px" placeholder="example.com&#10;*.example.com" required></textarea>
       <div class="seg">
         <label><input type="radio" name="challenge" value="http" checked><span>HTTP-01</span></label>
-        <label><input type="radio" name="challenge" value="dns-cloudflare" {{ "disabled" if not has_cf }}><span>DNS-01 (Cloudflare) — wildcard</span></label>
+        <label><input type="radio" name="challenge" value="dns-cloudflare" {{ "disabled" if not has_cf }}><span>{{ t("certs.dns01") }}</span></label>
       </div>
-      <div class="hint small muted">HTTP-01 wymaga, żeby domena wskazywała na bramkę, a port 80 był otwarty. Odnowienia robi bramka sama (30 dni przed końcem).</div>
-      <div class="row" style="justify-content: flex-end"><button class="btn primary"><i class="bi bi-shield-plus"></i> Wystaw</button></div>
+      <div class="hint small muted">{{ t("certs.http01_hint") }}</div>
+      <div class="row" style="justify-content: flex-end"><button class="btn primary"><i class="bi bi-shield-plus"></i> {{ t("certs.issue") }}</button></div>
     </form>
   </div>
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-upload"></i> Własny certyfikat (PEM)</h3></div>
+    <div class="card-head"><h3><i class="bi bi-upload"></i> {{ t("certs.custom_pem") }}</h3></div>
     <form class="card-body stack" hx-post="/certs/upload" hx-swap="none">
-      <input class="input" name="name" placeholder="nazwa (opcjonalnie)">
-      <textarea class="textarea" name="fullchain" style="min-height: 70px" placeholder="-----BEGIN CERTIFICATE----- (pełny łańcuch)" required></textarea>
+      <input class="input" name="name" placeholder="{{ t('certs.name_placeholder') }}">
+      <textarea class="textarea" name="fullchain" style="min-height: 70px" placeholder="{{ t('certs.chain_placeholder') }}" required></textarea>
       <textarea class="textarea" name="privkey" style="min-height: 70px" placeholder="-----BEGIN PRIVATE KEY-----" required></textarea>
-      <div class="row" style="justify-content: flex-end"><button class="btn"><i class="bi bi-upload"></i> Wgraj</button></div>
+      <div class="row" style="justify-content: flex-end"><button class="btn"><i class="bi bi-upload"></i> {{ t("certs.upload") }}</button></div>
     </form>
   </div>
   {% endif %}
@@ -33,19 +33,19 @@
   {% if certs %}
   <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>Domeny</th><th>Rodzaj</th><th>Stan</th><th>Ważny do</th><th>Używany przez</th><th></th></tr></thead>
+    <thead><tr><th>{{ t("setup.domains") }}</th><th>{{ t("jobs.col_kind") }}</th><th>{{ t("common.state") }}</th><th>{{ t("certs.valid_until") }}</th><th>{{ t("common.used_by") }}</th><th></th></tr></thead>
     <tbody>
     {% for c in certs %}
       <tr>
         <td class="name mono small">{{ c.domains | join(", ") or c.name }}{% if c.error %}<div class="small" style="color: #fda4af; font-family: var(--font)">{{ c.error[:200] }}</div>{% endif %}</td>
-        <td class="small">{{ {"http": "Let's Encrypt · HTTP", "dns-cloudflare": "Let's Encrypt · DNS", "custom": "własny"}.get(c.challenge, c.challenge) }}</td>
+        <td class="small">{{ {"http": "Let's Encrypt · HTTP", "dns-cloudflare": "Let's Encrypt · DNS", "custom": t("certs.custom")}.get(c.challenge, c.challenge) }}</td>
         <td>{{ status_badge(c.status) }}</td>
         <td class="small">{{ c.expires_at | dt }}</td>
         <td class="small">{{ used.get(c.id, []) | join(", ") or "—" }}</td>
         <td class="actions">
           {% if has(user, P.ALLOW_PROXY) %}
-          {% if c.challenge != "custom" %}<button class="btn icon sm ghost" title="Wystaw ponownie" hx-post="/certs/{{ c.id }}/issue" hx-swap="none"><i class="bi bi-arrow-repeat"></i></button>{% endif %}
-          <button class="btn icon sm ghost" title="Usuń" hx-post="/certs/{{ c.id }}/delete" hx-swap="none" hx-confirm="Usunąć certyfikat? Hosty, które go używają, przejdą na HTTP." data-danger><i class="bi bi-trash"></i></button>
+          {% if c.challenge != "custom" %}<button class="btn icon sm ghost" title="{{ t('certs.reissue') }}" hx-post="/certs/{{ c.id }}/issue" hx-swap="none"><i class="bi bi-arrow-repeat"></i></button>{% endif %}
+          <button class="btn icon sm ghost" title="{{ t('common.delete') }}" hx-post="/certs/{{ c.id }}/delete" hx-swap="none" hx-confirm="{{ t('certs.delete_confirm') }}" data-danger><i class="bi bi-trash"></i></button>
           {% endif %}
         </td>
       </tr>
@@ -53,6 +53,6 @@
     </tbody>
   </table>
   </div>
-  {% else %}{{ empty("shield-lock", "Brak certyfikatów", "Aplikacje z HTTPS dostają certyfikaty automatycznie.") }}{% endif %}
+  {% else %}{{ empty("shield-lock", t("certs.empty_title"), t("certs.empty_text")) }}{% endif %}
 </div>
 {% endblock %}

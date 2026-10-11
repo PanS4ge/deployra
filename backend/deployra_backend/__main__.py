@@ -7,6 +7,9 @@ import sys
 import uvicorn
 from loguru import logger
 
+from deployra_common import i18n
+from deployra_common.i18n import tr
+
 from . import NAME, __version__, enroll
 from .app import create_app
 from .config import Config
@@ -24,25 +27,26 @@ def _banner(lines: list[str]) -> None:
 
 
 def main() -> None:
+    i18n.current.set(i18n.default_language())  # logi w języku DEPLOYRA_LANG
     config = Config()
     if config.fake_docker:
         from .fake_docker import FakeDocker
 
-        logger.warning("DEPLOYRA_FAKE_DOCKER=1 — atrapa Dockera, nic nie jest naprawdę uruchamiane")
+        logger.warning(tr("node.log.fake_docker"))
         ctx = Context(config, docker_factory=lambda: FakeDocker(demo=True))
     else:
         ctx = Context(config)
 
     if len(sys.argv) > 1 and sys.argv[1] == "reset-pairing":
         code = enroll.reset_pairing(ctx)
-        print(f"Nowy kod parowania: {code}")
+        print(tr("node.log.new_code", code=code))
         return
 
-    logger.info(f"{NAME} {__version__} — węzeł {config.name} ({ctx.state.get('node_id')})")
+    logger.info(f"{NAME} {__version__} — {tr('node.log.node', name=config.name)} ({ctx.state.get('node_id')})")
 
     if not ctx.state.paired and config.join_token and not ctx.state.get("wg"):
         if not config.gateway:
-            logger.critical("DEPLOYRA_JOIN wymaga DEPLOYRA_GATEWAY (adres bramki, np. vps.example.com:51821)")
+            logger.critical(tr("node.log.join_needs_gateway"))
             sys.exit(2)
         enroll.join_with_retry(ctx)
 
@@ -54,23 +58,23 @@ def main() -> None:
             if config.restrict_pool:
                 firewall.restrict_pool(config.port_pool, config.wg_iface)
         else:
-            logger.warning("Tunel nie wstał — API słucha na wszystkich interfejsach (chronione podpisem)")
+            logger.warning(tr("node.log.tunnel_down"))
     bind = bind or "0.0.0.0"
 
     code = enroll.ensure_pairing_code(ctx)
     if code:
         _banner(
             [
-                "Węzeł czeka na sparowanie z panelem Deployry.",
-                f"Adres: http://<ten-host>:{config.api_port}",
-                f"Kod parowania: {code}",
+                tr("node.log.waiting_pair"),
+                tr("node.log.address", url=f"http://<{tr('node.log.this_host')}>:{config.api_port}"),
+                tr("node.log.pairing_code", code=code),
             ]
         )
     elif ctx.state.get("join"):
-        logger.info("Węzeł dołączył do bramki i czeka, aż panel dokończy parowanie przez tunel")
+        logger.info(tr("node.log.joined_waiting"))
 
     app = create_app(ctx, bind_host=bind)
-    logger.success(f"API słucha na {bind}:{config.api_port}")
+    logger.success(tr("node.log.api_listening", address=f"{bind}:{config.api_port}"))
     uvicorn.run(app, host=bind, port=config.api_port, log_level="warning", proxy_headers=False, server_header=False)
 
 

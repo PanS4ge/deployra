@@ -1,34 +1,34 @@
 {% extends "base.html" %}
-{% block crumbs %}<div class="crumbs"><a href="/nodes">Węzły</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
-{% block heading %}Sieci{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes">{{ t("nav.nodes") }}</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
+{% block heading %}{{ t("nodes.tab_networks") }}{% endblock %}
 {% block content %}
 {% include "nodes/_tabs.html" %}
 {% if has(user, P.ALLOW_CREATING_NETWORKS) %}
 <div class="card">
   <form class="card-body row" hx-post="/nodes/{{ node.id }}/networks{{ epq }}" hx-swap="none">
-    <input class="input" style="flex: 1; min-width: 180px" name="name" placeholder="moja_siec" required>
+    <input class="input" style="flex: 1; min-width: 180px" name="name" placeholder="{{ t('networks.name_placeholder') }}" required>
     <input class="input" style="width: 130px" name="driver" value="bridge">
-    <input class="input" style="width: 170px" name="subnet" placeholder="podsieć (opcj.)">
-    <input class="input" style="width: 150px" name="gateway" placeholder="brama (opcj.)">
-    <label class="check"><input type="checkbox" name="internal" value="1"><span class="sw"></span><span>wewnętrzna</span></label>
-    <button class="btn primary"><i class="bi bi-plus-lg"></i> Utwórz</button>
+    <input class="input" style="width: 170px" name="subnet" placeholder="{{ t('networks.subnet_placeholder') }}">
+    <input class="input" style="width: 150px" name="gateway" placeholder="{{ t('networks.gateway_placeholder') }}">
+    <label class="check"><input type="checkbox" name="internal" value="1"><span class="sw"></span><span>{{ t("networks.internal") }}</span></label>
+    <button class="btn primary"><i class="bi bi-plus-lg"></i> {{ t("common.create") }}</button>
   </form>
 </div>
 {% endif %}
 <div class="card">
   <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>Nazwa</th><th>Sterownik</th><th>Podsieci</th><th>Kontenery</th><th></th></tr></thead>
+    <thead><tr><th>{{ t("common.name") }}</th><th>{{ t("common.driver") }}</th><th>{{ t("networks.subnets") }}</th><th>{{ t("nodes.tab_containers") }}</th><th></th></tr></thead>
     <tbody>
     {% for n in items %}
       <tr>
-        <td class="name">{{ n.name }} {% if n.internal %}<span class="badge">wewnętrzna</span>{% endif %}</td>
+        <td class="name">{{ n.name }} {% if n.internal %}<span class="badge">{{ t("networks.internal") }}</span>{% endif %}</td>
         <td class="small">{{ n.driver }} <span class="muted">· {{ n.scope }}</span></td>
         <td class="mono small">{{ n.subnets | join(", ") or "—" }}</td>
         <td class="small">{{ n.containers | join(", ") or "—" }}</td>
         <td class="actions">
           {% if has(user, P.ALLOW_DELETING_NETWORKS) and not n.protected and not n.containers %}
-          <button class="btn icon sm ghost" hx-post="/nodes/{{ node.id }}/networks/remove{{ epq }}" hx-vals='{"network_id": "{{ n.id }}"}' hx-swap="none" hx-confirm="Usunąć sieć {{ n.name }}?" data-danger><i class="bi bi-trash"></i></button>
+          <button class="btn icon sm ghost" hx-post="/nodes/{{ node.id }}/networks/remove{{ epq }}" hx-vals='{"network_id": "{{ n.id }}"}' hx-swap="none" hx-confirm="{{ t('networks.delete_confirm', name=n.name) }}" data-danger><i class="bi bi-trash"></i></button>
           {% endif %}
         </td>
       </tr>

@@ -16,3 +16,6 @@ dependencies = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["deployra_common*"]
+
+[tool.setuptools.package-data]
+deployra_common = ["locales/*.json"]

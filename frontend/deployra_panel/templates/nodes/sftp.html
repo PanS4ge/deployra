@@ -1,39 +1,39 @@
 {% extends "base.html" %}
 {% from "_macros.html" import copy_pill %}
-{% block crumbs %}<div class="crumbs"><a href="/nodes">Węzły</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes">{{ t("nav.nodes") }}</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
 {% block heading %}SFTP{% endblock %}
 {% block content %}
 {% include "nodes/_tabs.html" %}
 {% if not data.enabled %}
-<div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div>SFTP jest wyłączony na tym węźle (<code>DEPLOYRA_SFTP=off</code>).</div></div>
+<div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div>{{ t("sftp.disabled") }}</div></div>
 {% else %}
 <div class="grid grid-2">
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-info-circle"></i> Jak się połączyć</h3></div>
+    <div class="card-head"><h3><i class="bi bi-info-circle"></i> {{ t("sftp.how_to_connect") }}</h3></div>
     <div class="card-body stack small">
       <dl class="kv">
-        <dt>Host</dt><dd class="mono">{{ panel.node_upstream_host(node) or "adres węzła" }}{% if node.transport == "tunnel" %} <span class="muted">(w tunelu — z zewnątrz dodaj stream na bramce)</span>{% endif %}</dd>
+        <dt>Host</dt><dd class="mono">{{ panel.node_upstream_host(node) or t("sftp.node_address") }}{% if node.transport == "tunnel" %} <span class="muted">{{ t("sftp.in_tunnel") }}</span>{% endif %}</dd>
         <dt>Port</dt><dd class="mono">{{ data.port }}</dd>
-        <dt>Odcisk klucza</dt><dd>{{ copy_pill(data.fingerprint or "—") }}</dd>
+        <dt>{{ t("sftp.fingerprint") }}</dt><dd>{{ copy_pill(data.fingerprint or "—") }}</dd>
       </dl>
-      <div class="dim">Każde konto widzi tylko katalog swojej strony (chroot). Pliki są od razu serwowane przez nginx węzła.</div>
+      <div class="dim">{{ t("sftp.chroot_hint") }}</div>
     </div>
   </div>
   {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-person-plus"></i> Konto SFTP</h3></div>
+    <div class="card-head"><h3><i class="bi bi-person-plus"></i> {{ t("sftp.account") }}</h3></div>
     <form class="card-body stack" hx-post="/nodes/{{ node.id }}/sftp" hx-swap="none">
       <div class="form-grid">
-        <div class="field"><label>Login</label><input class="input mono" name="username" required pattern="[a-z0-9][a-z0-9_.\-]{1,31}"></div>
-        <div class="field"><label>Strona</label>
+        <div class="field"><label>{{ t("sftp.login") }}</label><input class="input mono" name="username" required pattern="[a-z0-9][a-z0-9_.\-]{1,31}"></div>
+        <div class="field"><label>{{ t("sftp.site") }}</label>
           <select class="select" name="slug" required>
-            {% for a in apps %}<option value="{{ a.slug }}">{{ a.name }} ({{ a.slug }})</option>{% else %}<option value="" disabled selected>najpierw utwórz stronę statyczną</option>{% endfor %}
+            {% for a in apps %}<option value="{{ a.slug }}">{{ a.name }} ({{ a.slug }})</option>{% else %}<option value="" disabled selected>{{ t("sftp.create_site_first") }}</option>{% endfor %}
           </select>
         </div>
-        <div class="field full"><label>Hasło</label><input class="input" name="password" type="password" autocomplete="new-password" placeholder="zostaw puste, aby nie zmieniać"></div>
-        <div class="field full"><label>Klucze publiczne SSH (opcjonalnie)</label><textarea class="textarea" name="keys" style="min-height: 70px" placeholder="ssh-ed25519 AAAA…"></textarea></div>
+        <div class="field full"><label>{{ t("common.password") }}</label><input class="input" name="password" type="password" autocomplete="new-password" placeholder="{{ t('common.leave_empty_to_keep') }}"></div>
+        <div class="field full"><label>{{ t("sftp.ssh_keys") }}</label><textarea class="textarea" name="keys" style="min-height: 70px" placeholder="ssh-ed25519 AAAA…"></textarea></div>
       </div>
-      <div class="row" style="justify-content: flex-end"><button class="btn primary"><i class="bi bi-check2"></i> Zapisz</button></div>
+      <div class="row" style="justify-content: flex-end"><button class="btn primary"><i class="bi bi-check2"></i> {{ t("common.save") }}</button></div>
     </form>
   </div>
   {% endif %}
@@ -41,7 +41,7 @@
 <div class="card">
   <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>Login</th><th>Strona</th><th>Hasło</th><th>Klucze</th><th></th></tr></thead>
+    <thead><tr><th>{{ t("sftp.login") }}</th><th>{{ t("sftp.site") }}</th><th>{{ t("common.password") }}</th><th>{{ t("sftp.keys") }}</th><th></th></tr></thead>
     <tbody>
     {% for u in data.users %}
       <tr>
@@ -49,9 +49,9 @@
         <td class="mono small">{{ u.slug }}</td>
         <td>{{ "✔" if u.password else "—" }}</td>
         <td>{{ u.keys }}</td>
-        <td class="actions">{% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}<button class="btn icon sm ghost" hx-post="/nodes/{{ node.id }}/sftp/{{ u.username }}/delete" hx-swap="none" hx-confirm="Usunąć konto {{ u.username }}?" data-danger><i class="bi bi-trash"></i></button>{% endif %}</td>
+        <td class="actions">{% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}<button class="btn icon sm ghost" hx-post="/nodes/{{ node.id }}/sftp/{{ u.username }}/delete" hx-swap="none" hx-confirm="{{ t('sftp.delete_confirm', name=u.username) }}" data-danger><i class="bi bi-trash"></i></button>{% endif %}</td>
       </tr>
-    {% else %}<tr><td colspan="5" class="muted">Brak kont.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="5" class="muted">{{ t("sftp.empty") }}</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>

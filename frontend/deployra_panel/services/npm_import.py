@@ -22,6 +22,7 @@ from deployra_common.schemas import check_domain
 
 from ..db import now
 from . import proxy_state
+from ..i18n import t
 
 JSON_FIELDS = ("domain_names", "meta", "locations")
 
@@ -66,7 +67,7 @@ def read_sqlite(path: str) -> NpmData:
     tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     if "proxy_host" not in tables:
         con.close()
-        raise ValueError("to nie wygląda na bazę Nginx Proxy Managera (brak tabeli proxy_host)")
+        raise ValueError(t("npm.not_npm_db"))
 
     def rows(table: str) -> list[dict]:
         if table not in tables:
@@ -102,14 +103,14 @@ async def read_api(url: str, email: str, password: str, code: str = "", transpor
     async with httpx.AsyncClient(base_url=base, timeout=20, transport=transport, verify=False) as client:
         response = await client.post("/api/tokens", json={"identity": email, "secret": password})
         if response.status_code >= 400:
-            raise ValueError(f"NPM odrzucił logowanie: {response.text[:200]}")
+            raise ValueError(t("npm.login_rejected", error=response.text[:200]))
         token_data = response.json()
         if token_data.get("requires_2fa"):
             if not code:
-                raise ValueError("konto NPM ma 2FA — podaj kod")
+                raise ValueError(t("npm.need_2fa"))
             response = await client.post("/api/tokens/2fa", json={"challenge_token": token_data["challenge_token"], "code": code})
             if response.status_code >= 400:
-                raise ValueError("zły kod 2FA")
+                raise ValueError(t("npm.bad_2fa"))
             token_data = response.json()
         client.headers["Authorization"] = f"Bearer {token_data['token']}"
 
@@ -127,9 +128,7 @@ async def read_api(url: str, email: str, password: str, code: str = "", transpor
         data.access_lists = await get("/api/nginx/access-lists?expand=items,clients")
     for acl in data.access_lists:
         if any(not item.get("password") for item in acl.get("items") or []):
-            data.warnings.append(
-                f"Lista dostępu „{acl.get('name')}”: API NPM nie zwraca haseł — wgraj archiwum z /data/access albo ustaw hasła ręcznie"
-            )
+            data.warnings.append(t("npm.acl_no_passwords", name=acl.get("name")))
     return data
 
 
@@ -236,7 +235,7 @@ def apply(panel: Any, data: NpmData, mapping: dict[str, Any], options: dict[str,
                 elif item["username"] in old_hashes:
                     users.append({"username": item["username"], "htpasswd": old_hashes[item["username"]]})
                 else:
-                    log(f"⚠ Lista „{acl.get('name')}”: brak hasła dla {item['username']} — pomijam użytkownika")
+                    log(t("npm.acl_user_skipped", name=acl.get("name"), user=item["username"]))
             clients = [{"address": c["address"], "directive": c.get("directive", "allow")} for c in acl.get("clients") or []]
             acl_map[acl["id"]] = db.insert("access_lists", name=str(acl.get("name") or f"npm-{acl['id']}")[:80],
                                            satisfy_any=int(bool(acl.get("satisfy_any"))), pass_auth=int(bool(acl.get("pass_auth"))),
@@ -260,7 +259,7 @@ def apply(panel: Any, data: NpmData, mapping: dict[str, Any], options: dict[str,
                                 challenge="dns-cloudflare" if wildcard else "http", status="new", created_at=now())  # fmt: skip
                 report["reissue"].append(cid)
             else:
-                log(f"⚠ Certyfikat „{cert.get('nice_name')}” (własny) — brak plików PEM, pomijam")
+                log(t("npm.cert_no_pem", name=cert.get("nice_name")))
                 continue
             cert_map[cert["id"]] = cid
 
@@ -282,7 +281,7 @@ def apply(panel: Any, data: NpmData, mapping: dict[str, Any], options: dict[str,
             return None
         clash = existing.intersection(domains)
         if clash:
-            report["skipped"].append(f"{', '.join(clash)}: domena już istnieje w Deployrze")
+            report["skipped"].append(t("npm.domain_exists", domains=", ".join(clash)))
             return None
         existing.update(domains)
         return domains
@@ -332,7 +331,7 @@ def apply(panel: Any, data: NpmData, mapping: dict[str, Any], options: dict[str,
         for item in data.streams:
             port = int(item.get("incoming_port") or 0)
             if port in used_ports or port in (80, 443, 51820, 51821, 2751):
-                report["skipped"].append(f"stream :{port}: port zajęty")
+                report["skipped"].append(t("npm.stream_port_taken", port=port))
                 continue
             host = item.get("forwarding_host") or item.get("forward_ip") or ""
             rule = mapping.get(host) or {}
@@ -349,15 +348,15 @@ def apply(panel: Any, data: NpmData, mapping: dict[str, Any], options: dict[str,
 async def run(panel: Any, job: Any, data: NpmData, mapping: dict, options: dict) -> dict:
     from ..services import certs as certs_svc
 
-    job.log(f"Import z NPM ({data.source}): {len(data.proxy_hosts)} hostów proxy, {len(data.redirection_hosts)} przekierowań, "
-            f"{len(data.dead_hosts)} hostów 404, {len(data.streams)} streamów, {len(data.access_lists)} list dostępu")  # fmt: skip
+    job.log(t("npm.summary", source=data.source, proxy=len(data.proxy_hosts), redirects=len(data.redirection_hosts),
+              dead=len(data.dead_hosts), streams=len(data.streams), acls=len(data.access_lists)))  # fmt: skip
     for warning in data.warnings:
         job.log(f"⚠ {warning}")
     report = apply(panel, data, mapping, options, job.log)
-    job.log(f"✔ Utworzono: {report['sites']} hostów, {report['redirects']} przekierowań, {report['dead']} hostów 404, "
-            f"{report['streams']} streamów, {report['acls']} list dostępu")  # fmt: skip
+    job.log(t("npm.created", proxy=report["sites"], redirects=report["redirects"], dead=report["dead"],
+              streams=report["streams"], acls=report["acls"]))  # fmt: skip
     for line in report["skipped"]:
-        job.log(f"⚠ Pominięto {line}")
+        job.log(t("npm.skipped", line=line))
 
     client = panel.gateway_client()
     for cert in report["upload"]:
@@ -367,10 +366,10 @@ async def run(panel: Any, job: Any, data: NpmData, mapping: dict, options: dict)
             result = await client.post("/api/certs/upload", json={"id": cert["id"], "fullchain": cert["fullchain"], "privkey": cert["privkey"]})
             info = result.get("cert") or {}
             panel.db.update("certificates", cert["id"], status="valid", expires_at=info.get("not_after"))
-            job.log(f"✔ Wgrano certyfikat #{cert['id']}")
+            job.log(t("npm.cert_uploaded", id=cert["id"]))
         except Exception as exc:  # noqa: BLE001 — raportujemy i jedziemy dalej
             panel.db.update("certificates", cert["id"], status="error", error=str(getattr(exc, "detail", exc)))
-            job.log(f"⚠ Certyfikat #{cert['id']}: {getattr(exc, 'detail', exc)}")
+            job.log(t("npm.cert_failed", id=cert["id"], error=getattr(exc, "detail", exc)))
 
     result = await proxy_state.push(panel)
     message, _ = proxy_state.push_message(result)
@@ -378,15 +377,15 @@ async def run(panel: Any, job: Any, data: NpmData, mapping: dict, options: dict)
 
     if report["reissue"]:
         if not client:
-            job.log("⚠ Brak bramki — certyfikaty wystawisz później w zakładce Certyfikaty")
+            job.log(t("npm.no_gateway_certs"))
         else:
-            job.log(f"Wystawiam {len(report['reissue'])} certyfikatów Let's Encrypt (domeny muszą już wskazywać na bramkę)…")
+            job.log(t("npm.reissuing", count=len(report["reissue"])))
             for cert_id in report["reissue"]:
                 try:
                     await certs_svc.issue(panel, job, cert_id)
                 except Exception as exc:  # noqa: BLE001
-                    job.log(f"⚠ Certyfikat #{cert_id}: {exc} — ponów w zakładce Certyfikaty")
+                    job.log(t("npm.cert_failed", id=cert_id, error=exc))
             message, _ = proxy_state.push_message(await proxy_state.push(panel))
             job.log(message)
-    job.log("✨ Import zakończony. Gdy wszystko działa, możesz wyłączyć oba NPM-y 🎉")
+    job.log(t("npm.done"))
     return {k: v for k, v in report.items() if k != "upload"}

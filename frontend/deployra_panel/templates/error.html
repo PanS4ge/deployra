@@ -5,7 +5,7 @@
     <i class="bi bi-{{ icon or 'exclamation-octagon' }}"></i>
     <h3>{{ title }}</h3>
     <p style="white-space: pre-wrap">{{ message }}</p>
-    <a class="btn" href="javascript:history.back()"><i class="bi bi-arrow-left"></i> Wróć</a>
+    <a class="btn" href="javascript:history.back()"><i class="bi bi-arrow-left"></i> {{ t("common.back") }}</a>
   </div>
 </div>
 {% endblock %}

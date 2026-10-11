@@ -60,7 +60,7 @@
   document.addEventListener("htmx:responseError", (e) => {
     const xhr = e.detail.xhr;
     if (xhr.getResponseHeader("HX-Trigger")) return; // serwer sam wysłał toast
-    let message = `Błąd ${xhr.status}`;
+    let message = (I18N.error_status || "Error {status}").replace("{status}", xhr.status);
     try {
       const data = JSON.parse(xhr.responseText);
       if (data.detail) message = typeof data.detail === "string" ? data.detail : data.detail.map((d) => `${(d.loc || []).slice(1).join(".")}: ${d.msg}`).join("\n");
@@ -70,7 +70,7 @@
     toast(message, "err");
   });
 
-  document.addEventListener("htmx:sendError", () => toast("Brak połączenia z panelem", "err"));
+  document.addEventListener("htmx:sendError", () => toast(I18N.offline, "err"));
 
   // Ładniejsze potwierdzenia zamiast window.confirm
   document.addEventListener("htmx:confirm", (e) => {
@@ -80,7 +80,7 @@
     e.preventDefault();
     Alpine.store("confirm")
       .ask({
-        title: elt.dataset.confirmTitle || "Na pewno?",
+        title: elt.dataset.confirmTitle || I18N.confirm_title,
         text: question,
         danger: elt.hasAttribute("data-danger"),
         math: elt.hasAttribute("data-math"),
@@ -108,8 +108,8 @@
     if (!el) return;
     const value = el.dataset.copy || el.textContent.trim();
     navigator.clipboard.writeText(value).then(
-      () => toast("Skopiowano do schowka"),
-      () => toast("Nie udało się skopiować", "err"),
+      () => toast(I18N.copied),
+      () => toast(I18N.copy_failed, "err"),
     );
   });
 })();

@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml
 
+from deployra_common.i18n import tr
 from deployra_common.jobs import Job, JobFailed
 
 _STACK_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$")
@@ -21,7 +22,7 @@ ENV_FILE = ".env"
 
 def check_name(name: str) -> str:
     if not _STACK_NAME.match(name):
-        raise ValueError("nazwa stacka: małe litery, cyfry, - i _")
+        raise ValueError(tr("node.compose.bad_name"))
     return name
 
 
@@ -29,19 +30,19 @@ def parse_compose(text: str, expose_service: str | None = None) -> dict:
     try:
         data = yaml.safe_load(text)
     except yaml.YAMLError as exc:
-        raise ValueError(f"błędny YAML: {exc}") from exc
+        raise ValueError(tr("node.compose.bad_yaml", error=exc)) from exc
     if not isinstance(data, dict) or not isinstance(data.get("services"), dict) or not data["services"]:
-        raise ValueError("plik compose musi mieć sekcję services")
+        raise ValueError(tr("node.compose.no_services"))
     if expose_service and expose_service not in data["services"]:
-        raise ValueError(f"brak usługi {expose_service!r} w pliku compose")
+        raise ValueError(tr("node.compose.no_service", name=repr(expose_service)))
     return data
 
 
 def _env_line(key: str, value: str) -> str:
     if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
-        raise ValueError(f"nieprawidłowa zmienna: {key!r}")
+        raise ValueError(tr("node.compose.bad_var", key=repr(key)))
     if "\n" in value or "\r" in value:
-        raise ValueError(f"zmienna {key} nie może zawierać nowych linii")
+        raise ValueError(tr("node.compose.var_newline", key=key))
     if "'" not in value:
         return f"{key}='{value}'"
     return f'{key}="' + value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "$$") + '"'
@@ -98,13 +99,13 @@ def run_streaming(job: Job, cmd: list[str], cwd: Path | None = None, env: dict[s
             cmd, cwd=cwd, env=full_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", bufsize=1
         )
     except FileNotFoundError as exc:
-        raise JobFailed(f"brak programu {cmd[0]!r} w obrazie backendu") from exc
+        raise JobFailed(tr("node.compose.no_program", name=repr(cmd[0]))) from exc
     assert proc.stdout is not None
     for line in proc.stdout:
         job.log(line.rstrip("\n"))
     code = proc.wait()
     if code != 0:
-        raise JobFailed(f"polecenie zakończyło się kodem {code}")
+        raise JobFailed(tr("node.compose.exit_code", code=code))
 
 
 def stacks_root(base: Path, endpoint: str) -> Path:
@@ -122,7 +123,7 @@ def up(job: Job, stacks_dir: Path, name: str, pull: bool = False, env: dict[str,
 def action(job: Job, stacks_dir: Path, name: str, verb: str, env: dict[str, str] | None = None) -> None:
     allowed = {"down": ["down"], "restart": ["restart"], "stop": ["stop"], "start": ["start"], "pull": ["pull"]}
     if verb not in allowed:
-        raise ValueError(f"nieznana akcja: {verb}")
+        raise ValueError(tr("node.unknown_action", action=verb))
     stack_dir = stacks_dir / check_name(name)
     run_streaming(job, compose_cmd(stack_dir, name, *allowed[verb]), cwd=stack_dir, env=env)
 
@@ -134,7 +135,7 @@ def remove(job: Job, stacks_dir: Path, name: str, volumes: bool = False, env: di
             job, compose_cmd(stack_dir, name, "down", *(["-v"] if volumes else []), "--remove-orphans"), cwd=stack_dir, env=env
         )
     shutil.rmtree(stack_dir, ignore_errors=True)
-    job.log(f"Usunięto stack {name}")
+    job.log(tr("node.compose.removed", name=name))
 
 
 def read_stack(stacks_dir: Path, name: str) -> dict[str, Any]:

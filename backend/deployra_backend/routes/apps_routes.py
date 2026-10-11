@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from deployra_common.i18n import tr
 from deployra_common.jobs import JobFailed
 from deployra_common.schemas import AppSpec, StackSpec, check_slug
 from deployra_common.server import receive_verified_upload
@@ -41,7 +42,7 @@ def stack(name: str, ep: str = "local", ctx: Context = Depends(get_ctx)) -> dict
     try:
         return compose.read_stack(root, name)
     except FileNotFoundError:
-        raise HTTPException(404, "ten stack nie jest zarządzany przez Deployrę (brak pliku compose)") from None
+        raise HTTPException(404, tr("node.stack_unmanaged")) from None
 
 
 @router.put("/stacks/{name}")
@@ -54,7 +55,7 @@ async def save_stack(name: str, spec: StackSpec, pull: bool = False, ep: str = "
         compose.write_stack(root, name, spec.compose, spec.env)
         compose.up(job, root, name, pull=pull, env=env)
 
-    return job_response(ctx.jobs.start("stack", f"Stack {name}: wdrożenie", work))
+    return job_response(ctx.jobs.start("stack", tr("node.job.stack_deploy", name=name), work))
 
 
 @router.post("/stacks/{name}/{verb}")
@@ -85,7 +86,7 @@ def list_apps(ctx: Context = Depends(get_ctx)) -> dict:
 
 @router.post("/apps/deploy")
 async def deploy(spec: AppSpec, ctx: Context = Depends(get_ctx)) -> dict:
-    return job_response(ctx.jobs.start("deploy", f"Wdrożenie {spec.slug}", lambda job: apps.deploy(ctx, job, spec)))
+    return job_response(ctx.jobs.start("deploy", tr("node.job.deploy", name=spec.slug), lambda job: apps.deploy(ctx, job, spec)))
 
 
 @router.post("/apps/{slug}/rollback")
@@ -113,7 +114,7 @@ async def upload_site(slug: str, request: Request, ctx: Context = Depends(get_ct
         except JobFailed as exc:
             raise HTTPException(400, str(exc)) from None
         except Exception as exc:  # zipfile.BadZipFile itd.
-            raise HTTPException(400, f"nie udało się rozpakować archiwum: {exc}") from None
+            raise HTTPException(400, tr("node.unpack_failed", error=exc)) from None
     return {"files": count}
 
 

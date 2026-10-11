@@ -10,6 +10,9 @@
 # i `docker compose up -d` dla usług z DEPLOYRA_UPDATE_SERVICES. Osobny kontener jest
 # potrzebny, bo podmieniamy także samego aktualizatora.
 #
+# Stan trafia do pliku `status` jako kod kroku (`step=pulling`) — panel tłumaczy go na język
+# użytkownika; `message` to tylko szczegóły (np. nazwa taga). Log jest techniczny, po angielsku.
+#
 # W spoczynku to tylko `sleep` w pętli: kilkaset KB RAM, bez sieci (network_mode: none).
 set -u
 
@@ -38,7 +41,8 @@ kv() {
     mv -f "$tmp" "$file"
 }
 
-status() { kv "$DIR/status" "state=$1" "version=$2" "message=$3" "updated=$(now)"; }
+# status <state> <wersja> <krok> [szczegóły]
+status() { kv "$DIR/status" "state=$1" "version=$2" "step=$3" "message=${4:-}" "updated=$(now)"; }
 
 valid_version() {
     printf '%s' "$1" | grep -Eq '^v?[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(-[0-9A-Za-z][0-9A-Za-z.-]{0,30})?$'
@@ -49,22 +53,22 @@ label() { docker inspect -f "{{ index .Config.Labels \"$2\" }}" "$1" 2>/dev/null
 # --- tryb watch ------------------------------------------------------------------------------
 
 watch() {
-    [ -n "$SERVICES" ] || { log "Brak DEPLOYRA_UPDATE_SERVICES — nie wiem, co aktualizować"; exit 2; }
+    [ -n "$SERVICES" ] || { log "DEPLOYRA_UPDATE_SERVICES is not set — nothing to update"; exit 2; }
     mkdir -p "$DIR"
     self=$(hostname)   # network_mode: none → hostname to ID kontenera
     until docker version >/dev/null 2>&1; do
-        log "Czekam na /var/run/docker.sock…"
+        log "Waiting for /var/run/docker.sock…"
         sleep 30
     done
     project=$(label "$self" com.docker.compose.project)
     if [ -z "$project" ]; then
-        log "Ten kontener nie pochodzi z docker compose — aktualizacje wyłączone"
+        log "This container wasn't started by docker compose — updates disabled"
         exec sleep 2147483647
     fi
     name=$(docker inspect -f '{{.Name}}' "$self" | sed 's#^/##')
     beat() { kv "$DIR/agent" "mode=$MODE" "project=$project" "services=$SERVICES" "updated=$(now)"; }
     beat
-    log "Aktualizator Deployry gotowy: projekt $project, tryb $MODE, usługi: $SERVICES"
+    log "Deployra updater ready: project $project, mode $MODE, services: $SERVICES"
 
     tick=0
     while :; do
@@ -82,13 +86,13 @@ handle_request() {
     version=$(sed -n 's/^version=//p' "$DIR/request" | head -n 1)
     rm -f "$DIR/request"
     if ! valid_version "$version"; then
-        status error "$version" "nieprawidłowy numer wersji"
+        status error "$version" bad_version
         return
     fi
     version=${version#v}
     helper="$name-run"
     if [ -n "$(docker ps -q --filter "name=^${helper}\$")" ]; then
-        log "Aktualizacja już trwa — pomijam prośbę o $version"
+        log "An update is already running — ignoring the request for $version"
         return
     fi
     docker rm -f "$helper" >/dev/null 2>&1
@@ -99,7 +103,7 @@ handle_request() {
     image=$(docker inspect -f '{{.Image}}' "$self")
     volume=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/run/deployra-update"}}{{if .Name}}{{.Name}}{{else}}{{.Source}}{{end}}{{end}}{{end}}' "$self")
     if [ -z "$workdir" ] || [ -z "$files" ] || [ -z "$volume" ]; then
-        status error "$version" "brak etykiet compose albo wolumenu /run/deployra-update"
+        status error "$version" no_compose
         return
     fi
     # ze źródeł potrzebujemy całego repozytorium (konteksty budowania to ..), z rejestru — tylko katalogu compose
@@ -107,8 +111,8 @@ handle_request() {
     [ "$MODE" = source ] && mount=$(dirname "$workdir")
 
     : >"$DIR/log"
-    log "Prośba o aktualizację do $version" >>"$DIR/log"
-    status running "$version" "uruchamiam aktualizację"
+    log "Update to $version requested" >>"$DIR/log"
+    status running "$version" launching
     if ! docker run -d --rm --name "$helper" \
         --label deployra.system=updater \
         -v /var/run/docker.sock:/var/run/docker.sock \
@@ -122,25 +126,26 @@ handle_request() {
         -e UPD_ENVFILES="$envfiles" \
         -e UPD_IMAGE="$image" \
         "$image" apply "$version" >>"$DIR/log" 2>&1; then
-        status error "$version" "nie udało się uruchomić kontenera aktualizacji — szczegóły w logu"
+        status error "$version" launch_failed
     fi
 }
 
 # --- tryb apply ------------------------------------------------------------------------------
 
+# fail <krok> [szczegóły]
 fail() {
-    log "✖ $*"
-    status error "$version" "$*"
+    log "✖ $1 ${2:-}"
+    status error "$version" "$1" "${2:-}"
     exit 1
 }
 
 apply() {
-    version=${1:?podaj wersję}
+    version=${1:?version required}
     exec >>"$DIR/log" 2>&1
-    valid_version "$version" || fail "nieprawidłowy numer wersji"
+    valid_version "$version" || fail bad_version
     version=${version#v}
-    trap 'fail "aktualizacja przerwana"' TERM INT
-    log "Aktualizacja do $version — projekt $UPD_PROJECT, tryb $MODE, usługi: $SERVICES"
+    trap 'fail interrupted' TERM INT
+    log "Updating to $version — project $UPD_PROJECT, mode $MODE, services: $SERVICES"
 
     # Pliki .env projektu. Jeśli przypinają DEPLOYRA_VERSION, compose dostaje nową wersję ze środowiska
     # (ma pierwszeństwo przed .env), a sam pin przestawiamy dopiero po udanej aktualizacji.
@@ -196,48 +201,47 @@ apply() {
                     -c safe.directory='*' -C "$repo" "$@"
             fi
         }
-        gitx rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-            || fail "$repo nie jest repozytorium git — ustaw DEPLOYRA_IMAGES (obrazy z rejestru) albo zaktualizuj ręcznie"
-        status running "$version" "pobieram kod (git fetch)"
-        gitx fetch --tags --force --quiet origin || fail "git fetch nie powiódł się — brak sieci albo dostępu do repozytorium"
+        gitx rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail not_git "$repo"
+        status running "$version" fetching
+        gitx fetch --tags --force --quiet origin || fail fetch_failed
         ref="v$version"
         if ! gitx rev-parse -q --verify "refs/tags/$ref^{commit}" >/dev/null; then
             ref=$version
-            gitx rev-parse -q --verify "refs/tags/$ref^{commit}" >/dev/null || fail "w repozytorium nie ma taga v$version"
+            gitx rev-parse -q --verify "refs/tags/$ref^{commit}" >/dev/null || fail no_tag "v$version"
         fi
-        gitx diff --quiet HEAD -- || fail "lokalne zmiany w $repo — zatwierdź je albo zaktualizuj ręcznie"
+        gitx diff --quiet HEAD -- || fail local_changes "$repo"
         branch=$(gitx symbolic-ref -q --short HEAD || true)
         if [ -n "$branch" ]; then
-            gitx merge --ff-only --quiet "$ref" || fail "gałęzi $branch nie da się przewinąć do $ref — zaktualizuj ręcznie"
+            gitx merge --ff-only --quiet "$ref" || fail ff_failed "$branch → $ref"
         else
-            gitx -c advice.detachedHead=false checkout --quiet "$ref" || fail "nie udało się przełączyć na $ref"
+            gitx -c advice.detachedHead=false checkout --quiet "$ref" || fail checkout_failed "$ref"
         fi
-        log "Kod: $(gitx log -1 --format='%h %s')"
-        status running "$version" "buduję obrazy (to może chwilę potrwać)"
+        log "Code: $(gitx log -1 --format='%h %s')"
+        status running "$version" building
         # shellcheck disable=SC2086
-        docker compose "$@" build --pull $SERVICES || fail "budowanie obrazów nie powiodło się — szczegóły w logu"
+        docker compose "$@" build --pull $SERVICES || fail build_failed
         # shellcheck disable=SC2086
-        docker compose "$@" pull --ignore-buildable --quiet $SERVICES || log "(nie udało się odświeżyć obrazów zewnętrznych — używam obecnych)"
+        docker compose "$@" pull --ignore-buildable --quiet $SERVICES || log "(couldn't refresh external images — keeping the current ones)"
     else
-        status running "$version" "pobieram obrazy"
+        status running "$version" pulling
         # shellcheck disable=SC2086
-        docker compose "$@" pull $SERVICES || fail "pobieranie obrazów nie powiodło się — czy wydanie $version jest już w rejestrze?"
+        docker compose "$@" pull $SERVICES || fail pull_failed
     fi
 
-    status running "$version" "uruchamiam nowe kontenery"
+    status running "$version" starting
     # shellcheck disable=SC2086
-    docker compose "$@" up -d --no-deps $SERVICES || fail "docker compose up nie powiódł się — szczegóły w logu"
+    docker compose "$@" up -d --no-deps $SERVICES || fail up_failed
     for f in $pins; do
-        sed -i "s/^DEPLOYRA_VERSION=.*/DEPLOYRA_VERSION=$version/" "$f" && log "Przypięta wersja w $f → $version"
+        sed -i "s/^DEPLOYRA_VERSION=.*/DEPLOYRA_VERSION=$version/" "$f" && log "Pinned version in $f → $version"
     done
     # stare warstwy Deployry tylko zajmują dysk (obrazy aplikacji zostawiamy w spokoju)
     docker image prune -f --filter "label=deployra.component" >/dev/null 2>&1 || true
-    log "✔ Zaktualizowano do $version"
-    status done "$version" "zaktualizowano do $version"
+    log "✔ Updated to $version"
+    status done "$version" done
 }
 
 case "${1:-watch}" in
     watch) watch ;;
     apply) apply "${2:-}" ;;
-    *) echo "użycie: $0 [watch | apply <wersja>]" >&2; exit 2 ;;
+    *) echo "usage: $0 [watch | apply <version>]" >&2; exit 2 ;;
 esac

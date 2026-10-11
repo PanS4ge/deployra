@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from deployra_common.i18n import tr
 from deployra_common.passwords import hash_password
 from deployra_common.schemas import check_slug
 
@@ -13,7 +14,7 @@ _USERNAME = re.compile(r"^[a-z0-9][a-z0-9_.-]{1,31}$")
 
 def check_username(username: str) -> str:
     if not _USERNAME.match(username):
-        raise ValueError("login SFTP: małe litery, cyfry, . _ - (2–32 znaki)")
+        raise ValueError(tr("node.sftp.bad_login"))
     return username
 
 
@@ -25,7 +26,7 @@ def set_user(state: Any, username: str, slug: str, password: str | None, keys: l
 
         asyncssh.import_public_key(key)
     if not password and not keys:
-        raise ValueError("podaj hasło albo klucz publiczny")
+        raise ValueError(tr("node.sftp.need_auth"))
 
     def change(users: dict) -> dict:
         current = users.get(username, {})

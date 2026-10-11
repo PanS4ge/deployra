@@ -23,6 +23,7 @@ services:
       DEPLOYRA_GATEWAY: ${DEPLOYRA_GATEWAY:-}
       DEPLOYRA_JOIN: ${DEPLOYRA_JOIN:-}
       DEPLOYRA_PORT_POOL: ${DEPLOYRA_PORT_POOL:-20000-29999}
+      DEPLOYRA_LANG: ${DEPLOYRA_LANG:-pl}           # język logów (pl / en)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/deployra:/var/lib/deployra

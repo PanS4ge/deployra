@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 
 from ..db import now
+from ..i18n import t
 
 API = "https://api.cloudflare.com/client/v4"
 
@@ -48,7 +49,7 @@ class Cloudflare:
     async def zone_for(self, domain: str) -> dict:
         matches = [z for z in await self.zones() if domain == z["name"] or domain.endswith("." + z["name"])]
         if not matches:
-            raise DnsError(f"Brak strefy Cloudflare dla {domain}")
+            raise DnsError(t("dns.msg.no_zone", domain=domain))
         return max(matches, key=lambda z: len(z["name"]))
 
     async def upsert(self, domain: str, ip: str, proxied: bool) -> tuple[str, str]:
@@ -78,7 +79,7 @@ async def public_ip(panel: Any) -> str:
         return str(ipaddress.ip_address(configured))
     gateway = panel.gateway()
     if not gateway:
-        raise DnsError("Brak bramki — ustaw publiczny IP w ustawieniach DNS")
+        raise DnsError(t("dns.msg.no_gateway"))
     host = gateway["public_host"].strip("[]")
     try:
         return str(ipaddress.ip_address(host))

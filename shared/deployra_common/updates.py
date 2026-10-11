@@ -6,7 +6,8 @@ uprawnień ani nie przeżyłby własnego restartu. Robi to mały kontener
 komponent dzieli katalog `/run/deployra-update`:
 
     request   ← komponent: `version=1.2.0`             (prośba o aktualizację)
-    status    → aktualizator: state/version/message/updated (key=value, po linii)
+    status    → aktualizator: state/version/step/message/updated (key=value, po linii;
+                step to kod kroku tłumaczony w panelu, message — szczegóły)
     agent     → aktualizator: tryb i znacznik życia, odświeżany co minutę
     log       → aktualizator: pełny przebieg ostatniej aktualizacji
 
@@ -22,6 +23,8 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+from .i18n import tr
 
 VERSION = re.compile(r"^v?(\d{1,4})\.(\d{1,4})\.(\d{1,4})(?:-([0-9A-Za-z][0-9A-Za-z.-]{0,30}))?$")
 HEARTBEAT_MAX = 180  # s — starszy znacznik życia = aktualizator nie działa
@@ -40,7 +43,7 @@ def parse_version(value: Any) -> tuple | None:
 def normalize(value: Any) -> str:
     """Wersja bez prefiksu `v` (tak tagujemy obrazy)."""
     if parse_version(value) is None:
-        raise ValueError(f"nieprawidłowy numer wersji: {value!r}")
+        raise ValueError(tr("srv.upd.bad_version", value=repr(value)))
     return str(value).strip().removeprefix("v")
 
 
@@ -114,6 +117,7 @@ class UpdateAgent:
             "mode": self.mode,
             "state": state if state in STATES else "idle",
             "target": status.get("version") or None,
+            "step": status.get("step") or None,
             "message": status.get("message", ""),
             "updated": updated,
         }
@@ -128,20 +132,17 @@ class UpdateAgent:
     def request(self, version: str) -> dict[str, Any]:
         target = normalize(version)
         if self.mode is None:
-            raise LookupError(
-                "brak aktualizatora — uruchom komponent z pliku compose z katalogu deploy/ (usługa *-updater) "
-                "albo zaktualizuj ręcznie"
-            )
+            raise LookupError(tr("srv.upd.no_updater"))
         current = self.info()
         if current["state"] in ("queued", "running") and current["updated"] and time.time() - current["updated"] < 1800:
-            raise LookupError(f"aktualizacja do {current['target']} już trwa")
+            raise LookupError(tr("srv.upd.running", version=current["target"]))
         self.dir.mkdir(parents=True, exist_ok=True)
-        _write_kv(self.dir / "status", {"state": "queued", "version": target, "message": "czeka na aktualizator", "updated": int(time.time())})
+        _write_kv(self.dir / "status", {"state": "queued", "version": target, "step": "queued", "message": "", "updated": int(time.time())})
         if self.launcher:
             try:
                 self.launcher(target)
             except Exception as exc:
-                _write_kv(self.dir / "status", {"state": "error", "version": target, "message": str(exc), "updated": int(time.time())})
+                _write_kv(self.dir / "status", {"state": "error", "version": target, "step": "launch_failed", "message": str(exc), "updated": int(time.time())})
                 raise
         else:
             _write_kv(self.dir / "request", {"version": target, "requested": int(time.time())})

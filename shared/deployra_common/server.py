@@ -8,6 +8,7 @@ from collections.abc import Callable
 from fastapi import HTTPException, Request, WebSocket
 
 from .hmac_auth import H_BODY, NonceCache, SignatureError, verify
+from .i18n import tr
 
 SecretLookup = Callable[[str], bytes | None]
 
@@ -29,19 +30,19 @@ class SignatureGuard:
         key_id = headers.get("x-deployra-key") or ""
         secret = self.lookup(key_id)
         if not secret:
-            raise HTTPException(status_code=401, detail="nieznany klucz lub komponent niesparowany")
+            raise HTTPException(status_code=401, detail=tr("srv.auth.unknown_key"))
         return secret
 
     async def __call__(self, request: Request) -> str:
         """Zwykłe żądania: podpis obejmuje całe body."""
         if H_BODY.lower() in request.headers:
-            raise HTTPException(status_code=400, detail="upload strumieniowy niedozwolony na tym endpoincie")
+            raise HTTPException(status_code=400, detail=tr("srv.auth.stream_not_allowed"))
         return self._verify(request, await request.body())
 
     async def upload(self, request: Request) -> str:
         """Uploady: podpis obejmuje zadeklarowany skrót; route musi użyć `receive_verified_upload`."""
         if H_BODY.lower() not in request.headers:
-            raise HTTPException(status_code=400, detail="brak skrótu pliku")
+            raise HTTPException(status_code=400, detail=tr("srv.auth.no_digest"))
         return self._verify(request, None)
 
     def _verify(self, request: Request, body: bytes | None) -> str:
@@ -63,16 +64,16 @@ async def receive_verified_upload(request: Request, destination: str, max_bytes:
     """Zapisuje strumieniowany upload na dysk i sprawdza zadeklarowany SHA-256."""
     expected = request.headers.get(H_BODY.lower())
     if not expected:
-        raise HTTPException(status_code=400, detail="brak skrótu pliku")
+        raise HTTPException(status_code=400, detail=tr("srv.auth.no_digest"))
     digest = hashlib.sha256()
     size = 0
     with open(destination, "wb") as fh:
         async for chunk in request.stream():
             size += len(chunk)
             if size > max_bytes:
-                raise HTTPException(status_code=413, detail="plik jest za duży")
+                raise HTTPException(status_code=413, detail=tr("srv.auth.too_big"))
             digest.update(chunk)
             fh.write(chunk)
     if digest.hexdigest() != expected:
-        raise HTTPException(status_code=400, detail="skrót pliku się nie zgadza")
+        raise HTTPException(status_code=400, detail=tr("srv.auth.digest_mismatch"))
     return size

@@ -1,21 +1,21 @@
 {% extends "base.html" %}
-{% block crumbs %}<div class="crumbs"><a href="/nodes/{{ node.id }}">{{ node.name }}</a> / <a href="/nodes/{{ node.id }}/containers{{ epq }}">kontenery</a> /</div>{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes/{{ node.id }}">{{ node.name }}</a> / <a href="/nodes/{{ node.id }}/containers{{ epq }}">{{ t("containers.crumb") }}</a> /</div>{% endblock %}
 {% block content %}
-<div class="callout"><i class="bi bi-lightbulb"></i><div class="small">To szybkie „docker run”. Jeśli chcesz domenę, HTTPS i deploy jednym kliknięciem, użyj <a href="/apps/new">kreatora aplikacji</a>.</div></div>
+<div class="callout"><i class="bi bi-lightbulb"></i><div class="small">{{ t("containers.new_hint") }}</div></div>
 <div class="card">
   <form class="card-body form-grid" hx-post="/nodes/{{ node.id }}/containers/new{{ epq }}" hx-swap="none">
-    <div class="field"><label>Nazwa</label><input class="input" name="name" required placeholder="moj-kontener"></div>
-    <div class="field"><label>Obraz</label><input class="input" name="image" required placeholder="nginx:alpine"></div>
-    <div class="field full"><label>Polecenie (opcjonalnie)</label><input class="input mono" name="command" placeholder="np. --port 8080"></div>
-    <div class="field"><label>Porty (host:kontener, po jednym w linii)</label><textarea class="textarea" name="ports" style="min-height: 80px" placeholder="20080:80"></textarea></div>
-    <div class="field"><label>Wolumeny (źródło:cel)</label><textarea class="textarea" name="volumes" style="min-height: 80px" placeholder="dane:/data"></textarea></div>
-    <div class="field full"><label>Zmienne (KLUCZ=wartość)</label><textarea class="textarea" name="env" style="min-height: 90px" placeholder="TZ=Europe/Warsaw"></textarea></div>
+    <div class="field"><label>{{ t("common.name") }}</label><input class="input" name="name" required placeholder="{{ t('containers.name_placeholder') }}"></div>
+    <div class="field"><label>{{ t("containers.image") }}</label><input class="input" name="image" required placeholder="nginx:alpine"></div>
+    <div class="field full"><label>{{ t("containers.command") }}</label><input class="input mono" name="command" placeholder="{{ t('containers.command_placeholder') }}"></div>
+    <div class="field"><label>{{ t("containers.ports") }}</label><textarea class="textarea" name="ports" style="min-height: 80px" placeholder="20080:80"></textarea></div>
+    <div class="field"><label>{{ t("containers.volumes") }}</label><textarea class="textarea" name="volumes" style="min-height: 80px" placeholder="dane:/data"></textarea></div>
+    <div class="field full"><label>{{ t("containers.env") }}</label><textarea class="textarea" name="env" style="min-height: 90px" placeholder="TZ=Europe/Warsaw"></textarea></div>
     <div class="field"><label>Restart</label>
       <select class="select" name="restart"><option value="unless-stopped">unless-stopped</option><option value="always">always</option><option value="on-failure">on-failure</option><option value="no">no</option></select>
     </div>
-    <div class="field"><label>Limit RAM (MB)</label><input class="input" name="memory_mb" type="number" min="16" placeholder="bez limitu"></div>
-    <div class="field"><label>Sieć</label><input class="input" name="network" value="deployra"></div>
-    <div class="full row" style="justify-content: flex-end"><button class="btn primary"><span class="spin"></span><i class="bi bi-play-fill"></i> Uruchom</button></div>
+    <div class="field"><label>{{ t("containers.memory") }}</label><input class="input" name="memory_mb" type="number" min="16" placeholder="{{ t('containers.no_limit') }}"></div>
+    <div class="field"><label>{{ t("containers.network") }}</label><input class="input" name="network" value="deployra"></div>
+    <div class="full row" style="justify-content: flex-end"><button class="btn primary"><span class="spin"></span><i class="bi bi-play-fill"></i> {{ t("containers.run") }}</button></div>
   </form>
 </div>
 {% endblock %}

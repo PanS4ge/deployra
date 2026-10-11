@@ -1,52 +1,52 @@
 {% extends "base.html" %}
 {% block crumbs %}<div class="crumbs"><a href="/proxy">Proxy</a> /</div>{% endblock %}
-{% set t = site.target or {} %}
+{% set tg = site.target or {} %}
 {% set r = site.redirect or {} %}
 {% block content %}
 <form class="stack" hx-post="/proxy/hosts/save" hx-swap="none"
-      x-data="{ ttype: '{{ t.type or 'node' }}', ingress: '{{ site.ingress or 'public' }}' }">
+      x-data="{ ttype: '{{ tg.type or 'node' }}', ingress: '{{ site.ingress or 'public' }}' }">
   <input type="hidden" name="id" value="{{ site.id or '' }}">
   <input type="hidden" name="kind" value="{{ kind }}">
-  {% if site.app_id %}<div class="callout"><i class="bi bi-rocket-takeoff"></i><div class="small">To host aplikacji. Cel i domeny ustawia kolejny deploy — tu zmienisz m.in. HSTS, listę dostępu i limity.</div></div>{% endif %}
+  {% if site.app_id %}<div class="callout"><i class="bi bi-rocket-takeoff"></i><div class="small">{{ t("site.app_host_hint") }}</div></div>{% endif %}
 
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-globe2"></i> Domeny</h3></div>
+    <div class="card-head"><h3><i class="bi bi-globe2"></i> {{ t("setup.domains") }}</h3></div>
     <div class="card-body stack">
       <textarea class="textarea" name="domains" style="min-height: 70px" placeholder="app.example.com&#10;www.app.example.com" required>{{ site.domains | join("\n") }}</textarea>
       <div class="row" style="gap: 18px">
         <div class="seg">
-          <label><input type="radio" name="ingress" value="public" x-model="ingress"><span><i class="bi bi-hdd-rack"></i> Publiczne IP bramki</span></label>
+          <label><input type="radio" name="ingress" value="public" x-model="ingress"><span><i class="bi bi-hdd-rack"></i> {{ t("site.public_ip") }}</span></label>
           <label><input type="radio" name="ingress" value="cloudflare" x-model="ingress"><span><i class="bi bi-cloud"></i> Cloudflare Tunnel</span></label>
         </div>
-        <label class="check"><input type="checkbox" name="dns" value="1" {{ "checked" if site.dns }} {{ "disabled" if not has_cf }}><span class="sw"></span><span>Zarządzaj rekordem DNS w Cloudflare</span></label>
+        <label class="check"><input type="checkbox" name="dns" value="1" {{ "checked" if site.dns }} {{ "disabled" if not has_cf }}><span class="sw"></span><span>{{ t("site.manage_dns") }}</span></label>
       </div>
-      <div class="hint small muted" x-show="ingress === 'cloudflare'">Ruch przychodzi przez cloudflared na bramce — nie trzeba publicznego IP ani otwartych portów; HTTPS zapewnia Cloudflare.</div>
+      <div class="hint small muted" x-show="ingress === 'cloudflare'">{{ t("site.cf_hint") }}</div>
     </div>
   </div>
 
   {% if kind == "proxy" %}
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-bullseye"></i> Cel</h3></div>
+    <div class="card-head"><h3><i class="bi bi-bullseye"></i> {{ t("proxy.target") }}</h3></div>
     <div class="card-body stack">
       <div class="seg">
-        <label><input type="radio" name="target_type" value="node" x-model="ttype"><span><i class="bi bi-hdd-network"></i> Port na węźle</span></label>
-        <label><input type="radio" name="target_type" value="address" x-model="ttype"><span><i class="bi bi-router"></i> Dowolny adres (np. LAN)</span></label>
+        <label><input type="radio" name="target_type" value="node" x-model="ttype"><span><i class="bi bi-hdd-network"></i> {{ t("site.node_port") }}</span></label>
+        <label><input type="radio" name="target_type" value="address" x-model="ttype"><span><i class="bi bi-router"></i> {{ t("site.any_address") }}</span></label>
       </div>
       <div class="form-grid">
-        <div class="field" x-show="ttype === 'node'"><label>Węzeł</label>
-          <select class="select" name="node_id">{% for n in nodes %}<option value="{{ n.id }}" {{ "selected" if t.node_id == n.id }}>{{ n.name }}{{ " (" ~ n.tunnel_ip ~ ")" if n.tunnel_ip }}</option>{% endfor %}</select>
+        <div class="field" x-show="ttype === 'node'"><label>{{ t("apps.node") }}</label>
+          <select class="select" name="node_id">{% for n in nodes %}<option value="{{ n.id }}" {{ "selected" if tg.node_id == n.id }}>{{ n.name }}{{ " (" ~ n.tunnel_ip ~ ")" if n.tunnel_ip }}</option>{% endfor %}</select>
         </div>
-        <div class="field" x-show="ttype === 'address'"><label>Host / IP</label><input class="input mono" name="host" value="{{ t.host or '' }}" placeholder="192.168.1.50"></div>
-        <div class="field" x-show="ttype === 'address'"><label>Przez węzeł (informacyjnie)</label>
-          <select class="select" name="via_node"><option value="">—</option>{% for n in nodes %}<option value="{{ n.id }}" {{ "selected" if t.via_node == n.id }}>{{ n.name }}</option>{% endfor %}</select>
-          <div class="hint">Podsieć musi być w „Podsieciach LAN” tego węzła.</div>
+        <div class="field" x-show="ttype === 'address'"><label>Host / IP</label><input class="input mono" name="host" value="{{ tg.host or '' }}" placeholder="192.168.1.50"></div>
+        <div class="field" x-show="ttype === 'address'"><label>{{ t("site.via_node") }}</label>
+          <select class="select" name="via_node"><option value="">—</option>{% for n in nodes %}<option value="{{ n.id }}" {{ "selected" if tg.via_node == n.id }}>{{ n.name }}</option>{% endfor %}</select>
+          <div class="hint">{{ t("site.via_node_hint") }}</div>
         </div>
-        <div class="field"><label>Schemat</label><select class="select" name="scheme"><option {{ "selected" if t.scheme != "https" }}>http</option><option {{ "selected" if t.scheme == "https" }}>https</option></select></div>
-        <div class="field"><label>Port</label><input class="input" name="port" type="number" min="1" max="65535" value="{{ t.port or '' }}" required></div>
-        <div class="field"><label>Ścieżka docelowa (opcjonalnie)</label><input class="input mono" name="path" value="{{ t.path or '' }}" placeholder="/"></div>
+        <div class="field"><label>{{ t("site.scheme") }}</label><select class="select" name="scheme"><option {{ "selected" if tg.scheme != "https" }}>http</option><option {{ "selected" if tg.scheme == "https" }}>https</option></select></div>
+        <div class="field"><label>Port</label><input class="input" name="port" type="number" min="1" max="65535" value="{{ tg.port or '' }}" required></div>
+        <div class="field"><label>{{ t("site.target_path") }}</label><input class="input mono" name="path" value="{{ tg.path or '' }}" placeholder="/"></div>
       </div>
       <details {{ "open" if site.locations }}>
-        <summary class="small muted" style="cursor: pointer">Własne lokacje ({{ (site.locations or []) | length }})</summary>
+        <summary class="small muted" style="cursor: pointer">{{ t("site.locations", count=(site.locations or []) | length) }}</summary>
         <textarea class="textarea" name="locations" style="min-height: 70px; margin-top: 8px" placeholder="/api http://192.168.1.20:3000">{% for l in site.locations or [] %}{{ l.path }} {{ l.target.scheme }}://{{ l.target.host }}:{{ l.target.port }}{{ l.target.path }}
 {% endfor %}</textarea>
       </details>
@@ -54,12 +54,12 @@
   </div>
   {% elif kind == "redirect" %}
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-arrow-return-right"></i> Przekierowanie</h3></div>
+    <div class="card-head"><h3><i class="bi bi-arrow-return-right"></i> {{ t("proxy.redirect") }}</h3></div>
     <div class="card-body form-grid">
-      <div class="field"><label>Domena docelowa</label><input class="input mono" name="redirect_domain" value="{{ r.domain or '' }}" required></div>
-      <div class="field"><label>Kod</label><select class="select" name="redirect_code">{% for c in [301, 302, 307, 308] %}<option {{ "selected" if r.code == c or (not r.code and c == 302) }}>{{ c }}</option>{% endfor %}</select></div>
-      <div class="field"><label>Schemat</label><select class="select" name="redirect_scheme">{% for s in ["auto", "https", "http"] %}<option {{ "selected" if r.scheme == s }}>{{ s }}</option>{% endfor %}</select></div>
-      <div class="field" style="justify-content: flex-end"><label class="check"><input type="checkbox" name="preserve_path" value="1" {{ "checked" if r.preserve_path != false }}><span class="sw"></span><span>Zachowaj ścieżkę</span></label></div>
+      <div class="field"><label>{{ t("site.redirect_domain") }}</label><input class="input mono" name="redirect_domain" value="{{ r.domain or '' }}" required></div>
+      <div class="field"><label>{{ t("site.code") }}</label><select class="select" name="redirect_code">{% for c in [301, 302, 307, 308] %}<option {{ "selected" if r.code == c or (not r.code and c == 302) }}>{{ c }}</option>{% endfor %}</select></div>
+      <div class="field"><label>{{ t("site.scheme") }}</label><select class="select" name="redirect_scheme">{% for s in ["auto", "https", "http"] %}<option {{ "selected" if r.scheme == s }}>{{ s }}</option>{% endfor %}</select></div>
+      <div class="field" style="justify-content: flex-end"><label class="check"><input type="checkbox" name="preserve_path" value="1" {{ "checked" if r.preserve_path != false }}><span class="sw"></span><span>{{ t("site.preserve_path") }}</span></label></div>
     </div>
   </div>
   {% endif %}
@@ -67,51 +67,51 @@
   <div class="card" x-show="ingress === 'public'">
     <div class="card-head"><h3><i class="bi bi-shield-lock"></i> SSL</h3></div>
     <div class="card-body form-grid">
-      <div class="field"><label>Certyfikat</label>
+      <div class="field"><label>{{ t("certs.certificate") }}</label>
         <select class="select" name="cert">
-          <option value="">brak (tylko HTTP)</option>
-          <option value="new">✦ nowy z Let's Encrypt</option>
+          <option value="">{{ t("site.no_cert") }}</option>
+          <option value="new">✦ {{ t("site.new_cert") }}</option>
           {% for c in certs %}<option value="{{ c.id }}" {{ "selected" if site.cert_id == c.id }}>#{{ c.id }} · {{ c.domains | join(", ") }}</option>{% endfor %}
         </select>
       </div>
       <div class="field" style="justify-content: flex-end; gap: 10px">
-        <label class="check"><input type="checkbox" name="ssl_forced" value="1" {{ "checked" if site.ssl_forced }}><span class="sw"></span><span>Wymuś HTTPS</span></label>
+        <label class="check"><input type="checkbox" name="ssl_forced" value="1" {{ "checked" if site.ssl_forced }}><span class="sw"></span><span>{{ t("apps.force_https") }}</span></label>
         <label class="check"><input type="checkbox" name="http2" value="1" {{ "checked" if site.http2 }}><span class="sw"></span><span>HTTP/2</span></label>
         <label class="check"><input type="checkbox" name="hsts" value="1" {{ "checked" if site.hsts }}><span class="sw"></span><span>HSTS</span></label>
-        <label class="check"><input type="checkbox" name="hsts_subdomains" value="1" {{ "checked" if site.hsts_subdomains }}><span class="sw"></span><span>HSTS dla subdomen</span></label>
+        <label class="check"><input type="checkbox" name="hsts_subdomains" value="1" {{ "checked" if site.hsts_subdomains }}><span class="sw"></span><span>{{ t("site.hsts_subdomains") }}</span></label>
       </div>
     </div>
   </div>
 
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-sliders"></i> Opcje</h3></div>
+    <div class="card-head"><h3><i class="bi bi-sliders"></i> {{ t("site.options") }}</h3></div>
     <div class="card-body form-grid">
       <div class="stack" style="gap: 10px">
-        {% if kind == "proxy" %}<label class="check"><input type="checkbox" name="websockets" value="1" {{ "checked" if site.websockets }}><span class="sw"></span><span>WebSockety</span></label>
-        <label class="check"><input type="checkbox" name="caching" value="1" {{ "checked" if site.caching }}><span class="sw"></span><span>Cache zasobów</span></label>
-        <label class="check"><input type="checkbox" name="trust_forwarded_proto" value="1" {{ "checked" if site.trust_forwarded_proto }}><span class="sw"></span><span>Ufaj X-Forwarded-Proto</span></label>{% endif %}
-        <label class="check"><input type="checkbox" name="block_exploits" value="1" {{ "checked" if site.block_exploits }}><span class="sw"></span><span>Blokuj proste ataki</span></label>
-        <label class="check"><input type="checkbox" name="enabled" value="1" {{ "checked" if site.enabled }}><span class="sw"></span><span>Aktywny</span></label>
+        {% if kind == "proxy" %}<label class="check"><input type="checkbox" name="websockets" value="1" {{ "checked" if site.websockets }}><span class="sw"></span><span>WebSockets</span></label>
+        <label class="check"><input type="checkbox" name="caching" value="1" {{ "checked" if site.caching }}><span class="sw"></span><span>{{ t("site.caching") }}</span></label>
+        <label class="check"><input type="checkbox" name="trust_forwarded_proto" value="1" {{ "checked" if site.trust_forwarded_proto }}><span class="sw"></span><span>{{ t("site.trust_xfp") }}</span></label>{% endif %}
+        <label class="check"><input type="checkbox" name="block_exploits" value="1" {{ "checked" if site.block_exploits }}><span class="sw"></span><span>{{ t("site.block_exploits") }}</span></label>
+        <label class="check"><input type="checkbox" name="enabled" value="1" {{ "checked" if site.enabled }}><span class="sw"></span><span>{{ t("site.enabled") }}</span></label>
       </div>
       <div class="stack">
-        <div class="field"><label>Lista dostępu</label>
-          <select class="select" name="access_list_id"><option value="">publiczny</option>{% for a in acls %}<option value="{{ a.id }}" {{ "selected" if site.access_list_id == a.id }}>{{ a.name }}</option>{% endfor %}</select>
+        <div class="field"><label>{{ t("site.access_list") }}</label>
+          <select class="select" name="access_list_id"><option value="">{{ t("site.public") }}</option>{% for a in acls %}<option value="{{ a.id }}" {{ "selected" if site.access_list_id == a.id }}>{{ a.name }}</option>{% endfor %}</select>
         </div>
-        {% if kind == "proxy" %}<div class="field"><label>Maks. rozmiar uploadu (MB, 0 = bez limitu)</label><input class="input" name="max_body_mb" type="number" min="0" value="{{ site.max_body_mb }}"></div>{% endif %}
+        {% if kind == "proxy" %}<div class="field"><label>{{ t("site.max_body") }}</label><input class="input" name="max_body_mb" type="number" min="0" value="{{ site.max_body_mb }}"></div>{% endif %}
       </div>
       {% if has(user, P.ALLOW_PROXY_ADVANCED) %}
       <div class="field full">
-        <label>Zaawansowane (surowy nginx, wklejany do bloku server)</label>
+        <label>{{ t("site.advanced") }}</label>
         <textarea class="textarea" name="advanced" spellcheck="false" placeholder="add_header X-Frame-Options SAMEORIGIN;">{{ site.advanced or '' }}</textarea>
-        <div class="hint">Błędna konfiguracja nie zepsuje bramki — nginx ją odrzuci, a panel przywróci poprzednią.</div>
+        <div class="hint">{{ t("site.advanced_hint") }}</div>
       </div>
       {% endif %}
     </div>
   </div>
 
   <div class="row" style="justify-content: flex-end">
-    <a class="btn ghost" href="/proxy">Anuluj</a>
-    <button class="btn primary"><span class="spin"></span><i class="bi bi-check2"></i> Zapisz</button>
+    <a class="btn ghost" href="/proxy">{{ t("common.cancel") }}</a>
+    <button class="btn primary"><span class="spin"></span><i class="bi bi-check2"></i> {{ t("common.save") }}</button>
   </div>
 </form>
 {% endblock %}

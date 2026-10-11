@@ -8,6 +8,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
 
+from deployra_common import i18n
+from deployra_common.i18n import tr
+
 from .context import Context
 from .routes import apps_routes, docker_routes, system
 
@@ -32,7 +35,7 @@ async def ensure_sftp(ctx: Context) -> None:
         await service.start(getattr(ctx, "bind_host", ""), ctx.config.sftp_port)
         ctx.sftp = service
     except OSError as exc:
-        logger.error(f"SFTP nie wystartował: {exc}")
+        logger.error(tr("node.log.sftp_failed", error=exc))
 
 
 def create_app(ctx: Context, *, start_services: bool = True, bind_host: str = "") -> FastAPI:
@@ -50,12 +53,13 @@ def create_app(ctx: Context, *, start_services: bool = True, bind_host: str = ""
 
     app = FastAPI(title="Deployra Backend", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.ctx = ctx
+    i18n.language_middleware(app)
 
     not_found, api_error = _docker_errors()
 
     @app.exception_handler(not_found)
     async def _not_found(_: Request, exc: Exception) -> JSONResponse:
-        return JSONResponse({"detail": f"nie znaleziono: {getattr(exc, 'explanation', None) or exc}"}, status_code=404)
+        return JSONResponse({"detail": tr("node.not_found", what=getattr(exc, "explanation", None) or exc)}, status_code=404)
 
     @app.exception_handler(api_error)
     async def _api_error(_: Request, exc: Exception) -> JSONResponse:

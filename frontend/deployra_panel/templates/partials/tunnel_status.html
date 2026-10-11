@@ -3,7 +3,7 @@
 {% elif gw %}
 <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>Peer</th><th>Adres</th><th>Podsieci LAN</th><th>Endpoint</th><th>Handshake</th><th class="right">Ruch ↓/↑</th></tr></thead>
+    <thead><tr><th>Peer</th><th>{{ t("common.address") }}</th><th>{{ t("tunnel.lan_subnets") }}</th><th>Endpoint</th><th>Handshake</th><th class="right">{{ t("tunnel.traffic") }}</th></tr></thead>
     <tbody>
     {% for p in gw.peers %}
       {% set node = nodes.get(p.id) %}
@@ -12,23 +12,23 @@
           <div class="row" style="gap: 8px">
             <span class="dot {{ 'ok' if p.online else ('warn' if p.latest_handshake else 'err') }}"></span>
             {% if node %}<a class="name" href="/nodes/{{ node.id }}">{{ p.name }}</a>{% else %}<span class="name">{{ p.name }}</span>{% endif %}
-            <span class="badge {{ 'violet' if p.kind == 'panel' else '' }}">{{ "panel" if p.kind == "panel" else "węzeł" }}</span>
+            <span class="badge {{ 'violet' if p.kind == 'panel' else '' }}">{{ "panel" if p.kind == "panel" else t("tunnel.node") }}</span>
           </div>
         </td>
         <td class="mono">{{ p.address }}</td>
         <td class="mono small">{{ p.lan_subnets | join(", ") or "—" }}</td>
         <td class="mono small muted">{{ p.endpoint or "—" }}</td>
-        <td class="small">{{ (p.handshake_age | duration) ~ " temu" if p.handshake_age is not none else "nigdy" }}</td>
+        <td class="small">{{ t("time.ago", value=p.handshake_age | duration) if p.handshake_age is not none else t("time.never") }}</td>
         <td class="right small mono">{{ p.rx_bytes | bytes }} / {{ p.tx_bytes | bytes }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="6" class="muted">Brak peerów — dodaj pierwszy węzeł.</td></tr>
+      <tr><td colspan="6" class="muted">{{ t("tunnel.no_peers") }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
 {% if not gw.wg_up %}
-<div class="card-body"><div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div class="small">Interfejs WireGuard na bramce nie działa (tryb testowy albo brak <code>NET_ADMIN</code>).</div></div></div>
+<div class="card-body"><div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div class="small">{{ t("tunnel.wg_down") }}</div></div></div>
 {% endif %}
 {% if gw.nginx and not gw.nginx.ok %}
 <div class="card-body"><div class="callout {{ 'warn' if gw.nginx.status == 'pending' else 'err' }}"><i class="bi bi-hdd-network"></i><div class="small"><b>nginx:</b> {{ gw.nginx.message }}</div></div></div>

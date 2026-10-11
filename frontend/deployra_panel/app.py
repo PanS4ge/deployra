@@ -17,13 +17,16 @@ from loguru import logger
 from deployra_common.client import RemoteError
 
 from .config import Config
+from deployra_common import i18n as i18n_core
+
+from . import i18n
 from .context import Panel
 from .deps import Forbidden, LoginRequired
 from .security import SESSION_COOKIE
 from .web import is_htmx, render, toast
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-PUBLIC_PREFIXES = ("/static/", "/hooks/", "/healthz", "/login", "/setup")
+PUBLIC_PREFIXES = ("/static/", "/hooks/", "/healthz", "/login", "/setup", "/language")
 
 
 def create_app(config: Config | None = None, panel: Panel | None = None) -> FastAPI:
@@ -38,10 +41,8 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
         await run_in_threadpool(wg_peer.ensure_up, panel)
         await run_in_threadpool(panel.sessions.cleanup)
         # zadania żyją w pamięci — to, co trwało w chwili restartu, zostało przerwane
-        panel.db.execute("UPDATE apps SET status = 'error', last_error = ? WHERE status = 'deploying'",
-                         ["Wdrożenie przerwane restartem panelu — wdroż ponownie"])
-        panel.db.execute("UPDATE certificates SET status = 'error', error = ? WHERE status = 'issuing'",
-                         ["Wystawianie przerwane restartem panelu — ponów"])
+        panel.db.execute("UPDATE apps SET status = 'error', last_error = ? WHERE status = 'deploying'", [i18n.t("msg.deploy_interrupted")])
+        panel.db.execute("UPDATE certificates SET status = 'error', error = ? WHERE status = 'issuing'", [i18n.t("msg.cert_interrupted")])
         await run_in_threadpool(updates.finish_pending, panel)
         tasks = []
         if panel.config.monitoring:
@@ -62,6 +63,8 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
         request.state.user = None
         request.state.csrf = ""
         path = request.url.path
+        cookie_lang, accept = request.cookies.get(i18n.LANG_COOKIE), request.headers.get("accept-language")
+        i18n_core.current.set(i18n.resolve(None, cookie_lang, panel.default_language, accept))
         if path.startswith("/static/") or path.startswith("/hooks/") or path == "/healthz":
             return await call_next(request)
 
@@ -73,11 +76,12 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
         session = await run_in_threadpool(panel.sessions.load, sid) if sid else None
         if session:
             request.state.user = session
+            i18n_core.current.set(i18n.resolve(session, cookie_lang, panel.default_language, accept))
             request.state.csrf = session["csrf"]
             if request.method not in SAFE_METHODS:
                 token = request.headers.get("X-CSRF-Token", "")
                 if not hmac.compare_digest(token, session["csrf"]):
-                    return JSONResponse({"detail": "Nieprawidłowy token CSRF — odśwież stronę"}, status_code=403)
+                    return JSONResponse({"detail": i18n.t("msg.csrf")}, status_code=403)
         elif not any(path.startswith(p) for p in PUBLIC_PREFIXES):
             return _redirect(request, f"/login?next={path}" if request.method == "GET" else "/login")
         return await call_next(request)
@@ -90,34 +94,34 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
     async def _forbidden(request: Request, exc: Forbidden) -> Response:
         if is_htmx(request):
             return toast(exc.message, "err", status=403)
-        return render(request, "error.html", status_code=403, title="Brak dostępu", message=exc.message, icon="shield-x")
+        return render(request, "error.html", status_code=403, title=i18n.t("msg.title_forbidden"), message=exc.message, icon="shield-x")
 
     @app.exception_handler(RemoteError)
     async def _remote(request: Request, exc: RemoteError) -> Response:
-        message = f"Zdalny komponent: {exc.detail}"
+        message = i18n.t("msg.remote_error", detail=exc.detail)
         if is_htmx(request):
             return toast(message, "err", status=502)
-        return render(request, "error.html", status_code=502, title="Błąd węzła", message=message, icon="hdd-network")
+        return render(request, "error.html", status_code=502, title=i18n.t("msg.title_node_error"), message=message, icon="hdd-network")
 
     @app.exception_handler(httpx.HTTPError)
     async def _offline(request: Request, exc: httpx.HTTPError) -> Response:
-        message = "Nie można połączyć się z węzłem/bramką — sprawdź tunel i czy usługa działa"
+        message = i18n.t("msg.offline")
         logger.warning(f"{request.url.path}: {type(exc).__name__}: {exc}")
         if is_htmx(request):
             return toast(message, "err", status=504)
-        return render(request, "error.html", status_code=504, title="Brak połączenia", message=message, icon="wifi-off")
+        return render(request, "error.html", status_code=504, title=i18n.t("msg.title_offline"), message=message, icon="wifi-off")
 
     @app.exception_handler(LookupError)
     async def _lookup(request: Request, exc: LookupError) -> Response:
         if is_htmx(request):
             return toast(str(exc), "err", status=409)
-        return render(request, "error.html", status_code=409, title="Nie da się", message=str(exc), icon="exclamation-diamond")
+        return render(request, "error.html", status_code=409, title=i18n.t("msg.title_conflict"), message=str(exc), icon="exclamation-diamond")
 
     @app.exception_handler(ValueError)
     async def _value(request: Request, exc: ValueError) -> Response:
         if is_htmx(request):
             return toast(str(exc), "err", status=400)
-        return render(request, "error.html", status_code=400, title="Błędne dane", message=str(exc), icon="exclamation-diamond")
+        return render(request, "error.html", status_code=400, title=i18n.t("msg.title_bad_data"), message=str(exc), icon="exclamation-diamond")
 
     @app.exception_handler(HTTPException)
     async def _http(request: Request, exc: HTTPException) -> Response:
@@ -126,7 +130,7 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
                 return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
             return toast(str(exc.detail), "err", status=exc.status_code)
         return render(
-            request, "error.html", status_code=exc.status_code, title=f"Błąd {exc.status_code}", message=str(exc.detail),
+            request, "error.html", status_code=exc.status_code, title=i18n.t("msg.title_error", code=exc.status_code), message=str(exc.detail),
             icon="question-octagon" if exc.status_code == 404 else "exclamation-octagon",
         )  # fmt: skip
 

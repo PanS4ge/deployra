@@ -16,6 +16,8 @@ from deployra_common.client import RemoteError
 
 from ..db import now
 from . import wg_peer
+from ..i18n import lang as i18n_lang
+from ..i18n import t
 
 NODE_CONTEXT = "panel-node"
 GATEWAY_CONTEXT = "panel-gateway"
@@ -27,7 +29,7 @@ def _base_url(address: str, default_port: int) -> str:
         address = f"http://{address}"
     parsed = urlparse(address)
     if not parsed.hostname:
-        raise ValueError("podaj adres, np. vps.example.com:51821")
+        raise ValueError(t("sync.need_address"))
     port = parsed.port or default_port
     host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
     return f"{parsed.scheme}://{host}:{port}"
@@ -50,7 +52,7 @@ async def _post_unsigned(url: str, body: dict) -> dict:
 
 async def pair_gateway(panel: Any, address: str, code: str, colocated: bool, api_override: str = "") -> dict:
     if panel.gateway():
-        raise LookupError("panel jest już połączony z bramką — najpierw ją odłącz")
+        raise LookupError(t("sync.already_linked"))
     bootstrap = _base_url(address, 51821)
     code = pairing.normalize_code(code)
     x_private, x_public = pairing.new_keypair()
@@ -64,9 +66,9 @@ async def pair_gateway(panel: Any, address: str, code: str, colocated: bool, api
     try:
         data = pairing.unseal(code, response, "pair-gateway-ok")
     except ValueError:
-        raise PermissionError("odpowiedź bramki nie przeszła weryfikacji — ktoś podmienia ruch?") from None
+        raise PermissionError(t("sync.gateway_bad_reply")) from None
     if data.get("nonce") != nonce:
-        raise PermissionError("odpowiedź bramki nie pasuje do żądania")
+        raise PermissionError(t("sync.gateway_mismatch"))
     secret = pairing.derive_secret(x_private, data["x25519"], code, GATEWAY_CONTEXT)
     info = data["gateway"]
     tunnel = data.get("tunnel") or {}
@@ -90,7 +92,7 @@ async def pair_gateway(panel: Any, address: str, code: str, colocated: bool, api
     gateway = panel.db.get("gateway", gateway_id)
     if wg_private:
         await asyncio.to_thread(wg_peer.bring_up, panel, gateway)
-    panel.notify("Połączono z Deployra-WG", "ok")
+    panel.notify(t("sync.gateway_linked"), "ok")
     return gateway
 
 
@@ -122,8 +124,8 @@ async def invite_node(panel: Any, name: str, lan_subnets: list[str], ttl_minutes
     """Tworzy węzeł „oczekujący” i token dołączenia. Zwraca (id węzła, token)."""
     client = panel.gateway_client()
     if not client:
-        raise LookupError("najpierw połącz panel z Deployra-WG (zakładka Tunel)")
-    name = name.strip()[:60] or "węzeł"
+        raise LookupError(t("sync.link_gateway_first"))
+    name = name.strip()[:60] or t("tunnel.node")
     subnets = _check_subnets(lan_subnets)
     token = pairing.JoinToken.generate()
     await client.post(
@@ -164,7 +166,7 @@ async def pair_node(panel: Any, node: dict, code: str | None = None) -> dict:
     """Parowanie z węzłem przez tunel (sekret z tokenu) albo bezpośrednio (kod z logów węzła)."""
     psk = pairing.normalize_code(code) if code else panel.sealer.unseal(node.get("pair_secret"))
     if not psk:
-        raise LookupError("brak sekretu parowania dla tego węzła")
+        raise LookupError(t("sync.no_pair_secret"))
     x_private, x_public = pairing.new_keypair()
     nonce = secrets.token_hex(12)
     url = panel.node_url(node) + "/pair"
@@ -172,15 +174,15 @@ async def pair_node(panel: Any, node: dict, code: str | None = None) -> dict:
     try:
         data = pairing.unseal(psk, response, "pair-node-ok")
     except ValueError:
-        raise PermissionError("odpowiedź węzła nie przeszła weryfikacji") from None
+        raise PermissionError(t("sync.node_bad_reply")) from None
     if data.get("nonce") != nonce:
-        raise PermissionError("odpowiedź węzła nie pasuje do żądania")
+        raise PermissionError(t("sync.node_mismatch"))
     secret = pairing.derive_secret(x_private, data["x25519"], psk, NODE_CONTEXT)
     panel.db.update(
         "nodes", node["id"], secret=panel.sealer.seal(secret), status="paired", pair_secret=None, paired_at=now(),
         info={"node_id": data.get("node_id"), "name": data.get("name")},
     )  # fmt: skip
-    panel.notify(f"Sparowano węzeł {node['name']}", "ok")
+    panel.notify(t("msg.node_paired", name=node["name"]), "ok")
     from . import uptime
 
     uptime.ensure_for(panel, "node", node["id"], node["name"], node["id"])
@@ -234,7 +236,7 @@ def compose_snippet(gateway: dict, token: str, name: str, images: str = DEFAULT_
     host = gateway["public_host"]
     bootstrap = urlparse(gateway["bootstrap_url"]).port or 51821
     images = (images or DEFAULT_IMAGES).strip().rstrip("-")
-    return f"""# node.compose.yml — Deployra Backend ({name}). Uruchom: docker compose -f node.compose.yml up -d
+    return f"""# node.compose.yml — Deployra Backend ({name}). {t("sync.snippet_run")}: docker compose -f node.compose.yml up -d
 name: deployra-node
 services:
   deployra-backend:
@@ -250,12 +252,13 @@ services:
       DEPLOYRA_NAME: "{name}"
       DEPLOYRA_GATEWAY: "{host}:{bootstrap}"
       DEPLOYRA_JOIN: "{token}"
+      DEPLOYRA_LANG: "{i18n_lang()}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/deployra:/var/lib/deployra
       - /srv/deployra:/srv/deployra
       - node-updates:/run/deployra-update
-  updater:   # aktualizacje z panelu; w spoczynku ~1 MB RAM
+  updater:   # {t("sync.snippet_updater")}
     image: ${{DEPLOYRA_IMAGES:-{images}}}-updater:${{DEPLOYRA_VERSION:-latest}}
     container_name: deployra-updater
     network_mode: none

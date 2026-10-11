@@ -13,6 +13,7 @@ from loguru import logger
 
 from ..context import Panel
 from ..deps import node_or_404, require
+from ..i18n import t
 from ..permissions import Permission, has
 from ..security import SESSION_COOKIE
 from ..web import render
@@ -75,7 +76,7 @@ async def terminal_ws(websocket: WebSocket, node_id: int, cid: str, ep: str = "l
                 task.cancel()
     except (OSError, websockets.WebSocketException) as exc:
         try:
-            await websocket.send_text('{"type": "error", "message": "Nie udało się połączyć z węzłem: ' + str(exc).replace('"', "'") + '"}')
+            await websocket.send_text(json.dumps({"type": "error", "message": t("msg.terminal_connect_failed", error=exc)}))
         except Exception:  # noqa: BLE001
             pass
     except WebSocketDisconnect:

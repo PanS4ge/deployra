@@ -1,35 +1,35 @@
 {% extends "base.html" %}
-{% block crumbs %}<div class="crumbs"><a href="/nodes">Węzły</a> /</div>{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes">{{ t("nav.nodes") }}</a> /</div>{% endblock %}
 {% block content %}
-<div class="callout ok"><i class="bi bi-check-circle"></i><div>Token wygenerowany. <b>Pokazuję go tylko raz</b> — skopiuj teraz. Ważny do {{ node.token_expires | dt }}.</div></div>
+<div class="callout ok"><i class="bi bi-check-circle"></i><div>{{ t("invite.token_once", date=node.token_expires | dt) }}</div></div>
 <div class="grid grid-2">
   <div class="card">
-    <div class="card-head"><h2><i class="bi bi-1-circle"></i> Najprościej: sam plik compose</h2></div>
+    <div class="card-head"><h2><i class="bi bi-1-circle"></i> {{ t("invite.simple_title") }}</h2></div>
     <div class="card-body stack">
-      <div class="small dim">Na serwerze węzła (Linux z Dockerem) zapisz plik poniżej jako <code>node.compose.yml</code> i uruchom:</div>
+      <div class="small dim">{{ t("invite.simple_hint") }}</div>
       <pre class="code-block">docker compose -f node.compose.yml up -d</pre>
-      <div class="small dim">Gotowe obrazy pobiorą się z GHCR — bez klonowania i budowania. WireGuard w kernelu (5.6+) albo <code>/dev/net/tun</code> dla wireguard-go.</div>
+      <div class="small dim">{{ t("invite.simple_note") }}</div>
     </div>
   </div>
   <div class="card">
-    <div class="card-head"><h2><i class="bi bi-2-circle"></i> Albo z repozytorium</h2><button class="btn sm" data-copy="{{ env }}"><i class="bi bi-clipboard"></i> Kopiuj .env</button></div>
+    <div class="card-head"><h2><i class="bi bi-2-circle"></i> {{ t("invite.repo_title") }}</h2><button class="btn sm" data-copy="{{ env }}"><i class="bi bi-clipboard"></i> {{ t("invite.copy_env") }}</button></div>
     <div class="card-body stack">
-      <div class="small dim">W katalogu repozytorium Deployry zapisz jako <code>deploy/.env</code>:</div>
+      <div class="small dim">{{ t("invite.repo_hint") }}</div>
       <pre class="code-block">{{ env }}</pre>
       <pre class="code-block">docker compose -f deploy/node.compose.yml up -d</pre>
-      <div class="field"><label>Token dołączenia</label>
+      <div class="field"><label>{{ t("invite.join_token") }}</label>
         <span class="pill copy" data-copy="{{ token }}" style="white-space: normal; word-break: break-all">{{ token }} <i class="bi bi-clipboard"></i></span></div>
     </div>
   </div>
 </div>
 <div class="card">
-  <div class="card-head"><h3>node.compose.yml</h3><button class="btn sm" data-copy="{{ snippet }}"><i class="bi bi-clipboard"></i> Kopiuj</button></div>
+  <div class="card-head"><h3>node.compose.yml</h3><button class="btn sm" data-copy="{{ snippet }}"><i class="bi bi-clipboard"></i> {{ t("common.copy") }}</button></div>
   <div class="card-body"><pre class="code-block">{{ snippet }}</pre></div>
 </div>
 <div class="card" hx-post="/nodes/refresh" hx-trigger="every 5s [!document.hidden]" hx-swap="none">
   <div class="card-body row">
     <span class="spin" style="border-top-color: var(--violet-2)"></span>
-    <div>Czekam na węzeł <b>{{ node.name }}</b>… Gdy dołączy do tunelu, panel sam go sparuje i przeniesie Cię do listy.</div>
+    <div>{{ t("invite.waiting", name=node.name) }}</div>
   </div>
 </div>
 {% endblock %}

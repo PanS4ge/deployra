@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from deployra_common.i18n import tr
+
 LOCAL = "local"
 _EP = re.compile(r"^(local|ct-\d{1,9})$")
 _LXC_CGROUP = re.compile(r"/lxc(?:\.payload)?[./](\d+)(?:/|$)")
@@ -41,7 +43,7 @@ class Endpoint:
 def check_id(value: str | None) -> str:
     value = (value or LOCAL).strip()
     if not _EP.match(value):
-        raise ValueError("nieprawidłowy endpoint (local albo ct-<vmid>)")
+        raise ValueError(tr("srv.schema.bad_endpoint"))
     return value
 
 
@@ -145,7 +147,7 @@ class EndpointRegistry:
         for ep in self.list(refresh=True):
             if ep.id == endpoint_id:
                 return ep
-        raise LookupError(f"endpoint {endpoint_id} nie istnieje albo CT nie działa")
+        raise LookupError(tr("node.endpoint_missing", endpoint=endpoint_id))
 
     def client(self, endpoint_id: str | None) -> Any:
         ep = self.get(endpoint_id)

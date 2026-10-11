@@ -35,3 +35,10 @@ def test_native_agent_uses_systemd_run(tmp_path, monkeypatch):
     assert agent.info()["mode"] == "native"
     agent.request("1.4.0")
     assert calls[0][0] == "systemd-run" and calls[0][-3:] == [str(repo / "deploy" / "install-native.sh"), "--update", "1.4.0"]
+
+
+def test_job_logs_follow_accept_language(api):
+    api.client.headers["Accept-Language"] = "en"
+    started = api.request("POST", "/api/containers", json={"name": "lang-test", "image": "nginx:alpine"}).json()
+    lines = api.wait_job(started["job"]["id"])["lines"]
+    assert any(line.startswith("✔ Started lang-test") for line in lines), lines

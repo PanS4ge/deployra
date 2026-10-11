@@ -1,28 +1,28 @@
 {% extends "base.html" %}
-{% block crumbs %}<div class="crumbs"><a href="/proxy/access">Listy dostępu</a> /</div>{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="/proxy/access">{{ t("proxy.tab_access") }}</a> /</div>{% endblock %}
 {% block content %}
 <form class="card" hx-post="/proxy/access/save" hx-swap="none">
   <input type="hidden" name="id" value="{{ acl.id or '' }}">
   <div class="card-body form-grid">
-    <div class="field full"><label>Nazwa</label><input class="input" name="name" value="{{ acl.name or '' }}" required></div>
+    <div class="field full"><label>{{ t("common.name") }}</label><input class="input" name="name" value="{{ acl.name or '' }}" required></div>
     <div class="field">
-      <label>Użytkownicy (login:hasło, po jednym w linii)</label>
-      <textarea class="textarea" name="users" style="min-height: 120px" placeholder="admin:tajne-haslo">{% for u in acl.users or [] %}{{ u.username }}
+      <label>{{ t("access.users") }}</label>
+      <textarea class="textarea" name="users" style="min-height: 120px" placeholder="{{ t('access.users_placeholder') }}">{% for u in acl.users or [] %}{{ u.username }}
 {% endfor %}</textarea>
-      <div class="hint">Istniejący użytkownicy są pokazani bez haseł — zostaw sam login, żeby zachować hasło. Hasła trzymam jako hash apr1.</div>
+      <div class="hint">{{ t("access.users_hint") }}</div>
     </div>
     <div class="field">
-      <label>Reguły IP (allow/deny adres, po jednej w linii)</label>
+      <label>{{ t("access.ip_rules_long") }}</label>
       <textarea class="textarea" name="clients" style="min-height: 120px" placeholder="allow 192.168.1.0/24&#10;deny 203.0.113.7">{% for c in acl.clients or [] %}{{ c.directive }} {{ c.address }}
 {% endfor %}</textarea>
-      <div class="hint">Gdy są reguły „allow”, reszta świata jest blokowana.</div>
+      <div class="hint">{{ t("access.ip_hint") }}</div>
     </div>
-    <label class="check"><input type="checkbox" name="satisfy_any" value="1" {{ "checked" if acl.satisfy_any }}><span class="sw"></span><span>Wystarczy jeden warunek (IP <b>albo</b> hasło)</span></label>
-    <label class="check"><input type="checkbox" name="pass_auth" value="1" {{ "checked" if acl.pass_auth }}><span class="sw"></span><span>Przekazuj nagłówek Authorization do aplikacji</span></label>
+    <label class="check"><input type="checkbox" name="satisfy_any" value="1" {{ "checked" if acl.satisfy_any }}><span class="sw"></span><span>{{ t("access.satisfy_any") }}</span></label>
+    <label class="check"><input type="checkbox" name="pass_auth" value="1" {{ "checked" if acl.pass_auth }}><span class="sw"></span><span>{{ t("access.pass_auth") }}</span></label>
   </div>
   <div class="card-body row" style="justify-content: flex-end; border-top: 1px solid var(--border)">
-    <a class="btn ghost" href="/proxy/access">Anuluj</a>
-    <button class="btn primary"><i class="bi bi-check2"></i> Zapisz</button>
+    <a class="btn ghost" href="/proxy/access">{{ t("common.cancel") }}</a>
+    <button class="btn primary"><i class="bi bi-check2"></i> {{ t("common.save") }}</button>
   </div>
 </form>
 {% endblock %}

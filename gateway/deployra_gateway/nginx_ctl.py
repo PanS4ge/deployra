@@ -15,6 +15,8 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from deployra_common.i18n import tr
+
 MANAGED = ("http", "stream", "access")
 BASE_FILES = ("nginx.conf", "deployra-reloader.sh")
 
@@ -31,7 +33,7 @@ def install_base(nginx_dir: Path, bundle: Path) -> bool:
     for name in BASE_FILES:
         source = bundle / name
         if not source.is_file():
-            raise FileNotFoundError(f"brak {source} — obraz bramki jest niekompletny")
+            raise FileNotFoundError(tr("gw.bundle_missing", path=source))
         content = source.read_bytes().replace(b"\r\n", b"\n")
         current = target / name
         if current.exists() and current.read_bytes() == content:
@@ -80,14 +82,14 @@ class NginxControl:
                 return ApplyResult(False, "rejected", details.strip() or status.strip())
             time.sleep(0.2)
         request.unlink(missing_ok=True)
-        return ApplyResult(False, "pending", "nginx nie odpowiada (kontener nie działa?) — konfiguracja zostanie użyta przy starcie")
+        return ApplyResult(False, "pending", tr("gw.nginx_pending"))
 
     def apply(self, files: dict[str, str]) -> ApplyResult:
         """Podmienia katalogi http/stream/access na nowe; przy odrzuceniu przywraca poprzednie."""
         for rel in files:
             parts = Path(rel).parts
             if len(parts) != 2 or parts[0] not in MANAGED or parts[1].startswith("."):
-                raise ValueError(f"niedozwolona ścieżka konfiguracji: {rel}")
+                raise ValueError(tr("gw.bad_conf_path", path=rel))
         with self._lock:
             stamp = uuid.uuid4().hex[:8]
             staging = self.dir / f".staging-{stamp}"

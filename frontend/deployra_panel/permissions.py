@@ -32,32 +32,20 @@ class Permission(Enum):
     ALLOW_IMPORT = "N"
 
 
-LABELS: dict[Permission, str] = {
-    Permission.FULL_ACCESS: "Pełny dostęp",
-    Permission.ALLOW_DEPLOYMENT: "Deployowanie aplikacji",
-    Permission.ALLOW_DEPLOYMENT_MODIFICATIONS: "Modyfikacja deploymentów",
-    Permission.ALLOW_DEPLOYMENT_DELETE: "Usuwanie deploymentów",
-    Permission.ALLOW_ADD_DOCKERS: "Dodawanie węzłów",
-    Permission.ALLOW_MODIFY_DOCKERS: "Zarządzanie kontenerami",
-    Permission.ALLOW_DELETE_DOCKERS: "Usuwanie węzłów i kontenerów",
-    Permission.ALLOW_SETTINGS: "Zmiana ustawień",
-    Permission.ALLOW_RISKY_SETTINGS: "Ryzykowne ustawienia",
-    Permission.ALLOW_CREATING_USERS_SETTING: "Tworzenie użytkowników",
-    Permission.ALLOW_MODIFYING_USERS: "Modyfikacja użytkowników",
-    Permission.ALLOW_DELETING_USERS: "Usuwanie użytkowników",
-    Permission.ALLOW_RISKY_PERMISSIONS: "Nadawanie ryzykownych uprawnień",
-    Permission.ALLOW_PULL_IMAGES: "Pobieranie obrazów",
-    Permission.ALLOW_SEEKING_CONTAINER: "Kukanie do kontenera (inspect, logi)",
-    Permission.ALLOW_CREATING_VOLUMES: "Tworzenie wolumenów",
-    Permission.ALLOW_CREATING_NETWORKS: "Tworzenie sieci",
-    Permission.ALLOW_DELETING_VOLUMES: "Usuwanie wolumenów",
-    Permission.ALLOW_DELETING_NETWORKS: "Usuwanie sieci",
-    Permission.ALLOW_PROXY: "Hosty proxy i certyfikaty",
-    Permission.ALLOW_PROXY_ADVANCED: "Surowa konfiguracja nginx (advanced)",
-    Permission.ALLOW_CONTAINER_TERMINAL: "Terminal w kontenerze",
-    Permission.ALLOW_TUNNEL: "Tunel i Deployra-WG",
-    Permission.ALLOW_IMPORT: "Import z Nginx Proxy Managera",
-}
+class _Labels:
+    """Etykiety uprawnień z paczki językowej (`perm.<NAZWA>`) — liczone przy każdym użyciu."""
+
+    def __getitem__(self, perm: Permission) -> str:
+        from .i18n import t
+
+        return t(f"perm.{perm.name}")
+
+    def items(self) -> list[tuple[Permission, str]]:
+        return [(perm, self[perm]) for perm in Permission]
+
+
+LABELS = _Labels()
+
 
 RISKY = {
     Permission.FULL_ACCESS,

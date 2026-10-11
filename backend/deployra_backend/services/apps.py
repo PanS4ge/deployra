@@ -11,6 +11,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
+from deployra_common.i18n import tr
 from deployra_common.jobs import Job, JobFailed
 from deployra_common.schemas import AppSpec, ContainerSpec, PortMap, check_slug
 
@@ -69,27 +70,27 @@ def replace_container(ctx: Any, job: Job, spec: AppSpec, image: str, host_port: 
     existing = docker_svc.find_container(client, name)
     if existing:
         previous_image = client.api.inspect_container(existing["Id"])["Config"]["Image"]
-        job.log(f"Zatrzymuję poprzednią wersję ({previous_image})")
+        job.log(tr("node.app.stopping_previous", image=previous_image))
         client.api.remove_container(existing["Id"], force=True)
-    job.log(f"Uruchamiam {name} z {image} (port {host_port} → {spec.container_port})")
+    job.log(tr("node.app.starting", name=name, image=image, host_port=host_port, port=spec.container_port))
     cid = docker_svc.run_container(client, _container_spec(ctx, spec, image, host_port))
     if _wait_running(client, cid, ctx.wait_seconds):
-        job.log("Kontener działa ✔")
+        job.log(tr("node.app.running"))
         return cid
     logs = client.api.logs(cid, tail=40).decode(errors="replace")
-    job.log("Kontener nie wystartował. Ostatnie logi:")
-    job.log(logs.rstrip() or "(brak logów)")
+    job.log(tr("node.app.crashed"))
+    job.log(logs.rstrip() or tr("node.app.no_logs"))
     client.api.remove_container(cid, force=True)
     if previous_image and previous_image != image:
-        job.log(f"Przywracam poprzednią wersję {previous_image}")
+        job.log(tr("node.app.restoring", image=previous_image))
         docker_svc.run_container(client, _container_spec(ctx, spec, previous_image, host_port))
-    raise JobFailed("aplikacja nie wystartowała")
+    raise JobFailed(tr("node.app.failed"))
 
 
 def deploy(ctx: Any, job: Job, spec: AppSpec) -> dict:
     lock = ctx.deploy_lock(spec.slug)
     if not lock.acquire(blocking=False):
-        raise JobFailed("ta aplikacja jest właśnie wdrażana")
+        raise JobFailed(tr("node.app.busy"))
     try:
         return _deploy(ctx, job, spec)
     finally:
@@ -103,10 +104,10 @@ def _deploy(ctx: Any, job: Job, spec: AppSpec) -> dict:
     docker_env = ctx.endpoints.docker_host_env(spec.endpoint)
     previous = ctx.state.get("apps", {}).get(spec.slug, {})
     if previous.get("endpoint", "local") != spec.endpoint and previous.get("host_port"):
-        raise JobFailed("aplikacja działa na innym endpoincie — usuń ją i wdroż ponownie, żeby przenieść")
+        raise JobFailed(tr("node.app.other_endpoint"))
     base = {"kind": kind, "endpoint": spec.endpoint, "upstream_host": endpoint.ip if endpoint.kind == "lxc" else None}
     if endpoint.kind == "lxc":
-        job.log(f"Cel: {endpoint.name} (CT {endpoint.vmid}, IP {endpoint.ip or 'nieznane'})")
+        job.log(tr("node.app.target", name=endpoint.name, vmid=endpoint.vmid, ip=endpoint.ip or "?"))
 
     if kind == "static" or (kind == "git" and spec.source.git_static_dir):
         static_sites.ensure_site_dir(cfg.sites_dir, spec.slug)
@@ -118,9 +119,9 @@ def _deploy(ctx: Any, job: Job, spec: AppSpec) -> dict:
             )  # fmt: skip
             source = git_build.inside(repo, spec.source.git_static_dir or ".")
             static_sites.publish_dir(cfg.sites_dir, spec.slug, source)
-            job.log("Pliki strony zaktualizowane z repozytorium")
+            job.log(tr("node.app.site_updated"))
         port = static_sites.apply_site(ctx, spec.slug, spec.domains, job)
-        job.log(f"Strona statyczna gotowa (serwer stron na porcie {port})")
+        job.log(tr("node.app.static_ready", port=port))
         return _record(ctx, spec.slug, **base, host_port=port, sha=sha, domains=spec.domains)
 
     host_port = ports.allocate(
@@ -154,7 +155,7 @@ def _deploy(ctx: Any, job: Job, spec: AppSpec) -> dict:
             ctx, spec.slug, **base, host_port=host_port, image=tag, previous_image=previous.get("image"), sha=sha, container=cid
         )
 
-    raise JobFailed(f"nieznany rodzaj aplikacji: {kind}")
+    raise JobFailed(tr("node.app.unknown_kind", kind=kind))
 
 
 def _prune_builds(client: Any, slug: str, keep: set, job: Job) -> None:
@@ -164,7 +165,7 @@ def _prune_builds(client: Any, slug: str, keep: set, job: Job) -> None:
         if not keep.intersection(img["RepoTags"]):
             try:
                 client.api.remove_image(img["Id"], force=False)
-                job.log(f"Usunięto stary build {', '.join(img['RepoTags'])}")
+                job.log(tr("node.app.old_build_removed", tags=", ".join(img["RepoTags"])))
             except Exception:  # noqa: BLE001 — obraz w użyciu, zostawiamy
                 pass
 
@@ -173,7 +174,7 @@ def rollback(ctx: Any, job: Job, slug: str, spec: AppSpec) -> dict:
     info = ctx.state.get("apps", {}).get(slug) or {}
     previous = info.get("previous_image")
     if info.get("kind") not in ("image", "git") or not previous:
-        raise JobFailed("brak poprzedniej wersji do przywrócenia")
+        raise JobFailed(tr("node.app.no_previous"))
     cid = replace_container(ctx, job, spec, previous, info["host_port"])
     return _record(ctx, slug, image=previous, previous_image=info.get("image"), container=cid)
 
@@ -187,7 +188,7 @@ def remove(ctx: Any, job: Job, slug: str, delete_data: bool) -> None:
         client = ctx.docker_for(endpoint)
         docker_env = ctx.endpoints.docker_host_env(endpoint)
     except LookupError:
-        job.log(f"⚠ Endpoint {endpoint} niedostępny (CT wyłączony?) — usuwam tylko zapis aplikacji")
+        job.log(tr("node.app.endpoint_down", endpoint=endpoint))
         client, docker_env = None, {}
     root = compose.stacks_root(cfg.stacks_dir, endpoint)
     if client and (kind == "compose" or (root / slug / compose.COMPOSE_FILE).exists()):
@@ -195,12 +196,12 @@ def remove(ctx: Any, job: Job, slug: str, delete_data: bool) -> None:
     existing = docker_svc.find_container(client, container_name(slug)) if client else None
     if existing:
         client.api.remove_container(existing["Id"], force=True, v=delete_data)
-        job.log(f"Usunięto kontener {container_name(slug)}")
+        job.log(tr("node.app.container_removed", name=container_name(slug)))
     if kind == "static" or (kind == "git" and info.get("host_port") == ctx.state.get("static_port")):
         static_sites.remove_site(ctx, slug, delete_files=delete_data)
-        job.log("Usunięto konfigurację strony")
+        job.log(tr("node.app.site_conf_removed"))
     if delete_data:
         shutil.rmtree(cfg.builds_dir / slug, ignore_errors=True)
     ports.release(ctx.state, slug)
     ctx.state.mutate("apps", lambda apps: {k: v for k, v in apps.items() if k != slug})
-    job.log(f"Aplikacja {slug} usunięta")
+    job.log(tr("node.app.removed", slug=slug))

@@ -1,41 +1,37 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="callout"><i class="bi bi-magic"></i><div class="small">
-  Przeniesiemy hosty proxy, przekierowania, hosty 404, streamy, listy dostępu i certyfikaty. W następnym kroku wskażesz,
-  które stare adresy docelowe (np. <code>10.8.0.2</code> z drugiego NPM-a) są teraz węzłami Deployry — dzięki temu ruch pójdzie
-  jednym skokiem przez Deployra-WG, a obu NPM-ów nie będzie już trzeba.
-</div></div>
+<div class="callout"><i class="bi bi-magic"></i><div class="small">{{ t("import.intro") }}</div></div>
 <div class="grid grid-2" x-data="{ mode: 'file' }">
   <div class="card" :class="mode === 'file' && 'glow'">
-    <div class="card-head"><h3><i class="bi bi-database"></i> Plik bazy NPM (zalecane)</h3></div>
+    <div class="card-head"><h3><i class="bi bi-database"></i> {{ t("import.file_title") }}</h3></div>
     <form class="card-body stack" hx-post="/import/npm/analyze" hx-encoding="multipart/form-data" hx-swap="none" @focusin="mode = 'file'">
       <input type="hidden" name="mode" value="file">
       <div class="field">
         <label>database.sqlite</label>
         <input class="input" type="file" name="database" accept=".sqlite,.db,application/octet-stream" required>
-        <div class="hint">Z hosta NPM: <code>docker cp npm:/data/database.sqlite .</code> (albo z katalogu <code>./data</code> w compose). Tylko baza zawiera hasła list dostępu.</div>
+        <div class="hint">{{ t("import.file_hint") }}</div>
       </div>
       <div class="field">
-        <label>Archiwum certyfikatów (opcjonalnie)</label>
+        <label>{{ t("import.archive") }}</label>
         <input class="input" type="file" name="archive" accept=".tar,.tgz,.gz">
-        <div class="hint">Żeby przenieść istniejące certyfikaty zamiast wystawiać nowe: <code>tar czf npm.tgz data/custom_ssl data/access letsencrypt</code></div>
+        <div class="hint">{{ t("import.archive_hint") }}</div>
       </div>
-      <div class="row" style="justify-content: flex-end"><button class="btn primary"><span class="spin"></span><i class="bi bi-search"></i> Analizuj</button></div>
+      <div class="row" style="justify-content: flex-end"><button class="btn primary"><span class="spin"></span><i class="bi bi-search"></i> {{ t("import.analyze") }}</button></div>
     </form>
   </div>
   <div class="card" :class="mode === 'api' && 'glow'">
-    <div class="card-head"><h3><i class="bi bi-plug"></i> Przez API NPM</h3></div>
+    <div class="card-head"><h3><i class="bi bi-plug"></i> {{ t("import.api_title") }}</h3></div>
     <form class="card-body stack" hx-post="/import/npm/analyze" hx-encoding="multipart/form-data" hx-swap="none" @focusin="mode = 'api'">
       <input type="hidden" name="mode" value="api">
-      <div class="field"><label>Adres panelu NPM</label><input class="input" name="url" placeholder="http://192.168.1.10:81" required></div>
+      <div class="field"><label>{{ t("import.npm_url") }}</label><input class="input" name="url" placeholder="http://192.168.1.10:81" required></div>
       <div class="form-grid">
-        <div class="field"><label>E-mail</label><input class="input" name="email" type="email" required></div>
-        <div class="field"><label>Hasło</label><input class="input" name="password" type="password" required></div>
+        <div class="field"><label>{{ t("common.email") }}</label><input class="input" name="email" type="email" required></div>
+        <div class="field"><label>{{ t("common.password") }}</label><input class="input" name="password" type="password" required></div>
       </div>
-      <div class="field"><label>Kod 2FA (jeśli włączone)</label><input class="input" name="code" inputmode="numeric" autocomplete="one-time-code"></div>
-      <div class="field"><label>Archiwum z /data/access i certyfikatami (opcjonalnie)</label><input class="input" type="file" name="archive" accept=".tar,.tgz,.gz"></div>
-      <div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div class="small">API NPM nie zwraca haseł basic-auth ani kluczy certyfikatów Let's Encrypt — dołącz archiwum albo ustaw hasła po imporcie.</div></div>
-      <div class="row" style="justify-content: flex-end"><button class="btn"><span class="spin"></span><i class="bi bi-cloud-download"></i> Pobierz</button></div>
+      <div class="field"><label>{{ t("import.twofa") }}</label><input class="input" name="code" inputmode="numeric" autocomplete="one-time-code"></div>
+      <div class="field"><label>{{ t("import.api_archive") }}</label><input class="input" type="file" name="archive" accept=".tar,.tgz,.gz"></div>
+      <div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div class="small">{{ t("import.api_warning") }}</div></div>
+      <div class="row" style="justify-content: flex-end"><button class="btn"><span class="spin"></span><i class="bi bi-cloud-download"></i> {{ t("import.fetch") }}</button></div>
     </form>
   </div>
 </div>

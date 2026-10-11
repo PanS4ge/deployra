@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 
+from . import i18n
 from .hmac_auth import sign
 
 
@@ -54,6 +55,7 @@ class SignedClient:
     def _signed(self, request: httpx.Request, body_sha256: str | None = None) -> httpx.Request:
         path = request.url.raw_path.decode()
         body = b"" if body_sha256 else request.read()
+        request.headers["Accept-Language"] = i18n.current.get()  # komunikaty i logi w języku użytkownika panelu
         request.headers.update(
             sign(self.secret, request.method, path, body, key_id=self.key_id, body_sha256=body_sha256)
         )

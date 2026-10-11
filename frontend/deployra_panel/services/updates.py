@@ -20,11 +20,13 @@ import httpx
 from loguru import logger
 from markupsafe import Markup, escape
 
+from deployra_common import i18n as i18n_core
 from deployra_common.client import RemoteError
 from deployra_common.jobs import Job, JobFailed
 from deployra_common.updates import is_newer, normalize, parse_version, same_version
 
 from .. import __version__
+from ..i18n import t
 
 CHECK_INTERVAL = 6 * 3600
 TICK = 600
@@ -35,7 +37,6 @@ DONE_GRACE = 120  # tyle czekamy po „zaktualizowano”, aż komponent zgłosi 
 SNOOZE = 24 * 3600
 REPO = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
 GITHUB = "https://api.github.com/repos/"
-MODES = {"image": "obrazy z rejestru", "source": "ze źródeł (git + build)", "native": "usługa systemd"}
 
 
 # --- źródło wydań ------------------------------------------------------------------------------
@@ -48,7 +49,7 @@ def source(panel: Any) -> str:
 def validate_source(value: str) -> str:
     value = value.strip().removeprefix("https://github.com/").removesuffix(".git").strip("/")
     if value and not (REPO.match(value) or value.startswith(("https://", "http://"))):
-        raise ValueError("Źródło wydań: owner/repo z GitHuba (np. twoj-login/deployra) albo adres JSON")
+        raise ValueError(t("upd.bad_source"))
     return value
 
 
@@ -67,13 +68,13 @@ async def fetch_latest(src: str, transport: httpx.AsyncBaseTransport | None = No
         if response.status_code == 404:
             # repozytorium bez wydań → najwyższy tag vX.Y.Z; prywatne repozytorium → tagi publicznego obrazu w GHCR
             tags = await client.get(f"{GITHUB}{src}/tags", params={"per_page": 100})
-            names = [t.get("name") for t in tags.json() if parse_version(t.get("name"))] if tags.status_code == 200 else []
+            names = [tag.get("name") for tag in tags.json() if parse_version(tag.get("name"))] if tags.status_code == 200 else []
             if names:
                 best = max(names, key=parse_version)
                 return _release(best, None, "", f"https://github.com/{src}/releases/tag/{best}", None)
             best = await _registry_latest(client, f"ghcr.io/{src.split('/')[0].lower()}/deployra-panel")
             if not best:
-                raise ValueError(f"{src}: brak wydań — repozytorium prywatne, a obrazy w GHCR niepubliczne albo jeszcze niezbudowane")
+                raise ValueError(t("upd.no_releases_private", source=src))
             return _release(best, None, "", "", None)
         response.raise_for_status()
         data = response.json()
@@ -90,13 +91,13 @@ async def _registry_latest(client: httpx.AsyncClient, image: str) -> str | None:
                                headers={"Authorization": f"Bearer {token.json().get('token', '')}"})  # fmt: skip
     if listing.status_code != 200:
         return None
-    names = [t for t in listing.json().get("tags") or [] if parse_version(t)]
+    names = [tag for tag in listing.json().get("tags") or [] if parse_version(tag)]
     return max(names, key=parse_version) if names else None
 
 
 def _release(raw: Any, name: Any, notes: Any, url: Any, published: Any) -> dict[str, Any]:
     if parse_version(raw) is None:
-        raise ValueError(f"wydanie ma nieprawidłowy numer wersji: {str(raw)[:40]!r}")
+        raise ValueError(t("upd.bad_release_version", version=repr(str(raw)[:40])))
     version = normalize(raw)
     link = str(url or "")
     return {
@@ -112,14 +113,14 @@ def _error_text(exc: Exception, src: str) -> str:
     if isinstance(exc, httpx.HTTPStatusError):
         code = exc.response.status_code
         if code in (403, 429):
-            return "GitHub ograniczył liczbę zapytań — spróbuję później"
+            return t("upd.rate_limited")
         if code == 404:
-            return f"{src}: nie znaleziono (repozytorium prywatne albo zła nazwa?)"
-        return f"{src}: odpowiedź HTTP {code}"
+            return t("upd.not_found", source=src)
+        return t("upd.http_status", source=src, code=code)
     if isinstance(exc, httpx.TimeoutException):
-        return "przekroczony czas połączenia ze źródłem wydań"
+        return t("upd.timeout")
     if isinstance(exc, httpx.HTTPError):
-        return "brak połączenia ze źródłem wydań"
+        return t("upd.offline")
     return str(exc)
 
 
@@ -128,7 +129,7 @@ async def check(panel: Any, transport: httpx.AsyncBaseTransport | None = None) -
     previous = panel.db.setting("update_latest") or {}
     result: dict[str, Any] = {"checked_at": time.time(), "source": src, "error": None}
     if not src:
-        result["error"] = "Nie ustawiono źródła wydań — wpisz repozytorium w Ustawienia → Aktualizacje"
+        result["error"] = t("upd.no_source")
     else:
         try:
             result.update(await fetch_latest(src, transport))
@@ -139,7 +140,7 @@ async def check(panel: Any, transport: httpx.AsyncBaseTransport | None = None) -
     panel.db.set_setting("update_latest", result)
     version = result.get("version")
     if version and is_newer(version, __version__) and panel.db.setting("update_notified") != version:
-        panel.notify(f"Dostępna aktualizacja Deployry {version} (masz {__version__}) — Ustawienia → Aktualizacje", "info")
+        panel.notify(t("upd.notify_available", version=version, current=__version__), "info")
         panel.db.set_setting("update_notified", version)
     return result
 
@@ -202,19 +203,29 @@ def notes_html(text: str) -> Markup:
     return Markup("".join(out))
 
 
+def describe(info: dict[str, Any]) -> str:
+    """Opis stanu aktualizatora w języku użytkownika (krok z paczki + szczegóły ze skryptu)."""
+    step = info.get("step")
+    if not step:
+        return str(info.get("message") or "")
+    text = t("updater." + step, version=info.get("target") or "")
+    detail = info.get("message") or ""
+    return f"{text} — {detail}" if info.get("state") == "error" and detail else text
+
+
 # --- komponenty ----------------------------------------------------------------------------
 
 
 async def components(panel: Any, log_lines: int = 0) -> list[dict[str, Any]]:
     """Panel, bramka i sparowane węzły z wersją i stanem aktualizatora."""
     items: list[dict[str, Any]] = [
-        {"key": "panel", "name": "Panel Deployry", "icon": "window-stack", "online": True, "version": __version__,
+        {"key": "panel", "name": t("upd.comp_panel"), "icon": "window-stack", "online": True, "version": __version__,
          "update": panel.updates.info(log_lines), "client": None},
     ]  # fmt: skip
     remote: list[tuple[str, str, str, Any]] = []
     gateway = panel.gateway_client()
     if gateway:
-        remote.append(("gateway", "Deployra-WG (bramka)", "diagram-3", gateway))
+        remote.append(("gateway", t("upd.comp_gateway"), "diagram-3", gateway))
     for node in panel.db.all("nodes"):
         if node["status"] == "paired" and node.get("secret"):
             remote.append((f"node-{node['id']}", node["name"], "hdd-network", panel.node_client(node)))
@@ -227,7 +238,7 @@ async def components(panel: Any, log_lines: int = 0) -> list[dict[str, Any]]:
         except RemoteError as exc:
             item["error"] = exc.detail
         except (httpx.HTTPError, asyncio.TimeoutError):
-            item["error"] = "nie odpowiada"
+            item["error"] = t("upd.not_responding")
         return item
 
     items += await asyncio.gather(*(fetch(*args) for args in remote))
@@ -242,9 +253,9 @@ async def components(panel: Any, log_lines: int = 0) -> list[dict[str, Any]]:
 
 def start(panel: Any, target: str | None = None, only: set[str] | None = None, auto: bool = False) -> Job:
     if any(job.kind == "update" and not job.done for job in panel.jobs.list()):
-        raise LookupError("aktualizacja już trwa — zobacz Zadania")
+        raise LookupError(t("upd.already_running"))
     version = normalize(target or target_version(panel))
-    title = f"{'Automatyczna aktualizacja' if auto else 'Aktualizacja'} Deployry do {version}"
+    title = t("upd.job_title_auto" if auto else "upd.job_title", version=version)
     return panel.jobs.start("update", title, lambda job: run(panel, job, version, only))
 
 
@@ -253,15 +264,15 @@ async def run(panel: Any, job: Job, target: str, only: set[str] | None = None) -
     todo = []
     for item in items:
         if not item["online"]:
-            job.log(f"⚠ {item['name']}: {item.get('error') or 'offline'} — pomijam")
+            job.log(t("upd.skip_offline", name=item["name"], error=item.get("error") or "offline"))
         elif not is_newer(target, item["version"]):
-            job.log(f"{item['name']}: już w wersji {item['version']}")
+            job.log(t("upd.already_at", name=item["name"], version=item["version"]))
         elif not (item["update"] or {}).get("available"):
-            job.log(f"⚠ {item['name']}: brak aktualizatora — zaktualizuj ręcznie: docker compose -f deploy/<plik>.yml pull && docker compose -f deploy/<plik>.yml up -d")
+            job.log(t("upd.no_updater", name=item["name"]))
         else:
             todo.append(item)
     if not todo:
-        job.log("Nie ma czego aktualizować.")
+        job.log(t("upd.nothing"))
         return {"updated": []}
 
     # najpierw węzły (równolegle), potem bramka, na końcu panel — on zrestartuje się ostatni
@@ -275,12 +286,12 @@ async def run(panel: Any, job: Job, target: str, only: set[str] | None = None) -
     failed = [name for name, ok in results.items() if not ok]
     me = next((c for c in todo if c["key"] == "panel"), None)
     if me and failed:
-        job.log("Panel zostaje w obecnej wersji, bo nie wszystko się udało.")
+        job.log(t("upd.panel_stays"))
     elif me:
         results[me["name"]] = await _self(panel, job, target)
         failed = [name for name, ok in results.items() if not ok]
     if failed:
-        raise JobFailed(f"Nie zaktualizowano: {', '.join(failed)}")
+        raise JobFailed(t("upd.failed", names=", ".join(failed)))
     return {"updated": list(results)}
 
 
@@ -292,9 +303,9 @@ async def _remote(job: Job, item: dict[str, Any], target: str) -> bool:
         job.log(f"✖ {name}: {exc.detail}")
         return False
     except httpx.HTTPError:
-        job.log(f"✖ {name}: nie odpowiada")
+        job.log(f"✖ {name}: {t('upd.not_responding')}")
         return False
-    job.log(f"{name}: {item['version']} → {target} ({MODES.get(info.get('mode'), info.get('mode'))})")
+    job.log(f"{name}: {item['version']} → {target} ({t('updates.mode.' + str(info.get('mode')))})")
     deadline = time.monotonic() + REMOTE_TIMEOUT
     last, offline, done_at = None, False, None
     while time.monotonic() < deadline:
@@ -303,14 +314,14 @@ async def _remote(job: Job, item: dict[str, Any], target: str) -> bool:
             data = await asyncio.wait_for(client.get("/api/update"), 10)
         except (RemoteError, httpx.HTTPError, asyncio.TimeoutError):
             if not offline:
-                job.log(f"{name}: restartuje się…")
+                job.log(t("upd.restarting", name=name))
                 offline = True
             continue
         offline = False
         if same_version(data.get("version"), target):
-            job.log(f"✔ {name}: działa w wersji {target}")
+            job.log(t("upd.running_version", name=name, version=target))
             return True
-        message = data.get("message")
+        message = describe(data)
         if message and message != last:
             job.log(f"{name}: {message}")
             last = message
@@ -322,9 +333,9 @@ async def _remote(job: Job, item: dict[str, Any], target: str) -> bool:
         if data.get("state") == "done":
             done_at = done_at or time.monotonic()
             if time.monotonic() - done_at > DONE_GRACE:
-                job.log(f"✖ {name}: po aktualizacji nadal wersja {data.get('version')} — czy wydanie {target} ma już obrazy/tag?")
+                job.log(t("upd.still_old", name=name, version=data.get("version"), target=target))
                 return False
-    job.log(f"✖ {name}: przekroczony czas oczekiwania ({REMOTE_TIMEOUT // 60} min)")
+    job.log(t("upd.wait_timeout", name=name, minutes=REMOTE_TIMEOUT // 60))
     return False
 
 
@@ -333,7 +344,7 @@ async def _log_tail(job: Job, name: str, client: Any) -> None:
         data = await client.get("/api/update", params={"log": 15})
     except (RemoteError, httpx.HTTPError):
         data = {}
-    job.log(f"✖ {name}: {data.get('message') or 'aktualizacja nie powiodła się'}")
+    job.log(f"✖ {name}: {describe(data) or t('upd.update_failed')}")
     for line in data.get("log") or []:
         job.log(f"    {line}")
 
@@ -347,15 +358,16 @@ async def _self(panel: Any, job: Job, target: str) -> bool:
         panel.db.set_setting("update_pending", None)
         job.log(f"✖ Panel: {exc}")
         return False
-    job.log(f"Panel: {__version__} → {target}. Na końcu kontener panelu zostanie podmieniony — odśwież stronę za minutę.")
+    job.log(t("upd.panel_requested", current=__version__, version=target))
     deadline = time.monotonic() + REMOTE_TIMEOUT
     last = None
     while time.monotonic() < deadline:
         await asyncio.sleep(POLL)
         info = agent.info()
-        if info["message"] and info["message"] != last:
-            job.log(f"Panel: {info['message']}")
-            last = info["message"]
+        message = describe(info)
+        if message and message != last:
+            job.log(f"Panel: {message}")
+            last = message
         if info["state"] == "error":
             for line in agent.info(15).get("log") or []:
                 job.log(f"    {line}")
@@ -364,10 +376,10 @@ async def _self(panel: Any, job: Job, target: str) -> bool:
         if info["state"] == "done":
             # kontener już podmieniony, a my nadal żyjemy? to znaczy, że obraz się nie zmienił
             await asyncio.sleep(DONE_GRACE)
-            job.log(f"✖ Panel: aktualizator skończył, ale panel nadal działa w wersji {__version__}")
+            job.log(t("upd.panel_not_replaced", version=__version__))
             panel.db.set_setting("update_pending", None)
             return False
-    job.log("✖ Panel: przekroczony czas oczekiwania")
+    job.log(t("upd.wait_timeout", name="Panel", minutes=REMOTE_TIMEOUT // 60))
     panel.db.set_setting("update_pending", None)
     return False
 
@@ -379,14 +391,14 @@ def finish_pending(panel: Any) -> None:
         return
     target = value.get("target")
     if same_version(__version__, target) or is_newer(__version__, target):
-        panel.notify(f"Deployra zaktualizowana do {__version__} ✦", "ok")
+        panel.notify(t("upd.notify_done", version=__version__), "ok")
         panel.db.set_setting("update_pending", None)
         return
     info = panel.updates.info()
     if info["state"] == "error":
-        panel.notify(f"Aktualizacja panelu do {target} nie powiodła się: {info['message']}", "err")
+        panel.notify(t("upd.notify_failed", version=target, error=describe(info)), "err")
     elif time.time() - float(value.get("started") or 0) > 3600:
-        panel.notify(f"Aktualizacja panelu do {target} nie zakończyła się — sprawdź logi aktualizatora", "err")
+        panel.notify(t("upd.notify_unfinished", version=target), "err")
     else:
         return  # aktualizacja jeszcze trwa (np. buduje się obraz)
     panel.db.set_setting("update_pending", None)
@@ -396,6 +408,7 @@ async def loop(panel: Any) -> None:
     """Co TICK sprawdza, czy minął interwał; przy nowej wersji i włączonym auto-update — aktualizuje."""
     await asyncio.sleep(FIRST_CHECK)
     while True:
+        i18n_core.current.set(panel.default_language or i18n_core.DEFAULT)
         try:
             if panel.db.setting("update_check", True) and source(panel):
                 last = float(latest(panel).get("checked_at") or 0)

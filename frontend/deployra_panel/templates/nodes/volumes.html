@@ -1,21 +1,21 @@
 {% extends "base.html" %}
-{% block crumbs %}<div class="crumbs"><a href="/nodes">Węzły</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
-{% block heading %}Wolumeny{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes">{{ t("nav.nodes") }}</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
+{% block heading %}{{ t("nodes.tab_volumes") }}{% endblock %}
 {% block content %}
 {% include "nodes/_tabs.html" %}
 {% if has(user, P.ALLOW_CREATING_VOLUMES) %}
 <div class="card">
   <form class="card-body row" hx-post="/nodes/{{ node.id }}/volumes{{ epq }}" hx-swap="none">
-    <input class="input" style="flex: 1; min-width: 200px" name="name" placeholder="nazwa_wolumenu" required>
+    <input class="input" style="flex: 1; min-width: 200px" name="name" placeholder="{{ t('volumes.name_placeholder') }}" required>
     <input class="input" style="width: 160px" name="driver" value="local">
-    <button class="btn primary"><i class="bi bi-plus-lg"></i> Utwórz</button>
+    <button class="btn primary"><i class="bi bi-plus-lg"></i> {{ t("common.create") }}</button>
   </form>
 </div>
 {% endif %}
 <div class="card">
   <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>Nazwa</th><th>Sterownik</th><th>Ścieżka</th><th>Używany przez</th><th>Utworzony</th><th></th></tr></thead>
+    <thead><tr><th>{{ t("common.name") }}</th><th>{{ t("common.driver") }}</th><th>{{ t("volumes.path") }}</th><th>{{ t("common.used_by") }}</th><th>{{ t("common.created") }}</th><th></th></tr></thead>
     <tbody>
     {% for v in items %}
       <tr>
@@ -26,11 +26,11 @@
         <td class="small">{{ v.created | ago }}</td>
         <td class="actions">
           {% if has(user, P.ALLOW_DELETING_VOLUMES) and not v.used_by %}
-          <button class="btn icon sm ghost" hx-post="/nodes/{{ node.id }}/volumes/remove{{ epq }}" hx-vals='{"name": "{{ v.name }}"}' hx-swap="none" hx-confirm="Usunąć wolumen {{ v.name }} razem z danymi?" data-danger data-math><i class="bi bi-trash"></i></button>
+          <button class="btn icon sm ghost" hx-post="/nodes/{{ node.id }}/volumes/remove{{ epq }}" hx-vals='{"name": "{{ v.name }}"}' hx-swap="none" hx-confirm="{{ t('volumes.delete_confirm', name=v.name) }}" data-danger data-math><i class="bi bi-trash"></i></button>
           {% endif %}
         </td>
       </tr>
-    {% else %}<tr><td colspan="6" class="muted">Brak wolumenów.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="6" class="muted">{{ t("volumes.empty") }}</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>

@@ -1,45 +1,45 @@
 {% extends "base.html" %}
 {% from "_macros.html" import status_badge, empty %}
-{% block actions %}{% if has(user, P.ALLOW_PROXY) %}<a class="btn primary" href="/proxy/hosts/new?kind={{ kind }}"><i class="bi bi-plus-lg"></i> Dodaj</a>{% endif %}{% endblock %}
+{% block actions %}{% if has(user, P.ALLOW_PROXY) %}<a class="btn primary" href="/proxy/hosts/new?kind={{ kind }}"><i class="bi bi-plus-lg"></i> {{ t("common.add") }}</a>{% endif %}{% endblock %}
 {% block content %}
 {% include "proxy/_tabs.html" %}
 <div class="card" x-data="{ q: '' }">
-  <div class="card-head"><input class="input" style="max-width: 320px" placeholder="Szukaj domeny…" x-model="q"></div>
+  <div class="card-head"><input class="input" style="max-width: 320px" placeholder="{{ t('proxy.search') }}" x-model="q"></div>
   {% if sites %}
   <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>Domena</th><th>{{ "Cel" if kind == "proxy" else ("Przekierowanie" if kind == "redirect" else "") }}</th><th>Status</th><th>Odwiedzający (30 dni)</th><th>SSL</th><th></th></tr></thead>
+    <thead><tr><th>{{ t("apps.step_domain") }}</th><th>{{ t("proxy.target") if kind == "proxy" else (t("proxy.redirect") if kind == "redirect" else "") }}</th><th>Status</th><th>{{ t("proxy.visitors_30d") }}</th><th>SSL</th><th></th></tr></thead>
     <tbody>
-    {% for s in sites %}{% set t = s.target or {} %}
+    {% for s in sites %}{% set tg = s.target or {} %}
       <tr x-show="!q || {{ s.domains | join(' ') | tojson | forceescape }}.includes(q.toLowerCase())" style="{{ 'opacity: .5' if not s.enabled }}">
         <td>
           {% for d in s.domains[:3] %}<a class="name mono" href="{{ 'https' if s.cert_id or s.ingress == 'cloudflare' else 'http' }}://{{ d }}" target="_blank" rel="noopener">{{ d }}</a><br>{% endfor %}
           {% if s.domains | length > 3 %}<span class="small muted">+{{ s.domains | length - 3 }}</span>{% endif %}
           <div class="row" style="gap: 4px">
             {% if s.app_id and apps.get(s.app_id) %}<span class="badge violet"><i class="bi bi-rocket-takeoff"></i> {{ apps[s.app_id].slug }}</span>{% endif %}
-            {% if s.source == "npm" %}<span class="badge info">z NPM</span>{% endif %}
+            {% if s.source == "npm" %}<span class="badge info">{{ t("proxy.from_npm") }}</span>{% endif %}
             {% if s.ingress == "cloudflare" %}<span class="badge warn"><i class="bi bi-cloud"></i> Cloudflare Tunnel</span>{% endif %}
           </div>
         </td>
         <td class="mono small">
           {% if kind == "proxy" %}
-            {% if t.type == "node" %}<i class="bi bi-hdd-network"></i> {{ (nodes.get(t.node_id) or {}).get("name", "?") }}:{{ t.port }}
-            {% else %}{{ t.scheme }}://{{ t.host }}:{{ t.port }}{{ t.path }}{% endif %}
-            {% if s.locations %}<span class="badge">+{{ s.locations | length }} lokacji</span>{% endif %}
+            {% if tg.type == "node" %}<i class="bi bi-hdd-network"></i> {{ (nodes.get(tg.node_id) or {}).get("name", "?") }}:{{ tg.port }}
+            {% else %}{{ tg.scheme }}://{{ tg.host }}:{{ tg.port }}{{ tg.path }}{% endif %}
+            {% if s.locations %}<span class="badge">{{ t("proxy.locations_count", count=s.locations | length) }}</span>{% endif %}
           {% elif kind == "redirect" %}{{ s.redirect.code }} → {{ s.redirect.domain }}{% endif %}
         </td>
-        <td>{% if s.enabled %}<span class="badge ok"><i class="bi bi-check2"></i> aktywny</span>{% else %}<span class="badge">wyłączony</span>{% endif %}</td>
+        <td>{% if s.enabled %}<span class="badge ok"><i class="bi bi-check2"></i> {{ t("proxy.active") }}</span>{% else %}<span class="badge">{{ t("proxy.disabled") }}</span>{% endif %}</td>
         <td hx-get="/analytics/spark?domains={{ s.domains | join(',') }}" hx-trigger="load" hx-swap="innerHTML"><span class="muted small">…</span></td>
         <td>
-          {% if s.ingress == "cloudflare" %}<span class="badge ok" title="HTTPS na krawędzi Cloudflare"><i class="bi bi-cloud-check"></i></span>
+          {% if s.ingress == "cloudflare" %}<span class="badge ok" title="{{ t('proxy.cf_https') }}"><i class="bi bi-cloud-check"></i></span>
           {% elif s.cert_id and certs.get(s.cert_id) %}{{ status_badge(certs[s.cert_id].status) }}
           {% else %}<span class="muted small">HTTP</span>{% endif %}
         </td>
         <td class="actions">
           {% if has(user, P.ALLOW_PROXY) %}
-          <button class="btn icon sm ghost" title="{{ 'Wyłącz' if s.enabled else 'Włącz' }}" hx-post="/proxy/hosts/{{ s.id }}/toggle" hx-swap="none"><i class="bi bi-{{ 'pause' if s.enabled else 'play' }}"></i></button>
-          <a class="btn icon sm ghost" title="Edytuj" href="/proxy/hosts/{{ s.id }}"><i class="bi bi-pencil"></i></a>
-          {% if not s.app_id %}<button class="btn icon sm ghost" title="Usuń" hx-post="/proxy/hosts/{{ s.id }}/delete" hx-swap="none" hx-confirm="Usunąć host {{ s.domains[0] }}?" data-danger><i class="bi bi-trash"></i></button>{% endif %}
+          <button class="btn icon sm ghost" title="{{ t('common.disable') if s.enabled else t('common.enable') }}" hx-post="/proxy/hosts/{{ s.id }}/toggle" hx-swap="none"><i class="bi bi-{{ 'pause' if s.enabled else 'play' }}"></i></button>
+          <a class="btn icon sm ghost" title="{{ t('common.edit') }}" href="/proxy/hosts/{{ s.id }}"><i class="bi bi-pencil"></i></a>
+          {% if not s.app_id %}<button class="btn icon sm ghost" title="{{ t('common.delete') }}" hx-post="/proxy/hosts/{{ s.id }}/delete" hx-swap="none" hx-confirm="{{ t('proxy.delete_confirm', name=s.domains[0]) }}" data-danger><i class="bi bi-trash"></i></button>{% endif %}
           {% endif %}
         </td>
       </tr>
@@ -48,7 +48,7 @@
   </table>
   </div>
   {% else %}
-  {{ empty("signpost-split", "Pusto", "Hosty aplikacji dodają się same. Tu możesz wystawić cokolwiek innego — np. Home Assistanta w domowym LAN-ie — albo zaimportować wszystko z Nginx Proxy Managera.") }}
+  {{ empty("signpost-split", t("proxy.empty_title"), t("proxy.empty_text")) }}
   {% endif %}
 </div>
 {% endblock %}

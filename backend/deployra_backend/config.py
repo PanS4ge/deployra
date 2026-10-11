@@ -23,7 +23,7 @@ def _pool(value: str) -> tuple[int, int]:
     low, _, high = value.partition("-")
     lo, hi = int(low), int(high or low)
     if not 1024 <= lo <= hi <= 65535:
-        raise ValueError("DEPLOYRA_PORT_POOL: zakres np. 20000-29999")
+        raise ValueError("DEPLOYRA_PORT_POOL: range, e.g. 20000-29999")
     return lo, hi
 
 

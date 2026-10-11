@@ -5,5 +5,5 @@
   {% if not n.is_read %}<span class="dot" style="background: var(--violet-2)"></span>{% endif %}
 </div>
 {% else %}
-<div class="item muted">Cisza w eterze ✦</div>
+<div class="item muted">{{ t("notifications.empty") }}</div>
 {% endfor %}

@@ -12,6 +12,7 @@ from fastapi.sse import EventSourceResponse
 from loguru import logger
 from pydantic import BaseModel
 
+from deployra_common.i18n import tr
 from deployra_common.jobs import Job
 
 from .. import NAME, __version__, enroll
@@ -44,7 +45,7 @@ async def pair(request: Request, ctx: Context = Depends(get_ctx)) -> dict:
         if not isinstance(body, dict):
             raise ValueError
     except ValueError:
-        raise HTTPException(400, "oczekiwano JSON") from None
+        raise HTTPException(400, tr("node.expected_json")) from None
     try:
         return enroll.pair(ctx, ctx.pair_gate, body)
     except LookupError as exc:
@@ -112,7 +113,7 @@ def update_start(body: UpdateRequest, ctx: Context = Depends(get_ctx)) -> dict:
         raise HTTPException(409, str(exc)) from None
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from None
-    logger.info(f"Zlecono aktualizację węzła do {info['target']} ({info['mode']})")
+    logger.info(tr("node.log.update_requested", version=info["target"], mode=info["mode"]))
     return {"service": NAME, "version": __version__, **info}
 
 
@@ -141,7 +142,7 @@ def jobs(ctx: Context = Depends(get_ctx)) -> list[dict]:
 def _job(job_id: str, ctx: Context = Depends(get_ctx)) -> Job:
     found = ctx.jobs.get(job_id)
     if not found:
-        raise HTTPException(404, "nie ma takiego zadania")
+        raise HTTPException(404, tr("srv.no_job"))
     return found
 
 

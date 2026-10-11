@@ -10,6 +10,8 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from deployra_common import i18n
+from deployra_common.i18n import tr
 from deployra_common.jobs import Job, JobFailed
 from deployra_common.schemas import check_domain, check_slug
 
@@ -20,10 +22,10 @@ STATIC_KEY = "__static__"
 MAX_FILES = 50_000
 
 PLACEHOLDER = """<!DOCTYPE html>
-<html lang="pl">
+<html lang="{lang}">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{slug} — gotowe</title>
+<title>{slug} — {ready}</title>
 <style>
   body {{ margin:0; min-height:100vh; display:grid; place-items:center; font-family:system-ui,sans-serif;
          color:#e6e8ff; background:radial-gradient(ellipse at 20% 10%,#2a1b5c 0,transparent 55%),
@@ -36,15 +38,15 @@ PLACEHOLDER = """<!DOCTYPE html>
 </head>
 <body>
 <main>
-  <h1>Twoja strona jest gotowa 🚀</h1>
-  <p>Wgraj pliki przez SFTP albo panel. Identyfikator strony: <code>{slug}</code></p>
+  <h1>{heading}</h1>
+  <p>{text} <code>{slug}</code></p>
 </main>
 <footer>Powered by Deployra</footer>
 </body>
 </html>
 """
 
-DEFAULT_CONF = """# Deployra — domyślny serwer (nieznany host)
+DEFAULT_CONF = """# Deployra — default server (unknown host)
 server {
     listen 80 default_server;
     server_name _;
@@ -61,25 +63,27 @@ def ensure_site_dir(sites_dir: Path, slug: str) -> Path:
     path = site_dir(sites_dir, slug)
     if not path.exists():
         path.mkdir(parents=True)
-        (path / "index.html").write_text(PLACEHOLDER.format(slug=slug), encoding="utf-8")
+        lang = i18n.default_language()  # strona dla odwiedzających — stały język węzła (DEPLOYRA_LANG)
+        texts = {key: i18n.server.raw(f"node.placeholder.{key}", lang) for key in ("ready", "heading", "text")}
+        (path / "index.html").write_text(PLACEHOLDER.format(slug=slug, lang=lang, **texts), encoding="utf-8")
     return path
 
 
 def _safe_members(archive: zipfile.ZipFile, max_total: int) -> list[tuple[zipfile.ZipInfo, PurePosixPath]]:
     infos = archive.infolist()
     if len(infos) > MAX_FILES:
-        raise JobFailed(f"za dużo plików w archiwum (> {MAX_FILES})")
+        raise JobFailed(tr("node.zip.too_many", max=MAX_FILES))
     total, members = 0, []
     for info in infos:
         mode = info.external_attr >> 16
         if stat.S_ISLNK(mode):
-            raise JobFailed(f"archiwum zawiera dowiązanie symboliczne: {info.filename}")
+            raise JobFailed(tr("node.zip.symlink", name=info.filename))
         name = PurePosixPath(info.filename.replace("\\", "/"))
         if name.is_absolute() or ".." in name.parts or (name.parts and ":" in name.parts[0]):
-            raise JobFailed(f"niebezpieczna ścieżka w archiwum: {info.filename}")
+            raise JobFailed(tr("node.zip.unsafe", name=info.filename))
         total += info.file_size
         if total > max_total:
-            raise JobFailed("archiwum po rozpakowaniu jest za duże")
+            raise JobFailed(tr("node.zip.too_big"))
         members.append((info, name))
     return members
 
@@ -119,7 +123,7 @@ def publish_zip(sites_dir: Path, slug: str, zip_path: Path, max_total: int) -> i
     try:
         count = extract_zip(zip_path, tmp, max_total)
         if count == 0:
-            raise JobFailed("archiwum jest puste")
+            raise JobFailed(tr("node.zip.empty"))
         swap_dir(site_dir(sites_dir, slug), tmp)
         return count
     finally:
@@ -174,7 +178,7 @@ def ensure_container(ctx: Any, job: Job | None = None) -> int:
             client.api.start(existing["Id"])
         return port
     if job:
-        job.log(f"Uruchamiam współdzielony serwer stron statycznych ({cfg.static_image}) na porcie {port}")
+        job.log(tr("node.static.starting", image=cfg.static_image, port=port))
     try:
         client.api.inspect_image(cfg.static_image)
     except Exception:  # noqa: BLE001 — brak obrazu lokalnie
@@ -232,5 +236,5 @@ def reload_or_rollback(ctx: Any, conf_path: Path, previous: str | None) -> None:
             conf_path.unlink(missing_ok=True)
         else:
             conf_path.write_text(previous, encoding="utf-8")
-        raise JobFailed(f"nginx odrzucił konfigurację strony:\n{output.strip()}")
+        raise JobFailed(tr("node.static.rejected", error=output.strip()))
     _exec(ctx.docker, container["Id"], ["nginx", "-s", "reload"])

@@ -11,6 +11,7 @@ from deployra_common.client import RemoteError
 
 from ..context import Panel, get_panel
 from ..deps import current_user
+from ..i18n import t
 from ..web import render
 
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -34,12 +35,12 @@ async def dashboard(request: Request, panel: Panel = Depends(get_panel)):
         "certs_warn": sum(1 for c in certs if c["status"] in ("expiring", "expired", "error", "missing")),
     }
     onboarding = [
-        {"done": bool(gateway), "title": "Połącz Deployra-WG", "text": "Hub WireGuard i nginx na VPS", "href": "/tunnel", "icon": "diagram-3"},
-        {"done": stats["nodes_paired"] > 0, "title": "Dodaj węzeł", "text": "Domowy serwer z Dockerem", "href": "/nodes/add", "icon": "hdd-network"},
-        {"done": stats["apps"] > 0, "title": "Wdróż aplikację", "text": "Obraz, compose, strona albo Git", "href": "/apps/new", "icon": "rocket-takeoff"},
+        {"done": bool(gateway), "title": t("onboarding.gateway"), "text": t("onboarding.gateway_text"), "href": "/tunnel", "icon": "diagram-3"},
+        {"done": stats["nodes_paired"] > 0, "title": t("nodes.add"), "text": t("onboarding.node_text"), "href": "/nodes/add", "icon": "hdd-network"},
+        {"done": stats["apps"] > 0, "title": t("onboarding.app"), "text": t("onboarding.app_text"), "href": "/apps/new", "icon": "rocket-takeoff"},
     ]
     return render(
-        request, "dashboard.html", title="Pulpit", stats=stats, nodes=nodes, apps=apps[-6:][::-1], gateway=gateway,
+        request, "dashboard.html", title=t("nav.dashboard"), stats=stats, nodes=nodes, apps=apps[-6:][::-1], gateway=gateway,
         onboarding=onboarding, jobs=panel.jobs.list()[:6],
     )  # fmt: skip
 
@@ -52,7 +53,7 @@ async def tunnel_card(request: Request, panel: Panel = Depends(get_panel)):
         try:
             status = await asyncio.wait_for(client.get("/api/status"), timeout=8)
         except (RemoteError, httpx.HTTPError, asyncio.TimeoutError) as exc:
-            error = getattr(exc, "detail", None) or "bramka nie odpowiada"
+            error = getattr(exc, "detail", None) or t("msg.gateway_not_responding")
     return render(request, "partials/tunnel_card.html", gw=status, error=error, gateway=panel.gateway())
 
 

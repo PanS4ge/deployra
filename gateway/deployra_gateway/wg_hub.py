@@ -9,6 +9,7 @@ from typing import Any
 from loguru import logger
 
 from deployra_common import wg
+from deployra_common.i18n import tr
 from deployra_common.schemas import TunnelConfig
 
 
@@ -64,22 +65,22 @@ class Hub:
     def add_peer(self, peer_id: str, kind: str, name: str, public_key: str, lan_subnets: list[str] | None = None) -> str:
         """Dodaje (lub aktualizuje) peera i zwraca jego adres w tunelu."""
         if not wg.valid_key(public_key):
-            raise ValueError("zły klucz publiczny WireGuard")
+            raise ValueError(tr("srv.wg.bad_peer_key"))
         lan = [str(ipaddress.ip_network(s, strict=False)) for s in lan_subnets or []]
         tunnel = ipaddress.ip_network(self.config.wg_subnet)
         for subnet in lan:
             if ipaddress.ip_network(subnet).overlaps(tunnel):
-                raise ValueError(f"podsieć {subnet} nachodzi na podsieć tunelu")
+                raise ValueError(tr("gw.subnet_overlap", subnet=subnet))
 
         def change(peers: dict) -> dict:
             for other_id, other in peers.items():
                 if other_id != peer_id and other["public_key"] == public_key:
-                    raise ValueError("ten klucz jest już przypisany do innego peera")
+                    raise ValueError(tr("gw.key_taken"))
                 if other_id != peer_id:
                     for subnet in lan:
                         for existing in other.get("lan_subnets", []):
                             if ipaddress.ip_network(subnet).overlaps(ipaddress.ip_network(existing)):
-                                raise ValueError(f"podsieć {subnet} jest już routowana przez {other.get('name')}")
+                                raise ValueError(tr("gw.subnet_routed", subnet=subnet, name=other.get("name")))
             current = peers.get(peer_id)
             address = current["address"] if current else wg.allocate_ip(
                 self.config.wg_subnet, [p["address"] for p in peers.values()]
@@ -110,10 +111,10 @@ class Hub:
 
     def up(self) -> bool:
         if not self.config.wg_enabled:
-            logger.warning("WireGuard wyłączony (DEPLOYRA_WG=off) — tryb deweloperski")
+            logger.warning(tr("gw.log.wg_off"))
             return False
         if not wg.WgControl.tools_available():
-            logger.error("Brak wireguard-tools — hub nie wystartuje")
+            logger.error(tr("gw.log.no_wg_tools"))
             return False
         self.control.write_conf(wg.render_quick(self.interface(), self.peers()))
         try:
@@ -121,7 +122,7 @@ class Hub:
         except RuntimeError as exc:
             logger.error(str(exc))
             return False
-        logger.success(f"Hub WireGuard działa: {self.config.hub_address} (UDP {self.config.wg_port})")
+        logger.success(tr("gw.log.hub_up", address=self.config.hub_address, port=self.config.wg_port))
         return True
 
     def sync(self) -> None:

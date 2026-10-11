@@ -16,6 +16,7 @@ from deployra_common.schemas import AppSpec, VolumeMount
 
 from ..context import Panel, get_panel
 from ..deps import current_user, require
+from ..i18n import t
 from ..permissions import Permission
 from ..services import deploy, relay
 from ..web import redirect, render, toast
@@ -33,7 +34,7 @@ def slugify(text: str) -> str:
 def _app(app_id: int, panel: Panel = Depends(get_panel)) -> dict:
     app = panel.db.get("apps", app_id)
     if not app:
-        raise HTTPException(404, "Nie ma takiej aplikacji")
+        raise HTTPException(404, t("msg.no_app"))
     return app
 
 
@@ -50,7 +51,7 @@ def _env(text: str) -> dict[str, str]:
     for line in _lines(text):
         key, sep, value = line.partition("=")
         if not sep:
-            raise ValueError(f"zmienna „{line}” — oczekiwano KLUCZ=wartość")
+            raise ValueError(t("msg.bad_env", line=line))
         out[key.strip()] = value.strip()
     return out
 
@@ -63,7 +64,7 @@ def _volumes(text: str) -> list[VolumeMount]:
         if target in ("ro", "rw") and ":" in source:
             ro, (source, _, target) = target == "ro", source.rpartition(":")
         if not sep:
-            raise ValueError(f"wolumen „{line}” — oczekiwano źródło:/ścieżka")
+            raise ValueError(t("msg.bad_volume", line=line))
         out.append(VolumeMount(source=source, target=target, read_only=ro))
     return out
 
@@ -122,14 +123,14 @@ def apps(request: Request, panel: Panel = Depends(get_panel)):
     from ..services import uptime
 
     stats = uptime.stats_for(panel, [("app", a["id"]) for a in rows])
-    return render(request, "apps/list.html", title="Aplikacje", apps=rows, stats=stats)
+    return render(request, "apps/list.html", title=t("nav.apps"), apps=rows, stats=stats)
 
 
 @router.get("/apps/new")
 def new_app(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):
     settings = panel.db.settings()
     return render(
-        request, "apps/new.html", title="Nowa aplikacja", nodes=_nodes(panel), base_domain=settings.get("base_domain", ""),
+        request, "apps/new.html", title=t("apps.new"), nodes=_nodes(panel), base_domain=settings.get("base_domain", ""),
         has_cf=bool(settings.get("cloudflare_token")), has_gateway=bool(panel.gateway()),
     )  # fmt: skip
 
@@ -141,7 +142,7 @@ async def create_app(request: Request, panel: Panel = Depends(get_panel), user: 
     slug = slugify(str(form.get("slug") or name))
     node = panel.node(int(form.get("node_id") or 0))
     if not node or node["status"] != "paired":
-        return toast("Wybierz sparowany węzeł", "err", status=400)
+        return toast(t("msg.pick_paired_node"), "err", status=400)
     try:
         spec, options = spec_from_form(form, slug)
         app_id = deploy.create_app_row(panel, name or slug, node["id"], spec, options)
@@ -149,7 +150,7 @@ async def create_app(request: Request, panel: Panel = Depends(get_panel), user: 
         return toast(_errors(exc), "err", status=400)
     app = panel.db.get("apps", app_id)
     job = start_deploy(panel, app)
-    panel.notify(f"{user['email']} wdraża aplikację {slug} na {node['name']}")
+    panel.notify(t("msg.notify_deploying", user=user["email"], slug=slug, node=node["name"]))
     return redirect(request, f"/apps/{app_id}?job={job.id}")
 
 
@@ -183,7 +184,7 @@ def app_page(request: Request, job: str = "", app: dict = Depends(_app), panel: 
 async def redeploy(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
              user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):  # fmt: skip
     if app["status"] == "deploying" and panel.jobs.get(app.get("last_job") or "") and not panel.jobs.get(app["last_job"]).done:
-        return toast("Wdrożenie już trwa", "warn", status=409)
+        return toast(t("msg.deploy_running"), "warn", status=409)
     job = start_deploy(panel, app)
     return redirect(request, f"/apps/{app['id']}?job={job.id}")
 
@@ -210,20 +211,20 @@ async def remove(request: Request, app: dict = Depends(_app), panel: Panel = Dep
                  user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_DELETE))):  # fmt: skip
     form = await request.form()
     delete_data = bool(form.get("delete_data"))
-    job = panel.jobs.start("remove", f"Usuwanie {app['slug']}", lambda job: deploy.remove(panel, job, app["id"], delete_data))
+    job = panel.jobs.start("remove", t("jobs.title_remove", name=app["slug"]), lambda job: deploy.remove(panel, job, app["id"], delete_data))
     from ..services import uptime
 
     uptime.remove_for(panel, "app", app["id"])
-    return redirect(request, f"/jobs/{job.id}", f"Usuwam {app['slug']}…")
+    return redirect(request, f"/jobs/{job.id}", t("msg.removing", slug=app["slug"]))
 
 
 @router.post("/apps/{app_id}/upload")
 async def upload(request: Request, file: UploadFile, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
                  user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
     if app["kind"] not in ("static", "git"):
-        return toast("Upload plików działa dla stron statycznych", "err", status=400)
+        return toast(t("msg.upload_static_only"), "err", status=400)
     if not (file.filename or "").lower().endswith(".zip"):
-        return toast("Wgraj archiwum .zip", "err", status=400)
+        return toast(t("msg.upload_zip"), "err", status=400)
     fd, tmp = tempfile.mkstemp(suffix=".zip", dir=panel.config.data_dir / "uploads")
     size = 0
     try:
@@ -231,13 +232,13 @@ async def upload(request: Request, file: UploadFile, app: dict = Depends(_app), 
             while chunk := await file.read(1 << 20):
                 size += len(chunk)
                 if size > MAX_UPLOAD:
-                    return toast("Plik jest za duży (max 1 GB)", "err", status=413)
+                    return toast(t("msg.file_too_big_gb"), "err", status=413)
                 out.write(chunk)
         node = panel.node(app["node_id"])
         result = await panel.node_client(node).upload_file(f"/api/apps/{app['slug']}/upload", tmp)
     finally:
         os.unlink(tmp)
-    return toast(f"Opublikowano {result.get('files', 0)} plików ✔")
+    return toast(t("msg.published_files", count=result.get("files", 0)))
 
 
 @router.get("/apps/{app_id}/edit")
@@ -245,7 +246,7 @@ def edit_page(request: Request, app: dict = Depends(_app), panel: Panel = Depend
               user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
     spec, options = deploy.load(panel, app)
     settings = panel.db.settings()
-    return render(request, "apps/edit.html", title=f"Ustawienia · {app['name']}", app=app, spec=spec, options=options,
+    return render(request, "apps/edit.html", title=t("msg.title_app_settings", name=app["name"]), app=app, spec=spec, options=options,
                   node=panel.node(app["node_id"]), has_cf=bool(settings.get("cloudflare_token")))  # fmt: skip
 
 
@@ -257,19 +258,19 @@ async def edit(request: Request, app: dict = Depends(_app), panel: Panel = Depen
     try:
         spec, options = spec_from_form(form, app["slug"], old_spec)
         if spec.endpoint != old_spec.endpoint:
-            raise ValueError("zmiana endpointu wymaga usunięcia i ponownego utworzenia aplikacji")
+            raise ValueError(t("msg.endpoint_change"))
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc), "err", status=400)
     panel.db.update("apps", app["id"], name=str(form.get("name") or app["name"])[:60], spec=deploy.store(panel, spec, options),
                     domains=spec.domains)  # fmt: skip
     if form.get("deploy"):
         job = start_deploy(panel, panel.db.get("apps", app["id"]))
-        return redirect(request, f"/apps/{app['id']}?job={job.id}", "Zapisano — wdrażam")
-    return redirect(request, f"/apps/{app['id']}", "Zapisano. Zmiany zadziałają po ponownym wdrożeniu.")
+        return redirect(request, f"/apps/{app['id']}?job={job.id}", t("msg.saved_deploying"))
+    return redirect(request, f"/apps/{app['id']}", t("msg.saved_redeploy"))
 
 
 @router.post("/apps/{app_id}/webhook/rotate")
 def rotate_webhook(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
                    user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
     panel.db.update("apps", app["id"], webhook_secret=panel.sealer.seal(secrets.token_urlsafe(24)))
-    return redirect(request, f"/apps/{app['id']}", "Wygenerowano nowy sekret webhooka — zaktualizuj go w repozytorium")
+    return redirect(request, f"/apps/{app['id']}", t("msg.webhook_rotated"))
