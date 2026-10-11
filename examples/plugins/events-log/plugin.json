@@ -1,0 +1,12 @@
+{
+  "id": "events-log",
+  "name": {"pl": "Dziennik zdarzeń", "en": "Event log"},
+  "version": "1.0.0",
+  "author": "Deployra",
+  "description": {
+    "pl": "Ostatnie zdarzenia panelu na jednej stronie i opcjonalny webhook (Discord, ntfy, n8n…).",
+    "en": "Recent panel events on one page and an optional webhook (Discord, ntfy, n8n…)."
+  },
+  "requires": "1.0.0",
+  "entry": "plugin.py"
+}

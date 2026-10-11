@@ -127,11 +127,13 @@ def apps(request: Request, panel: Panel = Depends(get_panel)):
 
 
 @router.get("/apps/new")
-def new_app(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):
+def new_app(request: Request, template: str = "", panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):
     settings = panel.db.settings()
+    prefill = panel.plugins.app_template(template) if template else None
     return render(
         request, "apps/new.html", title=t("apps.new"), nodes=_nodes(panel), base_domain=settings.get("base_domain", ""),
-        has_cf=bool(settings.get("cloudflare_token")), has_gateway=bool(panel.gateway()),
+        has_cf=bool(settings.get("cloudflare_token")), has_gateway=bool(panel.gateway()), prefill=prefill,
+        app_templates=panel.plugins.app_templates(), template=template,
     )  # fmt: skip
 
 

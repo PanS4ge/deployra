@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty %}
+{% block content %}
+<div class="card">
+  <div class="card-head"><h3><i class="bi bi-send"></i> Webhook</h3></div>
+  <form class="card-body row" style="gap: 8px; flex-wrap: wrap" hx-post="/plugins/events-log/webhook" hx-swap="none">
+    <input class="input mono" style="flex: 1; min-width: 220px" name="url" value="{{ webhook }}" placeholder="https://ntfy.sh/…">
+    <button class="btn"><i class="bi bi-check2"></i> {{ t("common.save") }}</button>
+    <button class="btn ghost" type="button" hx-post="/plugins/events-log/test" hx-swap="none">{{ t("plugin.events-log.test") }}</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-head"><h3><i class="bi bi-journal-text"></i> {{ t("plugin.events-log.title") }}</h3></div>
+  {% if events %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>{{ t("plugin.events-log.when") }}</th><th>{{ t("plugin.events-log.event") }}</th><th></th></tr></thead>
+      <tbody>
+      {% for e in events %}
+        <tr>
+          <td class="nowrap small">{{ e.ts | dt }}</td>
+          <td class="mono small">{{ e.event }}</td>
+          <td class="small">
+            {% if e.app %}{{ e.app.name }}{% elif e.monitor %}{{ e.monitor.name }}{% elif e.node %}{{ e.node.name }}{% elif e.version %}{{ e.version }}{% endif %}
+            {% if e.message or e.error %}<span class="muted">{{ e.message or e.error }}</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}{{ empty("journal", t("plugin.events-log.empty")) }}{% endif %}
+</div>
+{% endblock %}

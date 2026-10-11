@@ -37,6 +37,7 @@ Public traffic takes **a single hop**: `nginx on the gateway → wg0 → node �
 | **Uptime** (à la Uptime Kuma) | monitors for apps, containers, nodes and URLs, 24 h / 7 d / 30 d uptime, notifications (panel, Discord, ntfy, Slack) |
 | **Panel** | FastAPI + Jinja2 + htmx + Alpine (no build step), dark cosmic theme, users and permissions, SQLite or MySQL/MariaDB |
 | **Languages** | Polish and English — every user picks their own in the account menu; a new language is a single JSON file |
+| **Plugins** | app templates for the wizard (Uptime Kuma, Vaultwarden, Gitea, n8n, Grafana, WordPress… built in), language packs, Python code with its own pages and event handlers |
 | **Updates** | the panel checks for releases, shows an “Update available” banner and on “Update” replaces nodes, the gateway and itself in the background (or does it on its own if you enable auto-update) |
 
 ## Quick start
@@ -119,7 +120,7 @@ Code and templates only contain keys (`t("nodes.add")`); the texts live in langu
 - `shared/deployra_common/locales/<lang>.json` — the gateway, nodes and shared code (validation, pairing).
 
 New language: copy both `en.json` files to e.g. `de.json` and translate the values — the panel adds it to the switcher by itself.
-Missing keys fall back to Polish. `frontend/tests/test_i18n.py` checks that the packs have the same keys and parameters, and that no page
+A language can also come as a [plugin](docs/plugins.md#languages). Missing keys fall back to English, then Polish. `frontend/tests/test_i18n.py` checks that the packs have the same keys and parameters, and that no page
 rendered in English contains Polish letters.
 
 ## Traffic & security
@@ -135,6 +136,21 @@ The gateway counts requests per IP from the same nginx logs as the visit statist
 - **auto-ban** (off by default) for addresses above the threshold, with an allowlist of addresses that are never banned.
 
 Raw IPs are kept for 7 days (`DEPLOYRA_IP_RETENTION_DAYS`) — an IP address is personal data.
+
+## Plugins
+
+**Settings → Plugins** lists the plugins, enables and disables them and installs new ones from a ZIP. A plugin is a directory with
+`plugin.json` in `<DEPLOYRA_DATA>/plugins/` and can add:
+
+- app templates to the wizard — the built-in *App catalog* brings Uptime Kuma, Vaultwarden, Gitea, n8n, Grafana, File Browser
+  and WordPress + MariaDB, with `${RANDOM}` secrets generated on the spot;
+- language packs, including new languages;
+- Python code: pages with menu entries, handlers for events (deployed, failed, monitor down, new version, every notification…)
+  and its own settings.
+
+Uploaded plugins start disabled, and code plugins can only be enabled by users with the risky settings permission — plugin code runs
+with the panel's privileges. Reference and examples: [docs/plugins.md](docs/plugins.md), [examples/plugins/events-log](examples/plugins/events-log)
+(an event log with a webhook).
 
 ## Moving off Portainer and NPM
 

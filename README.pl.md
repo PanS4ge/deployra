@@ -37,6 +37,7 @@ Ruch publiczny idzie **jednym skokiem**: `nginx na bramce → wg0 → węzeł �
 | **Uptime** (à la Uptime Kuma) | monitory aplikacji, kontenerów, węzłów i URL, uptime 24 h / 7 dni / 30 dni, powiadomienia (panel, Discord, ntfy, Slack) |
 | **Panel** | FastAPI + Jinja2 + htmx + Alpine (bez NiceGUI, bez kroku build), ciemny kosmiczny motyw, użytkownicy i uprawnienia, SQLite albo MySQL/MariaDB |
 | **Języki** | polski i angielski — każdy użytkownik wybiera swój w menu konta; nowy język to jeden plik JSON |
+| **Pluginy** | szablony aplikacji do kreatora (wbudowane: Uptime Kuma, Vaultwarden, Gitea, n8n, Grafana, WordPress…), paczki językowe, kod Pythona z własnymi stronami i obsługą zdarzeń |
 | **Aktualizacje** | panel sprawdza wydania, pokazuje baner „Dostępna aktualizacja” i na „Aktualizuj” podmienia w tle węzły, bramkę i siebie (albo robi to sam, jeśli włączysz automat) |
 
 ## Szybki start
@@ -116,8 +117,8 @@ W kodzie i szablonach są tylko klucze (`t("nodes.add")`), teksty leżą w paczk
 - `frontend/deployra_panel/locales/<język>.json` — panel,
 - `shared/deployra_common/locales/<język>.json` — bramka, węzeł i wspólny kod (walidacja, parowanie).
 
-Nowy język: skopiuj oba `en.json` jako np. `de.json` i przetłumacz wartości — panel sam doda go do przełącznika. Brakujące klucze
-spadają na polski. Test `frontend/tests/test_i18n.py` pilnuje, żeby paczki miały te same klucze i parametry, a każda strona
+Nowy język: skopiuj oba `en.json` jako np. `de.json` i przetłumacz wartości — panel sam doda go do przełącznika. Język może też
+przyjść jako [plugin](docs/plugins.pl.md#języki). Brakujące klucze spadają na angielski, a potem na polski. Test `frontend/tests/test_i18n.py` pilnuje, żeby paczki miały te same klucze i parametry, a każda strona
 wyrenderowana po angielsku nie zawierała polskich liter.
 
 ## Ruch i bezpieczeństwo
@@ -133,6 +134,21 @@ Bramka liczy zapytania per adres IP z tych samych logów nginx co statystyki odw
 - **auto-ban** (domyślnie wyłączony) dla adresów ponad progiem, z białą listą adresów, których nigdy nie banujemy.
 
 Surowe adresy IP trzymamy 7 dni (`DEPLOYRA_IP_RETENTION_DAYS`) — adres IP to dana osobowa.
+
+## Pluginy
+
+**Ustawienia → Pluginy** pokazują listę pluginów, włączają je i wyłączają oraz instalują nowe z ZIP. Plugin to katalog z
+`plugin.json` w `<DEPLOYRA_DATA>/plugins/` i może dodać:
+
+- szablony aplikacji do kreatora — wbudowany *Katalog aplikacji* ma Uptime Kumę, Vaultwardena, Giteę, n8n, Grafanę, File Browser
+  i WordPressa z MariaDB, a sekrety `${RANDOM}` losują się na miejscu;
+- paczki językowe, także nowe języki;
+- kod Pythona: strony z pozycją w menu, obsługę zdarzeń (wdrożenie, awaria, monitor w dół, nowa wersja, każde powiadomienie…)
+  i własne ustawienia.
+
+Wgrane pluginy startują wyłączone, a plugin z kodem może włączyć tylko ktoś z uprawnieniem do ryzykownych ustawień — kod pluginu
+działa z uprawnieniami panelu. Dokumentacja i przykład: [docs/plugins.pl.md](docs/plugins.pl.md),
+[examples/plugins/events-log](examples/plugins/events-log) (dziennik zdarzeń z webhookiem).
 
 ## Przesiadka z Portainera i NPM
 

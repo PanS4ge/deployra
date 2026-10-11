@@ -46,6 +46,7 @@ Zmienne w `deploy/.env` (obok plików compose):
 | `DEPLOYRA_NAME`, `DEPLOYRA_GATEWAY`, `DEPLOYRA_JOIN` | — | dołączanie węzła; gotowe wartości daje panel (Węzły → Dodaj węzeł) |
 | `DEPLOYRA_UPDATE_REPO` | `PanS4ge/deployra` | skąd panel sprawdza wydania |
 | `DEPLOYRA_LANG` | `pl` (panel: z przeglądarki) | język logów, stron dla odwiedzających i domyślny język panelu (`pl` / `en`) |
+| `DEPLOYRA_PLUGINS_DIR` | `<DEPLOYRA_DATA>/plugins` | panel: katalog pluginów ([docs/plugins.pl.md](../docs/plugins.pl.md)) |
 | `DEPLOYRA_GEOIP` | `on` | kraj i ISP adresów IP (bazy DB-IP Lite pobierane przez bramkę) |
 | `DEPLOYRA_IP_RETENTION_DAYS` | `7` | ile dni bramka trzyma surowe adresy IP |
 | `DEPLOYRA_BAN_FIREWALL` | `on` | bany także w ipset/iptables, nie tylko w nginx |

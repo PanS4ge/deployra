@@ -183,6 +183,7 @@ async def pair_node(panel: Any, node: dict, code: str | None = None) -> dict:
         info={"node_id": data.get("node_id"), "name": data.get("name")},
     )  # fmt: skip
     panel.notify(t("msg.node_paired", name=node["name"]), "ok")
+    panel.plugins.emit("node.paired", node={k: v for k, v in node.items() if k != "secret"})
     from . import uptime
 
     uptime.ensure_for(panel, "node", node["id"], node["name"], node["id"])

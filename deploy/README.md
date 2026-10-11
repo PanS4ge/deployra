@@ -46,6 +46,7 @@ Variables in `deploy/.env` (next to the compose files):
 | `DEPLOYRA_NAME`, `DEPLOYRA_GATEWAY`, `DEPLOYRA_JOIN` | — | joining a node; the panel gives you the values (Nodes → Add node) |
 | `DEPLOYRA_UPDATE_REPO` | `PanS4ge/deployra` | where the panel checks for releases |
 | `DEPLOYRA_LANG` | `pl` (panel: from the browser) | language of logs, visitor pages and the panel default (`pl` / `en`) |
+| `DEPLOYRA_PLUGINS_DIR` | `<DEPLOYRA_DATA>/plugins` | panel: plugin directory ([docs/plugins.md](../docs/plugins.md)) |
 | `DEPLOYRA_GEOIP` | `on` | country and ISP of IP addresses (DB-IP Lite databases, downloaded by the gateway) |
 | `DEPLOYRA_IP_RETENTION_DAYS` | `7` | how long the gateway keeps raw IP addresses |
 | `DEPLOYRA_BAN_FIREWALL` | `on` | bans also in ipset/iptables, not only in nginx |

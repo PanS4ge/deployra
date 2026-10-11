@@ -4,7 +4,7 @@
     t("jobs.started", name="web")           → „Wdrażam web” — parametry jako {name}
 
 Nowy język = skopiuj `en.json` jako `de.json` i przetłumacz wartości. Brakujący klucz
-spada na język domyślny (polski), a gdy i tam go nie ma — pokazuje się sam klucz.
+spada na angielski, potem na polski, a gdy i tam go nie ma — pokazuje się sam klucz.
 
 Bieżący język żyje w zmiennej kontekstowej: panel ustawia ją w middleware na każde
 żądanie, a do bramki i węzłów przekazuje nagłówkiem Accept-Language — dzięki temu
@@ -84,6 +84,8 @@ class Catalog:
     def raw(self, key: str, lang: str | None = None) -> str:
         lang = lang or current.get()
         text = self.pack(lang).get(key)
+        if text is None and lang not in (self.default, "en"):  # nowy język (np. z pluginu): najpierw angielski
+            text = self.pack("en").get(key)
         if text is None and lang != self.default:
             text = self.pack(self.default).get(key)
         return key if text is None else text

@@ -33,6 +33,11 @@ class Config:
     update_repo: str = field(default_factory=lambda: _env("DEPLOYRA_UPDATE_REPO", "PanS4ge/deployra"))  # owner/repo z wydaniami albo URL JSON
     update_dir: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_UPDATE_DIR", "/run/deployra-update")))
     update_checks: bool = field(default_factory=lambda: _flag("DEPLOYRA_UPDATE_CHECKS", True))  # pętla sprawdzania wydań
+    plugins_dir_env: str = field(default_factory=lambda: _env("DEPLOYRA_PLUGINS_DIR"))
+
+    @property
+    def plugins_dir(self) -> Path:
+        return Path(self.plugins_dir_env) if self.plugins_dir_env else self.data_dir / "plugins"
 
     def __post_init__(self) -> None:
         if not self.db_url:
@@ -41,6 +46,7 @@ class Config:
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         (self.data_dir / "uploads").mkdir(exist_ok=True)
+        self.plugins_dir.mkdir(parents=True, exist_ok=True)
         try:
             os.chmod(self.data_dir, 0o700)
         except OSError:

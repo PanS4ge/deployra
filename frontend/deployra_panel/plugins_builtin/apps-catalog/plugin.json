@@ -1,0 +1,87 @@
+{
+  "id": "apps-catalog",
+  "name": {"pl": "Katalog aplikacji", "en": "App catalog"},
+  "version": "1.0.0",
+  "author": "Deployra",
+  "description": {
+    "pl": "Szablony popularnych aplikacji w kreatorze",
+    "en": "Popular app templates for the wizard"
+  },
+  "app_templates": [
+    {
+      "id": "uptime-kuma",
+      "name": "Uptime Kuma",
+      "description": {"pl": "Monitoring stron i usług z ładnymi statusami", "en": "Website and service monitoring with status pages"},
+      "icon": "activity",
+      "image": "louislam/uptime-kuma:1",
+      "container_port": 3001,
+      "volumes": ["uptime-kuma:/app/data"],
+      "memory_mb": 256
+    },
+    {
+      "id": "vaultwarden",
+      "name": "Vaultwarden",
+      "description": {"pl": "Lekki serwer haseł zgodny z Bitwarden", "en": "Lightweight Bitwarden-compatible password server"},
+      "icon": "key",
+      "image": "vaultwarden/server:latest",
+      "container_port": 80,
+      "env": {"SIGNUPS_ALLOWED": "false", "ADMIN_TOKEN": "${RANDOM}"},
+      "volumes": ["vaultwarden:/data"],
+      "memory_mb": 128
+    },
+    {
+      "id": "gitea",
+      "name": "Gitea",
+      "description": {"pl": "Własny GitHub: repozytoria, PR-y, issue", "en": "Self-hosted GitHub: repositories, PRs, issues"},
+      "icon": "git",
+      "image": "gitea/gitea:latest",
+      "container_port": 3000,
+      "env": {"USER_UID": "1000", "USER_GID": "1000"},
+      "volumes": ["gitea:/data"],
+      "memory_mb": 256
+    },
+    {
+      "id": "n8n",
+      "name": "n8n",
+      "description": {"pl": "Automatyzacje i integracje bez kodu", "en": "No-code automations and integrations"},
+      "icon": "diagram-2",
+      "image": "n8nio/n8n:latest",
+      "container_port": 5678,
+      "env": {"N8N_SECURE_COOKIE": "false", "GENERIC_TIMEZONE": "Europe/Warsaw"},
+      "volumes": ["n8n:/home/node/.n8n"],
+      "memory_mb": 512
+    },
+    {
+      "id": "grafana",
+      "name": "Grafana",
+      "description": {"pl": "Wykresy i dashboardy", "en": "Charts and dashboards"},
+      "icon": "graph-up",
+      "image": "grafana/grafana-oss:latest",
+      "container_port": 3000,
+      "env": {"GF_SECURITY_ADMIN_PASSWORD": "${RANDOM}"},
+      "volumes": ["grafana:/var/lib/grafana"],
+      "memory_mb": 256
+    },
+    {
+      "id": "filebrowser",
+      "name": "File Browser",
+      "description": {"pl": "Pliki serwera w przeglądarce", "en": "Server files in the browser"},
+      "icon": "folder2-open",
+      "image": "filebrowser/filebrowser:latest",
+      "container_port": 80,
+      "volumes": ["filebrowser-data:/srv"],
+      "memory_mb": 64
+    },
+    {
+      "id": "wordpress",
+      "name": "WordPress",
+      "description": {"pl": "WordPress + MariaDB (docker-compose)", "en": "WordPress + MariaDB (docker-compose)"},
+      "icon": "wordpress",
+      "kind": "compose",
+      "expose_service": "wordpress",
+      "container_port": 80,
+      "env": {"DB_PASSWORD": "${RANDOM}"},
+      "compose": "services:\n  wordpress:\n    image: wordpress:6\n    restart: unless-stopped\n    environment:\n      WORDPRESS_DB_HOST: db\n      WORDPRESS_DB_USER: wordpress\n      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}\n      WORDPRESS_DB_NAME: wordpress\n    volumes:\n      - wp-content:/var/www/html\n    depends_on: [db]\n  db:\n    image: mariadb:11\n    restart: unless-stopped\n    environment:\n      MARIADB_DATABASE: wordpress\n      MARIADB_USER: wordpress\n      MARIADB_PASSWORD: ${DB_PASSWORD}\n      MARIADB_RANDOM_ROOT_PASSWORD: \"1\"\n    volumes:\n      - wp-db:/var/lib/mysql\nvolumes:\n  wp-content:\n  wp-db:\n"
+    }
+  ]
+}

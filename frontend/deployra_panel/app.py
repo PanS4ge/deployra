@@ -44,6 +44,7 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
         panel.db.execute("UPDATE apps SET status = 'error', last_error = ? WHERE status = 'deploying'", [i18n.t("msg.deploy_interrupted")])
         panel.db.execute("UPDATE certificates SET status = 'error', error = ? WHERE status = 'issuing'", [i18n.t("msg.cert_interrupted")])
         await run_in_threadpool(updates.finish_pending, panel)
+        panel.plugins.start(app)
         tasks = []
         if panel.config.monitoring:
             tasks.append(asyncio.create_task(uptime.loop(panel)))
@@ -138,9 +139,13 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
     def healthz() -> dict:
         return {"ok": True}
 
+    from .plugins import static_route
     from .routes import register
+    from .web import plugin_templates
 
+    plugin_templates.manager = panel.plugins
     register(app)
+    app.include_router(static_route(panel.plugins))
     return app
 
 

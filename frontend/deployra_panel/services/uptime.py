@@ -246,6 +246,7 @@ async def notify_change(panel: Any, monitor: dict, status: str, message: str) ->
     state = t("uptime.msg.up" if status == "up" else "uptime.msg.down")
     text = f"{icon} {t('uptime.kind.' + monitor['kind'])} {monitor['name']}: {state} — {message}"
     panel.notify(text, "ok" if status == "up" else "err")
+    panel.plugins.emit("monitor.up" if status == "up" else "monitor.down", monitor=monitor, message=message)
     url = (panel.db.setting("notify_webhook") or "").strip()
     if not url:
         return

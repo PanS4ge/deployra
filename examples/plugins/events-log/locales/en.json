@@ -1,0 +1,15 @@
+{
+  "plugin": {
+    "events-log": {
+      "title": "Event log",
+      "when": "When",
+      "event": "Event",
+      "empty": "Quiet so far",
+      "test": "Send a test",
+      "test_message": "Event log plugin test",
+      "test_sent": "Test event sent",
+      "saved": "Webhook saved",
+      "bad_url": "The address must start with http:// or https://"
+    }
+  }
+}

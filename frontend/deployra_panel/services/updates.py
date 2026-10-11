@@ -142,6 +142,7 @@ async def check(panel: Any, transport: httpx.AsyncBaseTransport | None = None) -
     if version and is_newer(version, __version__) and panel.db.setting("update_notified") != version:
         panel.notify(t("upd.notify_available", version=version, current=__version__), "info")
         panel.db.set_setting("update_notified", version)
+        panel.plugins.emit("update.available", version=version, current=__version__, release=result)
     return result
 
 

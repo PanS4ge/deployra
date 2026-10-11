@@ -31,6 +31,9 @@ class Panel:
         self.jobs = JobRegistry()
         self.updates = UpdateAgent(config.update_dir)
         self.default_language: str | None = self.db.setting("language") or config.language or None  # odświeżane przy zapisie ustawień
+        from .plugins import PluginManager
+
+        self.plugins = PluginManager(self, config.plugins_dir)
         self._clients: dict[str, tuple[str, SignedClient]] = {}
 
     # --- użytkownicy ----------------------------------------------------------------
@@ -45,6 +48,7 @@ class Panel:
         self.db.execute(
             "DELETE FROM notifications WHERE id NOT IN (SELECT id FROM (SELECT id FROM notifications ORDER BY id DESC LIMIT 100) AS keep)"
         )
+        self.plugins.emit("notification", message=message, level=level)
 
     # --- klienci HTTP -----------------------------------------------------------------
 

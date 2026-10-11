@@ -14,6 +14,7 @@ from urllib.parse import quote
 from fastapi import Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from jinja2 import BaseLoader, ChoiceLoader, TemplateNotFound
 from markupsafe import Markup
 
 from . import NAME, __version__
@@ -23,6 +24,23 @@ from .permissions import LABELS, Permission, has
 BASE = Path(__file__).parent
 _EP = re.compile(r"^(local|ct-\d{1,9})$")
 templates = Jinja2Templates(directory=str(BASE / "templates"))
+
+
+class _PluginTemplates(BaseLoader):
+    """Szablony pluginów ("plugins/<id>/…") — menedżer podpina create_app."""
+
+    manager: Any = None
+
+    def get_source(self, environment: Any, template: str) -> Any:
+        if self.manager is None:
+            raise TemplateNotFound(template)
+        from .plugins import PluginTemplateLoader
+
+        return PluginTemplateLoader(self.manager).get_source(environment, template)
+
+
+plugin_templates = _PluginTemplates()
+templates.env.loader = ChoiceLoader([templates.env.loader, plugin_templates])
 
 
 def human_bytes(value: Any) -> str:
@@ -107,6 +125,8 @@ def tojson_attr(value: Any) -> Markup:
 
 
 templates.env.filters.update(pct=pct, bytes=human_bytes, ago=ago, dt=dt, duration=duration, jsonattr=tojson_attr, flag=flag)
+
+
 def update_offer(panel: Any) -> dict | None:
     from .services import updates  # leniwie: serwis importuje httpx
 

@@ -1,0 +1,15 @@
+{
+  "plugin": {
+    "events-log": {
+      "title": "Dziennik zdarzeń",
+      "when": "Kiedy",
+      "event": "Zdarzenie",
+      "empty": "Na razie cisza",
+      "test": "Wyślij test",
+      "test_message": "Test pluginu Dziennik zdarzeń",
+      "test_sent": "Wysłano zdarzenie testowe",
+      "saved": "Zapisano webhook",
+      "bad_url": "Adres musi zaczynać się od http:// albo https://"
+    }
+  }
+}

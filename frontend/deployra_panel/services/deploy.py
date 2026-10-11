@@ -109,10 +109,12 @@ async def run(panel: Any, job: Job, app_id: int) -> dict:
             await _check(panel, job, node, host_port, app["domains"][0], upstream_host)
         panel.db.update("apps", app_id, status="running", last_deploy_at=now())
         job.log(t("deploy.done"))
+        panel.plugins.emit("app.deployed", app=panel.db.get("apps", app_id), job=job.id)
         return {"host_port": host_port}
     except (JobFailed, RemoteError, httpx.HTTPError, LookupError) as exc:
         message = getattr(exc, "detail", None) or str(exc) or type(exc).__name__
         panel.db.update("apps", app_id, status="error", last_error=message)
+        panel.plugins.emit("app.failed", app=panel.db.get("apps", app_id), job=job.id, error=message)
         raise JobFailed(message) from exc
 
 
@@ -160,3 +162,4 @@ async def remove(panel: Any, job: Job, app_id: int, delete_data: bool) -> None:
         await _push(panel, job)
     panel.db.delete("apps", app_id)
     job.log(t("deploy.removed", slug=app["slug"]))
+    panel.plugins.emit("app.removed", app=app)
