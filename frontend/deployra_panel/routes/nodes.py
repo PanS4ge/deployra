@@ -56,8 +56,10 @@ async def invite(
     node_id, token = await sync.invite_node(panel, name, subnets, max(5, min(ttl, 7 * 24 * 60)))
     gateway = panel.gateway()
     node = panel.node(node_id)
-    snippet = sync.compose_snippet(gateway, token, node["name"], panel.db.setting("backend_image", "deployra-backend:latest"))
-    return render(request, "nodes/invite.html", title=f"Dołącz węzeł {node['name']}", node=node, token=token, snippet=snippet, gateway=gateway)
+    snippet = sync.compose_snippet(gateway, token, node["name"], panel.db.setting("image_prefix") or sync.DEFAULT_IMAGES)
+    env = sync.env_snippet(gateway, token, node["name"])
+    return render(request, "nodes/invite.html", title=f"Dołącz węzeł {node['name']}", node=node, token=token, snippet=snippet,
+                  gateway=gateway, env=env)  # fmt: skip
 
 
 @router.post("/nodes/direct")

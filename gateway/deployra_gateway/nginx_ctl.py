@@ -16,6 +16,31 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MANAGED = ("http", "stream", "access")
+BASE_FILES = ("nginx.conf", "deployra-reloader.sh")
+
+
+def install_base(nginx_dir: Path, bundle: Path) -> bool:
+    """Kopiuje nginx.conf i skrypt przeładowania z obrazu bramki do wspólnego wolumenu (`base/`).
+
+    Kontener nginx czyta je stamtąd, więc nowa wersja bramki przynosi swoją konfigurację
+    bez montowania plików z repozytorium. Zwraca True, gdy coś się zmieniło.
+    """
+    target = nginx_dir / "base"
+    target.mkdir(parents=True, exist_ok=True)
+    changed = False
+    for name in BASE_FILES:
+        source = bundle / name
+        if not source.is_file():
+            raise FileNotFoundError(f"brak {source} — obraz bramki jest niekompletny")
+        content = source.read_bytes().replace(b"\r\n", b"\n")
+        current = target / name
+        if current.exists() and current.read_bytes() == content:
+            continue
+        tmp = target / f".{name}.tmp"
+        tmp.write_bytes(content)
+        tmp.replace(current)
+        changed = True
+    return changed
 
 
 @dataclass

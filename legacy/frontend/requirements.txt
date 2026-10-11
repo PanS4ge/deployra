@@ -1,6 +1,0 @@
-loguru
-fastapi
-pyjwt[crypto]
-nicegui
-PyCryptodome
-uvicorn

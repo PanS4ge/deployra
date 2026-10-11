@@ -8,7 +8,7 @@ import sys
 import uvicorn
 from loguru import logger
 
-from . import NAME, __version__, nginx_driver
+from . import NAME, __version__, nginx_ctl, nginx_driver
 from .app import create_api_app, create_bootstrap_app
 from .config import Config
 from .context import Context
@@ -49,6 +49,8 @@ def main() -> None:
         logger.critical("Ustaw DEPLOYRA_PUBLIC_HOST (publiczny adres/IP tego VPS) — węzły muszą wiedzieć, dokąd się łączyć")
         sys.exit(2)
 
+    if nginx_ctl.install_base(config.nginx_dir, config.nginx_bundle):
+        logger.info("Zaktualizowano bazową konfigurację nginx (nginx.conf z obrazu bramki)")
     nginx_driver.write_snippets(config.nginx_dir)
     wg_up = ctx.hub.up()
     result = ctx.apply_proxy()

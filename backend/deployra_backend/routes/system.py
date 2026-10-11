@@ -9,6 +9,8 @@ import subprocess
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.sse import EventSourceResponse
+from loguru import logger
+from pydantic import BaseModel
 
 from deployra_common.jobs import Job
 
@@ -91,6 +93,27 @@ def info(ctx: Context = Depends(get_ctx)) -> dict:
         else None,
         **VitalsSampler.static_info(),
     }
+
+
+class UpdateRequest(BaseModel):
+    version: str
+
+
+@router.get("/update")
+def update_status(log: int = 0, ctx: Context = Depends(get_ctx)) -> dict:
+    return {"service": NAME, "version": __version__, **ctx.updates.info(max(0, min(log, 400)))}
+
+
+@router.post("/update")
+def update_start(body: UpdateRequest, ctx: Context = Depends(get_ctx)) -> dict:
+    try:
+        info = ctx.updates.request(body.version)
+    except LookupError as exc:
+        raise HTTPException(409, str(exc)) from None
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
+    logger.info(f"Zlecono aktualizację węzła do {info['target']} ({info['mode']})")
+    return {"service": NAME, "version": __version__, **info}
 
 
 @router.get("/endpoints")

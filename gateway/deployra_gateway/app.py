@@ -80,6 +80,10 @@ class TunnelToken(BaseModel):
     token: str | None = None
 
 
+class UpdateRequest(BaseModel):
+    version: str
+
+
 class CheckRequest(BaseModel):
     url: str
     host: str | None = None
@@ -150,6 +154,16 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
             "cloudflared": ctx.cloudflared.status(),
             "analytics": {"enabled": ctx.config.analytics, "received": ctx.analytics.received},
         }
+
+    @router.get("/update")
+    def update_status(log: int = 0, ctx: Context = Depends(get_ctx)) -> dict:
+        return {"service": NAME, "version": __version__, **ctx.updates.info(max(0, min(log, 400)))}
+
+    @router.post("/update")
+    def update_start(body: UpdateRequest, ctx: Context = Depends(get_ctx)) -> dict:
+        info = ctx.updates.request(body.version)
+        logger.info(f"Zlecono aktualizację bramki do {info['target']}")
+        return {"service": NAME, "version": __version__, **info}
 
     @router.get("/analytics")
     def analytics_daily(days: int = 30, domains: str = "", ctx: Context = Depends(get_ctx)) -> dict:

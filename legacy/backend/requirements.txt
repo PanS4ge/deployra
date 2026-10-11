@@ -1,7 +1,0 @@
-loguru
-psutil
-fastapi
-fastapi[standard]
-docker
-uvicorn
-nginx-config-builder

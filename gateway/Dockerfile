@@ -25,7 +25,11 @@ RUN apk add --no-cache --virtual .build build-base libffi-dev \
     && apk del .build
 
 COPY gateway/deployra_gateway ./deployra_gateway
+# nginx.conf i skrypt przeładowania — bramka kopiuje je przy starcie do wolumenu, z którego czyta kontener nginx
+COPY gateway/nginx /opt/deployra/nginx
 RUN python -m compileall -q /app/deployra_gateway
+
+LABEL deployra.component=gateway
 
 ENV PYTHONUNBUFFERED=1 \
     DEPLOYRA_DATA=/var/lib/deployra-wg

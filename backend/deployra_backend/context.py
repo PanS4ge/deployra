@@ -13,6 +13,7 @@ from deployra_common.jobs import JobRegistry
 from deployra_common.server import SignatureGuard
 
 from .config import Config
+from .services.native_update import update_agent
 from .services.endpoints import EndpointRegistry
 from .services.vitals import VitalsSampler
 from .state import State
@@ -58,6 +59,7 @@ class Context:
         from .enroll import PairingGate
 
         self.pair_gate = PairingGate()
+        self.updates = update_agent(config)
 
     def _lookup(self, key_id: str) -> bytes | None:
         return self.state.secret if key_id == "panel" else None

@@ -17,6 +17,8 @@ def config(tmp_path, monkeypatch):
     monkeypatch.setenv("DEPLOYRA_DATA", str(tmp_path / "data"))
     monkeypatch.setenv("DEPLOYRA_WG", "off")
     monkeypatch.setenv("DEPLOYRA_MONITORING", "off")
+    monkeypatch.setenv("DEPLOYRA_UPDATE_CHECKS", "off")
+    monkeypatch.setenv("DEPLOYRA_UPDATE_DIR", str(tmp_path / "update"))
     return Config()
 
 

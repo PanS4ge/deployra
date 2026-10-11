@@ -19,6 +19,8 @@ RUN apk add --no-cache --virtual .build build-base linux-headers libffi-dev \
 COPY backend/deployra_backend ./deployra_backend
 RUN python -m compileall -q /app/deployra_backend
 
+LABEL deployra.component=backend
+
 ENV PYTHONUNBUFFERED=1 \
     DEPLOYRA_DATA=/var/lib/deployra \
     DEPLOYRA_SRV=/srv/deployra

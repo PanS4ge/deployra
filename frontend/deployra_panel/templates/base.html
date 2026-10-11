@@ -71,6 +71,7 @@
       {% endif %}
     </header>
     <main class="content fade-in">
+      {% if user and has(user, P.ALLOW_SETTINGS) %}{% set offer = update_offer(panel) %}{% if offer %}{% include "partials/update_banner.html" %}{% endif %}{% endif %}
       {% block content %}{% endblock %}
     </main>
   </div>

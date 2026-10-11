@@ -19,6 +19,12 @@ def _flag(name: str, default: bool) -> bool:
     return default if not value else value.lower() in ("1", "true", "yes", "tak", "on")
 
 
+def _bundle_dir() -> Path:
+    """nginx.conf i skrypt przeładowania: w obrazie /opt/deployra/nginx, w repo gateway/nginx."""
+    image = Path("/opt/deployra/nginx")
+    return image if image.is_dir() else Path(__file__).resolve().parent.parent / "nginx"
+
+
 def _ipv6_available() -> bool:
     return Path("/proc/net/if_inet6").exists()
 
@@ -44,6 +50,8 @@ class Config:
     analytics_port: int = field(default_factory=lambda: int(_env("DEPLOYRA_ANALYTICS_PORT", "5140")))
     analytics: bool = field(default_factory=lambda: _flag("DEPLOYRA_ANALYTICS", True))
     cloudflared_bin: str = field(default_factory=lambda: _env("DEPLOYRA_CLOUDFLARED", "cloudflared"))
+    update_dir: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_UPDATE_DIR", "/run/deployra-update")))
+    nginx_bundle: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_NGINX_BUNDLE", str(_bundle_dir()))))
 
     @property
     def hub_address(self) -> str:

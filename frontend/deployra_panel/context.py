@@ -9,6 +9,7 @@ from fastapi import Request
 
 from deployra_common.client import SignedClient
 from deployra_common.jobs import JobRegistry
+from deployra_common.updates import UpdateAgent
 
 from .config import Config
 from .db import Database, now
@@ -27,6 +28,7 @@ class Panel:
         self.sessions = Sessions(self.db, config.session_hours)
         self.limiter = LoginLimiter()
         self.jobs = JobRegistry()
+        self.updates = UpdateAgent(config.update_dir)
         self._clients: dict[str, tuple[str, SignedClient]] = {}
 
     # --- użytkownicy ----------------------------------------------------------------

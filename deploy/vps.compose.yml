@@ -1,7 +1,13 @@
-# Wszystko na jednym VPS: Deployra-WG + nginx + panel.
-#   DEPLOYRA_PUBLIC_HOST=vps.example.com docker compose -f deploy/vps.compose.yml up -d --build
+# ─── Wszystko na jednym VPS: Deployra-WG + nginx + panel ──────────────────────────────────────
+# Najczęstszy układ: VPS z publicznym IP trzyma bramkę i panel, domowe serwery dołączają jako węzły.
+#
+#   DEPLOYRA_PUBLIC_HOST=vps.example.com docker compose -f deploy/vps.compose.yml up -d
+#
 # W panelu (http://127.0.0.1:8080 przez tunel SSH albo po wystawieniu hostem proxy) zaznacz
 # „Panel działa na tym samym serwerze co bramka” przy synchronizacji.
+# Każdy z dołączonych plików ma własny aktualizator (deployra-wg-updater, deployra-panel-updater).
+name: deployra
+
 include:
   - gateway.compose.yml
   - panel.compose.yml

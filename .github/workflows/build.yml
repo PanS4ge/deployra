@@ -1,0 +1,113 @@
+# Testy → obrazy w GHCR (linux/amd64 + linux/arm64) → wydanie na GitHubie.
+#
+#   push na main     → testy + obrazy :edge
+#   tag vX.Y.Z       → testy + obrazy :X.Y.Z, :X.Y, :latest + GitHub Release (z niego panel czyta aktualizacje)
+#
+# Wydanie: podbij __version__ we wszystkich pakietach, potem `git tag v1.2.0 && git push origin v1.2.0`.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: "**/requirements.txt"
+      - name: Zależności
+        run: |
+          pip install ./shared -r backend/requirements.txt -r gateway/requirements.txt -r frontend/requirements.txt pytest anyio
+      - name: Testy
+        run: |
+          python -m pytest -q shared/tests
+          (cd backend && python -m pytest -q)
+          (cd gateway && python -m pytest -q)
+          (cd frontend && python -m pytest -q)
+          bash updater/tests/test_updater.sh
+      - name: Wersja z taga zgadza się z kodem
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          for f in shared/deployra_common backend/deployra_backend gateway/deployra_gateway frontend/deployra_panel; do
+            grep -q "__version__ = \"$want\"" "$f/__init__.py" || { echo "::error::$f/__init__.py ma inną wersję niż tag $GITHUB_REF_NAME"; exit 1; }
+          done
+
+  images:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: deployra-panel, context: ., dockerfile: frontend/Dockerfile, title: "Deployra — panel" }
+          - { image: deployra-wg, context: ., dockerfile: gateway/Dockerfile, title: "Deployra-WG — bramka WireGuard + nginx" }
+          - { image: deployra-backend, context: ., dockerfile: backend/Dockerfile, title: "Deployra Backend — węzeł" }
+          - { image: deployra-updater, context: updater, dockerfile: updater/Dockerfile, title: "Deployra — aktualizator" }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Nazwa właściciela małymi literami (wymóg GHCR)
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ env.OWNER }}/${{ matrix.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=edge,branch=main
+          labels: |
+            org.opencontainers.image.title=${{ matrix.title }}
+            org.opencontainers.image.description=${{ matrix.title }} (Coolify dla LowEndów)
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  release:
+    needs: images
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wydanie na GitHubie
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --title "Deployra ${GITHUB_REF_NAME#v}" --generate-notes --verify-tag

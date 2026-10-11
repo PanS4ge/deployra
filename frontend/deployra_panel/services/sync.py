@@ -220,14 +220,25 @@ async def remove_node(panel: Any, node: dict) -> None:
     panel._clients.pop(f"node-{node['id']}", None)
 
 
-def compose_snippet(gateway: dict, token: str, name: str, image: str = "deployra-backend:latest") -> str:
+DEFAULT_IMAGES = "ghcr.io/pans4ge/deployra"
+
+
+def env_snippet(gateway: dict, token: str, name: str) -> str:
+    """deploy/.env dla węzła stawianego z repozytorium (deploy/node.compose.yml)."""
+    bootstrap = urlparse(gateway["bootstrap_url"]).port or 51821
+    return f'DEPLOYRA_NAME="{name}"\nDEPLOYRA_GATEWAY="{gateway["public_host"]}:{bootstrap}"\nDEPLOYRA_JOIN="{token}"\n'
+
+
+def compose_snippet(gateway: dict, token: str, name: str, images: str = DEFAULT_IMAGES) -> str:
+    """Samodzielny node.compose.yml (backend + aktualizator) do wklejenia na nowym węźle."""
     host = gateway["public_host"]
     bootstrap = urlparse(gateway["bootstrap_url"]).port or 51821
-    return f"""# node.compose.yml — Deployra Backend ({name})
-# Obraz zbudujesz z repo: docker build -f backend/Dockerfile -t deployra-backend .
+    images = (images or DEFAULT_IMAGES).strip().rstrip("-")
+    return f"""# node.compose.yml — Deployra Backend ({name}). Uruchom: docker compose -f node.compose.yml up -d
+name: deployra-node
 services:
   deployra-backend:
-    image: {image}
+    image: ${{DEPLOYRA_IMAGES:-{images}}}-backend:${{DEPLOYRA_VERSION:-latest}}
     container_name: deployra-backend
     network_mode: host
     cap_add: [NET_ADMIN]
@@ -243,4 +254,18 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/deployra:/var/lib/deployra
       - /srv/deployra:/srv/deployra
+      - node-updates:/run/deployra-update
+  updater:   # aktualizacje z panelu; w spoczynku ~1 MB RAM
+    image: ${{DEPLOYRA_IMAGES:-{images}}}-updater:${{DEPLOYRA_VERSION:-latest}}
+    container_name: deployra-updater
+    network_mode: none
+    restart: unless-stopped
+    environment:
+      DEPLOYRA_UPDATE_SERVICES: deployra-backend updater
+      DEPLOYRA_IMAGES: ${{DEPLOYRA_IMAGES:-{images}}}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - node-updates:/run/deployra-update
+volumes:
+  node-updates:
 """

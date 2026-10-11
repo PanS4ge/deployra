@@ -14,6 +14,7 @@ from deployra_common.hmac_auth import NonceCache
 from deployra_common.jobs import JobRegistry
 from deployra_common.schemas import ProxyState
 from deployra_common.server import SignatureGuard
+from deployra_common.updates import UpdateAgent
 
 from . import __version__, certs, nginx_driver
 from .config import Config
@@ -51,6 +52,7 @@ class Context:
         self.jobs = JobRegistry()
         self.guard = SignatureGuard(lambda key: self.state.panel_secret if key == "panel" else None, NonceCache())
         self.gate = Gate()
+        self.updates = UpdateAgent(config.update_dir)
         self.last_apply: dict[str, Any] | None = None
         from .analytics import Analytics
         from .cloudflared import Cloudflared

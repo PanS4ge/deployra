@@ -100,8 +100,15 @@ def tojson_attr(value: Any) -> Markup:
 
 
 templates.env.filters.update(pct=pct, bytes=human_bytes, ago=ago, dt=dt, duration=duration, jsonattr=tojson_attr)
+def update_offer(panel: Any) -> dict | None:
+    from .services import updates  # leniwie: serwis importuje httpx
+
+    return updates.offer(panel)
+
+
 templates.env.globals.update(
-    NAME=NAME, VERSION=__version__, P=Permission, PERM_LABELS=LABELS, has=has, gravatar=gravatar, now=time.time
+    NAME=NAME, VERSION=__version__, P=Permission, PERM_LABELS=LABELS, has=has, gravatar=gravatar, now=time.time,
+    update_offer=update_offer,
 )
 
 

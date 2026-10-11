@@ -13,7 +13,7 @@
     <div class="field"><label>Domyślny awatar (Gravatar)</label>
       <select class="select" name="gravatar_default">{% for g in ["identicon", "retro", "robohash", "monsterid", "wavatar", "mp"] %}<option {{ "selected" if s.gravatar_default == g }}>{{ g }}</option>{% endfor %}</select>
     </div>
-    <div class="field"><label>Obraz backendu w instrukcjach dołączania</label><input class="input mono" name="backend_image" value="{{ s.backend_image or 'deployra-backend:latest' }}"></div>
+    <div class="field"><label>Obrazy Deployry w instrukcjach dołączania</label><input class="input mono" name="image_prefix" value="{{ s.image_prefix or '' }}" placeholder="ghcr.io/pans4ge/deployra"><div class="hint">Prefiks: <code>…-backend</code>, <code>…-updater</code>. Własny rejestr albo fork — zmień tutaj.</div></div>
     <div class="field"><label>Webhook powiadomień (Discord / ntfy / Slack)</label><input class="input" name="notify_webhook" value="{{ s.notify_webhook or '' }}" placeholder="https://discord.com/api/webhooks/…"><div class="hint">Zmiany stanu monitorów uptime.</div></div>
     <div class="callout full"><i class="bi bi-database"></i><div class="small">Baza: <b>{{ "SQLite" if db == "sqlite" else "MySQL/MariaDB" }}</b> · dane panelu w <code>{{ panel.config.data_dir }}</code></div></div>
   </div>

@@ -1,6 +1,7 @@
 #!/bin/sh
 # Deployra-WG: wykonuje zlecenia przeładowania konfiguracji.
-# Montowany do /docker-entrypoint.d/ oficjalnego obrazu nginx (obraz bez zmian).
+# Bramka kopiuje ten skrypt do wolumenu (base/), a kontener nginx (oficjalny obraz, bez zmian)
+# uruchamia go przed startem nginx — zob. deploy/gateway.compose.yml.
 # Bramka zapisuje ctl/<id>.request, my odpowiadamy ctl/<id>.result:
 #   "ok"                      — nginx -t przeszedł, wykonano reload
 #   "error\n<wyjście nginx>"  — konfiguracja odrzucona, nginx działa na starej

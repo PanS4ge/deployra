@@ -33,7 +33,7 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
     async def lifespan(app: FastAPI):
         import asyncio
 
-        from .services import uptime, wg_peer
+        from .services import updates, uptime, wg_peer
 
         await run_in_threadpool(wg_peer.ensure_up, panel)
         await run_in_threadpool(panel.sessions.cleanup)
@@ -42,10 +42,15 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
                          ["Wdrożenie przerwane restartem panelu — wdroż ponownie"])
         panel.db.execute("UPDATE certificates SET status = 'error', error = ? WHERE status = 'issuing'",
                          ["Wystawianie przerwane restartem panelu — ponów"])
-        monitor_task = asyncio.create_task(uptime.loop(panel)) if panel.config.monitoring else None
+        await run_in_threadpool(updates.finish_pending, panel)
+        tasks = []
+        if panel.config.monitoring:
+            tasks.append(asyncio.create_task(uptime.loop(panel)))
+        if panel.config.update_checks:
+            tasks.append(asyncio.create_task(updates.loop(panel)))
         yield
-        if monitor_task:
-            monitor_task.cancel()
+        for task in tasks:
+            task.cancel()
         await panel.aclose()
 
     app = FastAPI(title="Deployra", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)

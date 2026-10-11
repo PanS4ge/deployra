@@ -1,15 +1,16 @@
-# Deployra Backend na hoście Proxmox VE (gdy Docker jest na hoście).
+# ─── Deployra Backend na hoście Proxmox VE (z Dockerem na hoście) ─────────────────────────────
 # Jeden backend pokazuje Docker hosta ORAZ każdy działający kontener LXC, który ma w środku Dockera —
 # nie trzeba instalować agenta w każdym CT (jak w Portainerze).
-#   docker compose -f deploy/proxmox.compose.yml up -d --build
 #
-# Bez Dockera na hoście Proxmoxa użyj deploy/install-native.sh (usługa systemd).
+#   docker compose -f deploy/proxmox.compose.yml up -d
+#
+# Bez Dockera na hoście Proxmoxa użyj deploy/install-native.sh (usługa systemd, aktualizacje też z panelu).
 name: deployra-proxmox
 
 services:
   deployra-backend:
     build: { context: .., dockerfile: backend/Dockerfile }
-    image: deployra-backend:latest
+    image: ${DEPLOYRA_IMAGES:-ghcr.io/pans4ge/deployra}-backend:${DEPLOYRA_VERSION:-latest}
     container_name: deployra-backend
     network_mode: host
     pid: host                   # widzimy procesy CT, a przez /proc/<pid>/root ich gniazda Dockera
@@ -28,6 +29,28 @@ services:
       - /etc/pve:/etc/pve:ro    # nazwy CT
       - /var/lib/deployra:/var/lib/deployra
       - /srv/deployra:/srv/deployra
+      - node-updates:/run/deployra-update
     restart: unless-stopped
     mem_limit: 192m
     logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+  # Aktualizator węzła (zob. opis w gateway.compose.yml).
+  updater:
+    build: ../updater
+    image: ${DEPLOYRA_IMAGES:-ghcr.io/pans4ge/deployra}-updater:${DEPLOYRA_VERSION:-latest}
+    container_name: deployra-updater
+    network_mode: none
+    labels:
+      deployra.system: updater
+    environment:
+      DEPLOYRA_UPDATE_SERVICES: deployra-backend updater
+      DEPLOYRA_IMAGES: ${DEPLOYRA_IMAGES:-ghcr.io/pans4ge/deployra}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - node-updates:/run/deployra-update
+    restart: unless-stopped
+    mem_limit: 64m
+    logging: { driver: json-file, options: { max-size: 1m, max-file: "2" } }
+
+volumes:
+  node-updates:

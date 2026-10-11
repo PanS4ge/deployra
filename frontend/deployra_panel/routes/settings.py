@@ -24,7 +24,7 @@ from ..web import redirect, render, toast
 
 router = APIRouter(dependencies=[Depends(current_user)])
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-GENERAL_KEYS = ("panel_domain", "base_domain", "acme_email", "default_page", "gravatar_default", "backend_image", "notify_webhook")
+GENERAL_KEYS = ("panel_domain", "base_domain", "acme_email", "default_page", "gravatar_default", "image_prefix", "notify_webhook")
 
 
 @router.get("/settings")

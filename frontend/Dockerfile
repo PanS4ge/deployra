@@ -16,6 +16,8 @@ RUN apk add --no-cache --virtual .build build-base libffi-dev \
 COPY frontend/deployra_panel ./deployra_panel
 RUN python -m compileall -q /app/deployra_panel
 
+LABEL deployra.component=panel
+
 ENV PYTHONUNBUFFERED=1 \
     DEPLOYRA_DATA=/var/lib/deployra-panel \
     DEPLOYRA_BIND=0.0.0.0 \

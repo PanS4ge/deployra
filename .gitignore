@@ -19,13 +19,8 @@ data/
 *.pkl
 secret.key
 
-# Stary kod: klucze, magazyn i cache nie trafiają do repo
-legacy/frontend/certs/
-legacy/frontend/storage/
-legacy/frontend/cache/
-legacy/frontend/settings.json
-legacy/frontend/cryptography.json
-legacy/backend/settings.json
+# Stary kod (NiceGUI) — jest w historii gita, lokalna kopia nie trafia do repo
+legacy/
 
 # IDE
 .vscode/

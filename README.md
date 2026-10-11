@@ -33,16 +33,18 @@ Ruch publiczny idzie **jednym skokiem**: `nginx na bramce → wg0 → węzeł �
 | **Odwiedziny** | unikalni i powracający per domena, wykresy jak w Cloudflare — bez ciasteczek, bez botów, liczone na bramce z logów nginx |
 | **Uptime** (à la Uptime Kuma) | monitory aplikacji, kontenerów, węzłów i URL, uptime 24 h / 7 dni / 30 dni, powiadomienia (panel, Discord, ntfy, Slack) |
 | **Panel** | FastAPI + Jinja2 + htmx + Alpine (bez NiceGUI, bez kroku build), ciemny kosmiczny motyw, użytkownicy i uprawnienia, SQLite albo MySQL/MariaDB |
+| **Aktualizacje** | panel sprawdza wydania, pokazuje baner „Dostępna aktualizacja” i na „Aktualizuj” podmienia w tle węzły, bramkę i siebie (albo robi to sam, jeśli włączysz automat) |
 
 ## Szybki start
 
-Wymagania: Linux z Dockerem i pluginem compose. Obrazy budujesz z tego repozytorium.
+Wymagania: Linux z Dockerem i pluginem compose. Gotowe obrazy (amd64 + arm64) są w GHCR — nic nie budujesz.
+Który plik z `deploy/` do czego służy, opisuje [deploy/README.md](deploy/README.md).
 
 ### 1. VPS — bramka i panel
 
 ```bash
-git clone <repo> deployra && cd deployra
-DEPLOYRA_PUBLIC_HOST=vps.example.com docker compose -f deploy/vps.compose.yml up -d --build
+git clone https://github.com/PanS4ge/deployra.git && cd deployra
+DEPLOYRA_PUBLIC_HOST=vps.example.com docker compose -f deploy/vps.compose.yml up -d
 docker logs deployra-wg | grep "Kod synchronizacji"
 ```
 
@@ -55,22 +57,44 @@ Panel może też stać gdzie indziej (`deploy/panel.compose.yml`): wtedy sam zes
 
 ### 2. Węzeł (np. domowy serwer)
 
-W panelu: **Węzły → Dodaj węzeł → Przez tunel** — dostaniesz token i gotowy `node.compose.yml`. Na węźle:
+W panelu: **Węzły → Dodaj węzeł → Przez tunel** — dostaniesz token i gotowy `node.compose.yml` (wystarczy sam ten plik,
+bez klonowania repo). Albo z repozytorium:
 
 ```bash
-DEPLOYRA_GATEWAY=vps.example.com:51821 DEPLOYRA_JOIN=dplr1.… docker compose -f deploy/node.compose.yml up -d --build
+DEPLOYRA_GATEWAY=vps.example.com:51821 DEPLOYRA_JOIN=dplr1.… docker compose -f deploy/node.compose.yml up -d
 ```
 
 Węzeł generuje własny klucz WireGuard (prywatny nie opuszcza maszyny), dołącza do bramki, a panel sam dokończy parowanie.
 
 ### 3. Proxmox VE
 
-- z Dockerem na hoście: `docker compose -f deploy/proxmox.compose.yml up -d --build`
+- z Dockerem na hoście: `docker compose -f deploy/proxmox.compose.yml up -d`
 - bez Dockera na hoście: `sudo bash deploy/install-native.sh` (usługa systemd, sam klient Dockera do stacków)
 
 Backend znajdzie działające CT (`/proc/*/cgroup`), ich gniazda Dockera (`/proc/<pid>/root/run/docker.sock`) i nazwy (`/etc/pve/lxc/*.conf`).
 W panelu na stronie węzła pojawi się przełącznik **Host / CT 101 · nextcloud / …**. Aplikacje wdrożone do CT są osiągalne pod IP kontenera —
 dodaj jego podsieć w „Podsieciach LAN” węzła, żeby bramka do niego trafiła.
+
+## Aktualizacje
+
+Panel co 6 godzin sprawdza wydania w `PanS4ge/deployra` (Ustawienia → Aktualizacje, tam też zmienisz źródło). Gdy jest nowa wersja,
+pokazuje baner z wyborem **Aktualizuj / Później / Pomiń tę wersję**. „Aktualizuj” uruchamia zadanie w tle: najpierw węzły (równolegle),
+potem bramka, na końcu panel, a każdy krok czeka, aż komponent wstanie w nowej wersji. Jeśli coś się nie uda, panel zostaje w starej wersji.
+
+Podmianą zajmuje się kontener `*-updater` obok każdego komponentu (w spoczynku ~1 MB RAM, bez sieci). Tylko on ma `docker.sock`,
+panel i bramka go nie dostają. Działa w trzech trybach:
+
+- **obrazy z GHCR** (domyślnie): `docker compose pull` + `up -d`;
+- **ze źródeł** (`DEPLOYRA_IMAGES=deployra` w `deploy/.env`): `git` przewija repozytorium do taga `vX.Y.Z`, potem `build` + `up -d`;
+- **Proxmox bez Dockera**: `install-native.sh --update` przez `systemd-run`.
+
+### Wydawanie nowej wersji
+
+1. Podbij `__version__` w `shared/`, `backend/`, `gateway/` i `frontend/` (`*/__init__.py`).
+2. `git tag v1.1.0 && git push origin main v1.1.0`.
+
+GitHub Actions ([.github/workflows/build.yml](.github/workflows/build.yml)) puszcza testy, buduje cztery obrazy dla `amd64` i `arm64`,
+wypycha je do `ghcr.io/pans4ge/deployra-*` (`1.1.0`, `1.1`, `latest`) i tworzy wydanie z notatkami. Każdy push na `main` daje obrazy `:edge`.
 
 ## Przesiadka z Portainera i NPM
 
@@ -94,7 +118,8 @@ dodaj jego podsieć w „Podsieciach LAN” węzła, żeby bramka do niego trafi
 Wszystko na `python:3.13-alpine`, jeden worker uvicorn, ciężkie biblioteki ładowane leniwie (np. asyncssh dopiero przy pierwszym koncie SFTP).
 Limity w plikach compose: panel 160 MB, backend 192 MB, Deployra-WG 128 MB, nginx 96 MB. Zmierzone (RSS) w środowisku
 deweloperskim na Windowsie (CPython 3.14, z narzutem DLL): panel ~87 MB, backend ~87 MB (bez SFTP; najwięcej waży docker-py),
-bramka ~72 MB. Na Linuksie/musl wychodzi zwykle mniej — sprawdź `docker stats` u siebie.
+bramka ~72 MB. Na Linuksie/musl wychodzi zwykle mniej — sprawdź `docker stats` u siebie. Aktualizator to `sleep` w pętli
+(~1 MB + kilka MB narzutu Dockera na kontener).
 
 ## Rozwój
 
@@ -105,14 +130,16 @@ python scripts/dev_stack.py --reset --seed   # bramka + węzeł (atrapa Dockera)
 
 Panel: http://127.0.0.1:8080 (`admin@deployra.local` / `kosmos-demo`). Działa na Windowsie — bez WireGuarda, nginx i Dockera.
 
-Testy: `pytest shared/tests`, `cd backend && pytest tests`, `cd gateway && pytest tests`, `cd frontend && pytest tests`.
+Testy: `pytest shared/tests`, `cd backend && pytest tests`, `cd gateway && pytest tests`, `cd frontend && pytest tests`,
+`bash updater/tests/test_updater.sh` (aktualizator z atrapą Dockera i prawdziwym gitem).
 
-Struktura: `shared/` (podpisy, parowanie, WireGuard, zadania, schematy) · `backend/` (węzeł) · `gateway/` (Deployra-WG) ·
-`frontend/` (panel) · `deploy/` (compose) · `docs/research/` (źródła decyzji) · `legacy/` (stary kod — można usunąć).
+Struktura: `shared/` (podpisy, parowanie, WireGuard, zadania, schematy, aktualizacje) · `backend/` (węzeł) · `gateway/` (Deployra-WG) ·
+`frontend/` (panel) · `updater/` (sidecar aktualizacji) · `deploy/` (compose) · `docs/research/` (źródła decyzji).
+Stary kod (NiceGUI) został w historii gita.
 
 ## Znane ograniczenia
 
-- Obrazy nie były jeszcze budowane w CI — pierwszy `docker compose up --build` zweryfikuj na swoim serwerze.
+- WireGuard, nginx, lego, cloudflared i sam aktualizator nie były jeszcze uruchomione na prawdziwym serwerze — testy pokrywają logikę.
 - Hosty za proxy Cloudflare (pomarańczowa chmurka, nie tunel) liczą odwiedzających po adresach krawędzi Cloudflare.
 - Stacki w CT na Proxmoxie: pliki compose leżą na hoście, więc montowania ścieżek względnych nie zadziałają — używaj wolumenów nazwanych.
 - Jedna bramka na panel (wiele bramek — w planach).

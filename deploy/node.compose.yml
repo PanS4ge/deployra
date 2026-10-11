@@ -1,14 +1,17 @@
-# Deployra Backend — węzeł z Dockerem (np. domowy serwer za NAT-em).
-# Panel generuje gotowe wartości DEPLOYRA_GATEWAY i DEPLOYRA_JOIN w zakładce Węzły → Dodaj węzeł.
-#   DEPLOYRA_GATEWAY=vps.example.com:51821 DEPLOYRA_JOIN=dplr1.… docker compose -f deploy/node.compose.yml up -d --build
+# ─── Deployra Backend (węzeł) ─────────────────────────────────────────────────────────────────
+# Serwer z Dockerem, na którym mają działać aplikacje — np. domowy serwer za NAT-em albo drugi VPS.
+# Panel generuje gotowe DEPLOYRA_GATEWAY i DEPLOYRA_JOIN w zakładce Węzły → Dodaj węzeł.
+#
+#   DEPLOYRA_GATEWAY=vps.example.com:51821 DEPLOYRA_JOIN=dplr1.… docker compose -f deploy/node.compose.yml up -d
 #
 # Bez DEPLOYRA_JOIN węzeł działa w trybie bezpośrednim: kod parowania znajdziesz w `docker logs deployra-backend`.
+# Host Proxmox VE → deploy/proxmox.compose.yml (albo deploy/install-native.sh, gdy na hoście nie ma Dockera).
 name: deployra-node
 
 services:
   deployra-backend:
     build: { context: .., dockerfile: backend/Dockerfile }
-    image: deployra-backend:latest
+    image: ${DEPLOYRA_IMAGES:-ghcr.io/pans4ge/deployra}-backend:${DEPLOYRA_VERSION:-latest}
     container_name: deployra-backend
     network_mode: host          # wg0 i pula portów aplikacji na hoście
     cap_add: [NET_ADMIN]
@@ -25,6 +28,28 @@ services:
       - /var/lib/deployra:/var/lib/deployra
       # ta sama ścieżka w kontenerze i na hoście — compose i strony statyczne montują z niej katalogi
       - /srv/deployra:/srv/deployra
+      - node-updates:/run/deployra-update
     restart: unless-stopped
     mem_limit: 192m
     logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+  # Aktualizator węzła (zob. opis w gateway.compose.yml).
+  updater:
+    build: ../updater
+    image: ${DEPLOYRA_IMAGES:-ghcr.io/pans4ge/deployra}-updater:${DEPLOYRA_VERSION:-latest}
+    container_name: deployra-updater
+    network_mode: none
+    labels:
+      deployra.system: updater
+    environment:
+      DEPLOYRA_UPDATE_SERVICES: deployra-backend updater
+      DEPLOYRA_IMAGES: ${DEPLOYRA_IMAGES:-ghcr.io/pans4ge/deployra}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - node-updates:/run/deployra-update
+    restart: unless-stopped
+    mem_limit: 64m
+    logging: { driver: json-file, options: { max-size: 1m, max-file: "2" } }
+
+volumes:
+  node-updates:

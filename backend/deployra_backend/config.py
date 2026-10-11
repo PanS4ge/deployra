@@ -49,6 +49,14 @@ class Config:
     proxmox: bool = field(default_factory=lambda: _flag("DEPLOYRA_PROXMOX", Path("/etc/pve/lxc").is_dir()))
     proc_dir: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_PROC", "/proc")))
     pve_dir: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_PVE_LXC", "/etc/pve/lxc")))
+    native_repo: str = field(default_factory=lambda: _env("DEPLOYRA_NATIVE_REPO"))  # instalacja systemd (install-native.sh)
+    update_dir_env: str = field(default_factory=lambda: _env("DEPLOYRA_UPDATE_DIR"))
+
+    @property
+    def update_dir(self) -> Path:
+        if self.update_dir_env:
+            return Path(self.update_dir_env)
+        return self.data_dir / "update" if self.native_repo else Path("/run/deployra-update")
 
     @property
     def sites_dir(self) -> Path:
