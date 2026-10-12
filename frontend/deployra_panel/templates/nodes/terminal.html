@@ -5,7 +5,7 @@
 <script src="/static/vendor/addon-fit.js"></script>
 {% endblock %}
 {% set epa = "" if ep == "local" else "?ep=" ~ ep %}
-{% block crumbs %}<div class="crumbs"><a href="/nodes/{{ node.id }}">{{ node.name }}</a> / <a href="/nodes/{{ node.id }}/containers/{{ cid }}{{ epa }}">{{ cid }}</a> /</div>{% endblock %}
+{% block crumbs %}{% if back %}<div class="crumbs"><a href="/servers">{{ t("servers.my_servers") }}</a> / <a href="{{ back }}">{{ cid }}</a> /</div>{% else %}<div class="crumbs"><a href="/nodes/{{ node.id }}">{{ node.name }}</a> / <a href="/nodes/{{ node.id }}/containers/{{ cid }}{{ epa }}">{{ cid }}</a> /</div>{% endif %}{% endblock %}
 {% block heading %}Terminal{% endblock %}
 {% block actions %}
 <select class="select" id="shell" style="width: auto">
@@ -38,7 +38,7 @@
     const shell = document.getElementById("shell").value;
     const params = new URLSearchParams({ ep: "{{ ep }}", shell, cols: term.cols, rows: term.rows });
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    ws = new WebSocket(`${proto}://${location.host}/nodes/{{ node.id }}/containers/{{ cid }}/terminal/ws?${params}`);
+    ws = new WebSocket(`${proto}://${location.host}{{ ws_path or ("/nodes/" ~ node.id ~ "/containers/" ~ cid ~ "/terminal/ws") }}?${params}`);
     ws.binaryType = "arraybuffer";
     ws.onopen = () => term.focus();
     ws.onmessage = (e) => {

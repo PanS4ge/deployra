@@ -185,6 +185,26 @@ unless you tick "delete the data". Host paths mounted into an app (e.g. `/mnt/me
 Automatic moves: enable them per app (only apps without volumes and without compose) and in the **Node: RAM** rule. When a node stays
 above the threshold, the biggest such app moves to the node with the most free memory (at most one app per hour per node).
 
+## Adopting containers started outside Deployra
+
+**Node → Containers → Adopt as an app** (or the button on the container page). Deployra reads `docker inspect`: image, command, port,
+variables (without the image defaults), volumes and limits. The old container stops and stays as a copy `<name>-pre-deployra`, and an app
+with the same image, data and host port takes its place — now with deployments, a domain, alerts and moving. If the new container
+doesn't start, the old one comes back by itself. Containers of compose stacks are adopted as a stack (Node → Stacks).
+
+## Accounts with assigned servers (Pterodactyl-style)
+
+**Settings → Users → edit → Access: Assigned servers only.** Such an account only sees **My servers** in the panel — every other address
+is closed (not just hidden in the menu). Next to the user (servers icon) you assign apps or containers and pick permissions for each:
+**power** (start / stop / restart / kill), **logs**, **console**, **files** (ZIP upload), **deploy** and **variables** (app env).
+The user sees RAM/CPU usage, status and address of their servers.
+
+## Two gateways ("fork")
+
+Public traffic can enter through another machine than the WireGuard hub — e.g. Oracle (80/443) + mikr.us (WireGuard). The edge
+gateway joins the hub like a node (**Tunnel → Edge gateway**) and the panel moves proxy hosts, certificates, statistics and bans to it.
+Step by step (Polish): [docs/tutorial.pl.md](docs/tutorial.pl.md).
+
 ## Plugins
 
 **Settings → Plugins** lists the plugins, enables and disables them and installs new ones from a ZIP. A plugin is a directory with

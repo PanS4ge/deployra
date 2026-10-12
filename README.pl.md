@@ -185,6 +185,26 @@ chyba że zaznaczysz „usuń dane”. Katalogi hosta montowane w aplikacji (np.
 Automatyczne przenosiny: włączasz je przy aplikacji (tylko bez wolumenów i bez compose) i w regule **Węzeł: RAM**. Gdy węzeł trzyma się
 ponad progiem, największa taka aplikacja jedzie na węzeł z największym zapasem pamięci (najwyżej jedna na godzinę z danego węzła).
 
+## Przejęcie kontenerów spoza Deployry
+
+**Węzeł → Kontenery → Przejmij jako aplikację** (albo przycisk na stronie kontenera). Deployra czyta `docker inspect`: obraz, polecenie,
+port, zmienne (bez domyślnych z obrazu), wolumeny i limity. Stary kontener staje i zostaje jako kopia `<nazwa>-pre-deployra`, a na jego
+miejscu powstaje aplikacja z tym samym obrazem, danymi i portem hosta — od teraz z wdrożeniami, domeną, alertami i przenoszeniem.
+Jeśli nowy kontener nie wstanie, stary wraca sam. Kontenery stacków compose przejmuje się jako stack (Węzeł → Stacki).
+
+## Konta z przypisanymi serwerami (jak w Pterodactylu)
+
+**Ustawienia → Użytkownicy → edycja → Dostęp: Tylko przypisane serwery.** Takie konto widzi w panelu tylko **Moje serwery** —
+każdy inny adres jest zamknięty (nie tylko ukryty w menu). Przy użytkowniku (ikona serwerów) przypisujesz aplikacje albo kontenery
+i dla każdego zaznaczasz uprawnienia: **zasilanie** (start / stop / restart / kill), **logi**, **konsola**, **pliki** (wgrywanie ZIP),
+**wdrażanie** i **zmienne** (edycja env aplikacji). Użytkownik widzi zużycie RAM/CPU, status i adres swoich serwerów.
+
+## Dwie bramki („widelec”)
+
+Ruch publiczny może wchodzić inną maszyną niż hub WireGuard — np. Oracle (80/443) + mikr.us (WireGuard). Bramka brzegowa dołącza do
+huba jak węzeł (**Tunel → Bramka brzegowa**), a panel przenosi na nią hosty proxy, certyfikaty, statystyki i bany. Instrukcja krok po
+kroku: [docs/tutorial.pl.md](docs/tutorial.pl.md).
+
 ## Pluginy
 
 **Ustawienia → Pluginy** pokazują listę pluginów, włączają je i wyłączają oraz instalują nowe z ZIP. Plugin to katalog z

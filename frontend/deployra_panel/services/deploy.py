@@ -177,5 +177,8 @@ async def remove(panel: Any, job: Job, app_id: int, delete_data: bool) -> None:
         panel.db.delete("sites", app["site_id"])
         await _push(panel, job)
     panel.db.delete("apps", app_id)
+    from . import access
+
+    access.forget_app(panel, app_id)
     job.log(t("deploy.removed", slug=app["slug"]))
     panel.plugins.emit("app.removed", app=app)

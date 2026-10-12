@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty, meter, status_badge %}
+{% block content %}
+{% if rows %}
+<div class="grid grid-auto">
+  {% for r in rows %}{% set u = r.usage or {} %}
+  <a class="card link" href="/servers/{{ r.id }}" style="color: inherit">
+    <div class="card-head">
+      <i class="bi bi-{{ 'rocket-takeoff' if r.kind == 'app' else 'box' }}" style="font-size: 1.3rem; color: var(--violet-2)"></i>
+      <div style="flex: 1; min-width: 0"><div class="name trunc">{{ r.label }}</div>
+        <div class="small muted trunc">{% if r.app and r.app.domains %}{{ r.app.domains[0] }}{% elif r.node %}{{ r.node.name }}{% endif %}</div></div>
+      {% if r.app %}{{ status_badge(r.app.status) }}{% endif %}
+    </div>
+    <div class="card-body stack" style="gap: 6px">
+      <div class="row small" style="gap: 6px"><span class="muted" style="width: 38px">RAM</span>
+        <div style="flex: 1">{% if u.get("limit") and u.get("mem") is not none %}{{ meter(u.mem / u.limit * 100) }}{% endif %}</div>
+        <span class="mono">{{ u.mem | bytes if u.get("mem") is not none else "—" }}</span></div>
+      <div class="row small" style="gap: 6px"><span class="muted" style="width: 38px">CPU</span><span class="mono">{{ "%.1f%%" | format(u.cpu) if u.get("cpu") is not none else "—" }}</span></div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}{{ empty("hdd-stack", t("servers.none_yours")) }}{% endif %}
+{% endblock %}

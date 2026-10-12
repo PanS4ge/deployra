@@ -142,4 +142,18 @@ def v6(dialect: str) -> list[str]:
     ]
 
 
-MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6)]
+def v7(dialect: str) -> list[str]:
+    """Konta „tylko przypisane serwery” (w stylu Pterodactyla) i przypisania aplikacji/kontenerów z uprawnieniami."""
+    t = _types(dialect)
+    i, s, n, tail = t["id"], t["str"], t["int"], t["tail"]
+    return [
+        "ALTER TABLE users ADD COLUMN scoped INTEGER NOT NULL DEFAULT 0",
+        f"""CREATE TABLE grants (
+            id {i}, user_id {n} NOT NULL, kind {s} NOT NULL, node_id {n}, app_id {n}, container {s},
+            perms {s} NOT NULL DEFAULT '', created_at {s}
+        ){tail}""",
+        "CREATE INDEX idx_grants_user ON grants (user_id)",
+    ]
+
+
+MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7)]

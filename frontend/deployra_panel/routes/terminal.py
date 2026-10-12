@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from urllib.parse import urlencode, urlparse
 
@@ -34,14 +35,19 @@ async def terminal_ws(websocket: WebSocket, node_id: int, cid: str, ep: str = "l
                       cols: int = 120, rows: int = 32) -> None:  # fmt: skip
     panel: Panel = websocket.app.state.panel
     session = await run_in_threadpool(panel.sessions.load, websocket.cookies.get(SESSION_COOKIE))
-    origin = websocket.headers.get("origin")
-    if not session or not has(session, Permission.ALLOW_CONTAINER_TERMINAL):
+    if not session or not has(session, Permission.ALLOW_CONTAINER_TERMINAL) or session.get("scoped"):
         await websocket.close(code=4401)
         return
+    await relay_terminal(websocket, panel, session, panel.node(node_id), cid, ep, shell, cols, rows)
+
+
+async def relay_terminal(websocket: WebSocket, panel: Panel, session: dict, node: dict | None, cid: str, ep: str, shell: str,
+                         cols: int, rows: int) -> None:  # fmt: skip
+    """Przeglądarka ↔ węzeł (docker exec). Uprawnienia sprawdza wywołujący; tu origin i poprawność parametrów."""
+    origin = websocket.headers.get("origin")
     if origin and urlparse(origin).netloc != websocket.headers.get("host"):
         await websocket.close(code=4403)  # obrona przed cross-site WebSocket hijacking
         return
-    node = panel.node(node_id)
     if not node or not _EP.match(ep) or not _CID.match(cid) or shell not in ("auto", "sh", "bash", "ash"):
         await websocket.close(code=4400)
         return

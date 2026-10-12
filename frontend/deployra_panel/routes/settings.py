@@ -156,6 +156,13 @@ async def save_user(request: Request, panel: Panel = Depends(get_panel), user: d
     values = {"email": email, "name": str(form.get("name") or "")[:60], "surname": str(form.get("surname") or "")[:60]}
     if target and target["id"] == user["id"]:
         final = current  # własnych uprawnień się nie zmienia
+    # konto „tylko przypisane serwery” — nie dla siebie samego ani pierwszego administratora; bez pełnego dostępu
+    scoped = form.get("scoped") == "1" and has(user, Permission.ALLOW_MODIFYING_USERS)
+    if target and (target["id"] == user["id"] or target.get("undeletable")):
+        scoped = bool(target.get("scoped"))
+    if scoped:
+        final.discard(Permission.FULL_ACCESS)
+    values["scoped"] = int(scoped)
     values["permissions"] = encode(final)
     if password:
         values["password_hash"] = await run_in_threadpool(hash_password, password)
@@ -180,6 +187,64 @@ def delete_user(request: Request, user_id: int, panel: Panel = Depends(get_panel
     panel.sessions.destroy_for_user(target["id"])
     panel.db.delete("users", target["id"])
     return redirect(request, "/settings/users", t("msg.user_deleted", email=target["email"]))
+
+
+# --- przypisane serwery (konta w stylu Pterodactyla) -------------------------------------------------
+
+
+def _target_user(panel: Panel, user_id: int) -> dict:
+    target = panel.db.get("users", user_id)
+    if not target:
+        raise HTTPException(404, t("msg.no_user"))
+    return target
+
+
+@router.get("/settings/users/{user_id}/servers")
+def user_servers(request: Request, user_id: int, panel: Panel = Depends(get_panel),
+                 user: dict = Depends(require(Permission.ALLOW_MODIFYING_USERS))):  # fmt: skip
+    from ..services import access
+
+    target = _target_user(panel, user_id)
+    apps = panel.db.fetchall("SELECT a.id, a.name, a.slug, n.name AS node_name FROM apps a LEFT JOIN nodes n ON n.id = a.node_id ORDER BY a.name")
+    nodes = panel.db.fetchall("SELECT id, name FROM nodes WHERE status = 'paired' ORDER BY name")
+    return render(request, "settings/user_servers.html", title=t("servers.servers_of", email=target["email"]), tab="users", target=target,
+                  grants=access.grants_for(panel, user_id), apps=apps, nodes=nodes, perms=access.ALL, names=access.NAMES,
+                  app_only=access.APP_ONLY)  # fmt: skip
+
+
+@router.post("/settings/users/{user_id}/servers")
+async def add_user_server(request: Request, user_id: int, panel: Panel = Depends(get_panel),
+                          user: dict = Depends(require(Permission.ALLOW_MODIFYING_USERS))):  # fmt: skip
+    from ..services import access
+
+    _target_user(panel, user_id)
+    form = await request.form()
+    kind = str(form.get("kind") or "app")
+    perms = "".join(p for p in access.ALL if form.get(f"perm_{p}"))
+    access.add(panel, user_id, kind, perms, app_id=int(form.get("app_id") or 0) or None, node_id=int(form.get("node_id") or 0) or None,
+               container=str(form.get("container") or "").strip() or None)  # fmt: skip
+    return redirect(request, f"/settings/users/{user_id}/servers", t("servers.added"))
+
+
+@router.post("/settings/users/{user_id}/servers/{grant_id}")
+async def update_user_server(request: Request, user_id: int, grant_id: int, panel: Panel = Depends(get_panel),
+                             user: dict = Depends(require(Permission.ALLOW_MODIFYING_USERS))):  # fmt: skip
+    from ..services import access
+
+    row = panel.db.fetchone("SELECT * FROM grants WHERE id = ? AND user_id = ?", [grant_id, user_id])
+    if not row:
+        raise HTTPException(404, t("servers.not_found"))
+    form = await request.form()
+    perms = access.clean_perms("".join(p for p in access.ALL if form.get(f"perm_{p}")), row["kind"])
+    panel.db.update("grants", grant_id, perms=perms)
+    return toast(t("servers.saved"))
+
+
+@router.post("/settings/users/{user_id}/servers/{grant_id}/delete")
+def delete_user_server(request: Request, user_id: int, grant_id: int, panel: Panel = Depends(get_panel),
+                       user: dict = Depends(require(Permission.ALLOW_MODIFYING_USERS))):  # fmt: skip
+    panel.db.execute("DELETE FROM grants WHERE id = ? AND user_id = ?", [grant_id, user_id])
+    return redirect(request, f"/settings/users/{user_id}/servers", t("servers.removed"))
 
 
 # --- kopia zapasowa -----------------------------------------------------------------------------

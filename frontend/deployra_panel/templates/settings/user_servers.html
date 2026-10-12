@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty %}
+{% macro perm_boxes(kind, current="") -%}
+  <div class="row" style="gap: 12px; flex-wrap: wrap">
+    {% for p in perms %}{% if kind == "app" or p not in app_only %}
+    <label class="check small"><input type="checkbox" name="perm_{{ p }}" value="1" {{ "checked" if p in current }}><span class="sw"></span><span>{{ t("servers.perm." ~ names[p]) }}</span></label>
+    {% endif %}{% endfor %}
+  </div>
+{%- endmacro %}
+{% block crumbs %}<div class="crumbs"><a href="/settings/users">{{ t("nav.users") }}</a> /</div>{% endblock %}
+{% block content %}
+{% if not target.scoped %}<div class="callout"><i class="bi bi-info-circle"></i><div class="small">{{ t("servers.not_scoped_hint") }}</div></div>{% endif %}
+
+<div class="card">
+  <div class="card-head"><h3><i class="bi bi-hdd-stack"></i> {{ t("servers.assigned") }}</h3></div>
+  {% if grants %}
+  <div class="table-wrap">
+    <table class="table">
+      <tbody>
+      {% for g in grants %}
+        <tr>
+          <td style="min-width: 200px">
+            <span class="name">{{ g.label }}</span>
+            <div class="small muted">{{ t("servers.kind_app") if g.kind == "app" else t("servers.kind_container") }}{% if g.node %} · {{ g.node.name }}{% endif %}</div>
+          </td>
+          <td>
+            <form hx-post="/settings/users/{{ target.id }}/servers/{{ g.id }}" hx-trigger="change" hx-swap="none">{{ perm_boxes(g.kind, g.perms) }}</form>
+          </td>
+          <td class="right"><button class="btn sm ghost icon" title="{{ t('common.delete') }}" hx-post="/settings/users/{{ target.id }}/servers/{{ g.id }}/delete" hx-swap="none"><i class="bi bi-x-lg"></i></button></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}{{ empty("hdd-stack", t("servers.none")) }}{% endif %}
+</div>
+
+<form class="card" hx-post="/settings/users/{{ target.id }}/servers" hx-swap="none" x-data="{ kind: 'app' }">
+  <div class="card-head"><h3><i class="bi bi-plus-lg"></i> {{ t("servers.assign") }}</h3></div>
+  <div class="card-body stack">
+    <div class="row" style="gap: 8px; flex-wrap: wrap">
+      <select class="select" name="kind" x-model="kind" style="width: auto">
+        <option value="app">{{ t("servers.kind_app") }}</option>
+        <option value="container">{{ t("servers.kind_container") }}</option>
+      </select>
+      <select class="select" name="app_id" x-show="kind === 'app'" :disabled="kind !== 'app'" style="flex: 1">
+        {% for a in apps %}<option value="{{ a.id }}">{{ a.name }} ({{ a.slug }}{{ " · " ~ a.node_name if a.node_name }})</option>{% endfor %}
+      </select>
+      <select class="select" name="node_id" x-show="kind === 'container'" :disabled="kind !== 'container'" style="width: auto" x-cloak>
+        {% for n in nodes %}<option value="{{ n.id }}">{{ n.name }}</option>{% endfor %}
+      </select>
+      <input class="input mono" name="container" x-show="kind === 'container'" :disabled="kind !== 'container'" placeholder="{{ t('servers.container_name') }}" style="flex: 1" x-cloak>
+    </div>
+    <fieldset x-show="kind === 'app'" :disabled="kind !== 'app'" style="border: 0; padding: 0; margin: 0">{{ perm_boxes("app", "PLD") }}</fieldset>
+    <fieldset x-show="kind === 'container'" :disabled="kind !== 'container'" style="border: 0; padding: 0; margin: 0" x-cloak>{{ perm_boxes("container", "PL") }}</fieldset>
+    <div class="row" style="justify-content: flex-end"><button class="btn primary"><i class="bi bi-plus-lg"></i> {{ t("servers.assign") }}</button></div>
+  </div>
+</form>
+{% endblock %}

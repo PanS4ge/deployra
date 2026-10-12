@@ -8,11 +8,12 @@
       <div class="card-head">
         <img class="avatar" src="{{ gravatar(u.email, 64, panel.db.setting('gravatar_default', 'identicon')) }}" alt="" referrerpolicy="no-referrer">
         <div style="flex: 1; min-width: 0"><div class="name trunc">{{ u.name }} {{ u.surname }}</div><div class="small muted trunc">{{ u.email }}</div></div>
-        {% if P.FULL_ACCESS in perms %}<span class="badge violet">{{ t("users.full_access") }}</span>{% endif %}
+        {% if u.scoped %}<span class="badge info">{{ t("servers.scoped_badge") }}</span>{% elif P.FULL_ACCESS in perms %}<span class="badge violet">{{ t("users.full_access") }}</span>{% endif %}
       </div>
       <div class="card-body row between">
         <span class="small muted">{{ t("users.summary", count=perms | length, since=u.created_at | dt) }}</span>
         <div class="row" style="gap: 4px">
+          {% if has(user, P.ALLOW_MODIFYING_USERS) %}<a class="btn sm" href="/settings/users/{{ u.id }}/servers" title="{{ t('servers.my_servers') }}"><i class="bi bi-hdd-stack"></i></a>{% endif %}
           {% if u.id == user.id or has(user, P.ALLOW_MODIFYING_USERS) %}<button class="btn sm" @click="edit = {{ u.id }}"><i class="bi bi-pencil"></i></button>{% endif %}
           {% if has(user, P.ALLOW_DELETING_USERS) and not u.undeletable and u.id != user.id %}<button class="btn sm danger" hx-post="/settings/users/{{ u.id }}/delete" hx-swap="none" hx-confirm="{{ t('users.delete_confirm', email=u.email) }}" data-danger data-math><i class="bi bi-trash"></i></button>{% endif %}
         </div>
@@ -34,6 +35,13 @@
         <div class="field"><label>{{ t("common.last_name") }}</label><input class="input" name="surname" value="{{ u.surname or '' }}"></div>
         <div class="field"><label>{{ t("common.email") }}</label><input class="input" name="email" type="email" value="{{ u.email }}" required></div>
         <div class="field"><label>{{ t("common.password") }}</label><input class="input" name="password" type="password" autocomplete="new-password" placeholder="{{ t('common.leave_empty_to_keep') if u.id else t('users.min_password') }}"></div>
+        <div class="field full">
+          <label>{{ t("servers.mode") }}</label>
+          <select class="select" name="scoped" {{ "disabled" if u.id == user.id or u.undeletable or not has(user, P.ALLOW_MODIFYING_USERS) }}>
+            <option value="0">{{ t("servers.mode_full") }}</option>
+            <option value="1" {{ "selected" if u.scoped }}>{{ t("servers.mode_scoped") }}</option>
+          </select>
+        </div>
         <div class="field full">
           <label>{{ t("users.permissions") }} {% if u.id == user.id %}<span class="muted">{{ t("users.own_permissions") }}</span>{% endif %}</label>
           <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px">

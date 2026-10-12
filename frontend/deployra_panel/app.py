@@ -23,6 +23,7 @@ from . import i18n
 from .context import Panel
 from .deps import Forbidden, LoginRequired
 from .security import SESSION_COOKIE
+from .services import access
 from .web import is_htmx, render, toast
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
@@ -89,6 +90,11 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
                 token = request.headers.get("X-CSRF-Token", "")
                 if not hmac.compare_digest(token, session["csrf"]):
                     return JSONResponse({"detail": i18n.t("msg.csrf")}, status_code=403)
+            if session.get("scoped") and not access.path_allowed(path):
+                # konto „tylko przypisane serwery”: cała reszta panelu jest zamknięta, nie tylko ukryta w menu
+                if request.method == "GET" and "text/event-stream" not in request.headers.get("accept", ""):
+                    return _redirect(request, "/servers")
+                return JSONResponse({"detail": i18n.t("servers.denied")}, status_code=403)
         elif not any(path.startswith(p) for p in PUBLIC_PREFIXES):
             return _redirect(request, f"/login?next={path}" if request.method == "GET" else "/login")
         return await call_next(request)

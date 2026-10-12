@@ -20,11 +20,14 @@
 {% block body %}
 <div class="shell">
   <aside class="sidebar" :class="nav && 'open'" @click.outside="nav = false">
-    <a class="brand" href="/">
+    <a class="brand" href="{{ '/servers' if user and user.scoped else '/' }}">
       {% include "_logo.html" %}
       <span><b>Deployra</b></span>
     </a>
     {% set section = path.split('/')[1] if path != '/' else '' %}
+    {% if user and user.scoped %}
+    <a class="nav-item {{ 'active' if section == 'servers' }}" href="/servers"><i class="bi bi-hdd-stack"></i> {{ t("servers.my_servers") }}</a>
+    {% else %}
     <a class="nav-item {{ 'active' if section == '' }}" href="/"><i class="bi bi-grid-1x2"></i> {{ t("nav.dashboard") }}</a>
     <a class="nav-item {{ 'active' if section == 'apps' }}" href="/apps"><i class="bi bi-rocket-takeoff"></i> {{ t("nav.apps") }}</a>
     <a class="nav-item {{ 'active' if section == 'nodes' }}" href="/nodes"><i class="bi bi-hdd-network"></i> {{ t("nav.nodes") }}</a>
@@ -43,6 +46,7 @@
     <div class="nav-label">{{ t("nav.plugins") }}</div>
     {% for item in plugin_nav %}<a class="nav-item {{ 'active' if path.startswith(item.href) }}" href="{{ item.href }}"><i class="bi bi-{{ item.icon }}"></i> {{ item.label }}</a>{% endfor %}
     {% endif %}
+    {% endif %}
     <div class="sidebar-foot">Deployra {{ VERSION }}</div>
   </aside>
 
@@ -54,6 +58,7 @@
         <h1>{% block heading %}{{ title }}{% endblock %}</h1>
       </div>
       {% block actions %}{% endblock %}
+      {% if not (user and user.scoped) %}
       <div style="position: relative" x-data="{ open: false }">
         <button class="btn ghost icon" @click="open = !open" hx-get="/notifications" hx-target="#notif-list" hx-swap="innerHTML" hx-trigger="click once" aria-label="{{ t('nav.notifications') }}">
           <i class="bi bi-bell"></i>
@@ -63,6 +68,7 @@
           <div id="notif-list"><div class="item muted">{{ t("common.loading") }}</div></div>
         </div>
       </div>
+      {% endif %}
       {% if user %}
       <div style="position: relative" x-data="{ open: false }">
         <button class="btn ghost" @click="open = !open" style="padding: 4px 8px">
@@ -71,7 +77,7 @@
         </button>
         <div class="card dropdown" style="min-width: 220px" x-show="open" x-cloak @click.outside="open = false" x-transition>
           <div class="item muted small">{{ user.email }}</div>
-          <a class="item" href="/settings/users"><i class="bi bi-people"></i> {{ t("nav.users") }}</a>
+          {% if not user.scoped %}<a class="item" href="/settings/users"><i class="bi bi-people"></i> {{ t("nav.users") }}</a>{% endif %}
           {% for code, name in LANGUAGES().items() if code != LANG() %}
           <a class="item" href="#" hx-post="/language" hx-vals='{"lang": "{{ code }}"}' hx-swap="none"><i class="bi bi-translate"></i> {{ name }}</a>
           {% endfor %}
