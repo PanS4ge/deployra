@@ -38,7 +38,7 @@
     <a class="nav-item {{ 'active' if section == 'certs' }}" href="/certs"><i class="bi bi-shield-lock"></i> {{ t("nav.certs") }}</a>
     <a class="nav-item {{ 'active' if section == 'tunnel' }}" href="/tunnel"><i class="bi bi-diagram-3"></i> {{ t("nav.tunnel") }}</a>
     <div class="nav-label">{{ t("nav.tools") }}</div>
-    <a class="nav-item {{ 'active' if section == 'import' }}" href="/import/npm"><i class="bi bi-box-arrow-in-down"></i> {{ t("nav.import") }}</a>
+    {% if not panel.db.setting("hide_npm_import") %}<a class="nav-item {{ 'active' if section == 'import' }}" href="/import/npm"><i class="bi bi-box-arrow-in-down"></i> {{ t("nav.import") }}</a>{% endif %}
     <a class="nav-item {{ 'active' if section == 'jobs' }}" href="/jobs"><i class="bi bi-activity"></i> {{ t("nav.jobs") }}</a>
     <a class="nav-item {{ 'active' if section == 'settings' }}" href="/settings"><i class="bi bi-gear"></i> {{ t("nav.settings") }}</a>
     {% set plugin_nav = panel.plugins.nav_items() %}

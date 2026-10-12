@@ -986,6 +986,7 @@
     "default_page_404": "Plain 404",
     "default_page_cosmic": "Cosmic “Unknown host”",
     "gravatar": "Default avatar (Gravatar)",
+    "hide_npm_import": "Hide “Import from NPM” in the menu",
     "image_prefix": "Deployra images in join instructions",
     "image_prefix_hint": "Prefix: <code>…-backend</code>, <code>…-updater</code>. Own registry or a fork — change it here.",
     "language_auto": "automatic (from the browser)",

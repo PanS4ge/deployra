@@ -35,3 +35,12 @@ def test_csrf_required(admin):
     response = admin.post("/settings", data={"base_domain": "x.pl"}, headers={"X-CSRF-Token": "zly"})
     assert response.status_code == 403
     assert admin.post("/settings", data={"base_domain": "x.pl"}).status_code == 200
+
+
+def test_npm_import_can_be_hidden(admin):
+    assert 'href="/import/npm"' in admin.get("/", headers={"HX-Request": ""}).text
+    assert admin.post("/settings", data={"base_domain": "example.com", "hide_npm_import": "1"}).status_code == 200
+    assert 'href="/import/npm"' not in admin.get("/", headers={"HX-Request": ""}).text
+    assert admin.get("/import/npm", headers={"HX-Request": ""}).status_code == 200  # strona dalej działa pod adresem
+    admin.post("/settings", data={"base_domain": "example.com"})
+    assert 'href="/import/npm"' in admin.get("/", headers={"HX-Request": ""}).text

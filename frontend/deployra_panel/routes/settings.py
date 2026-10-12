@@ -45,6 +45,7 @@ async def save_general(request: Request, panel: Panel = Depends(get_panel), user
             panel.default_language = value or panel.config.language or None
         panel.db.set_setting(key, value)
     panel.db.set_setting("acme_staging", bool(form.get("acme_staging")))
+    panel.db.set_setting("hide_npm_import", bool(form.get("hide_npm_import")))
     return toast(t("msg.settings_saved"))
 
 
