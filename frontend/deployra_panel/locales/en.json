@@ -911,6 +911,8 @@
     "empty_text": "App hosts are added automatically. Here you can expose anything else — e.g. Home Assistant on your home LAN — or import everything from Nginx Proxy Manager.",
     "empty_title": "Empty",
     "from_npm": "from NPM",
+    "health": "Working",
+    "health_down": "not responding",
     "locations_count": "locations: {count}",
     "msg": {
       "applied": "Saved and reloaded nginx ✔",

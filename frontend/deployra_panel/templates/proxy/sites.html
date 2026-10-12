@@ -8,7 +8,7 @@
   {% if sites %}
   <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>{{ t("apps.step_domain") }}</th><th>{{ t("proxy.target") if kind == "proxy" else (t("proxy.redirect") if kind == "redirect" else "") }}</th><th>Status</th><th>{{ t("proxy.visitors_30d") }}</th><th>SSL</th><th></th></tr></thead>
+    <thead><tr><th>{{ t("apps.step_domain") }}</th><th>{{ t("proxy.target") if kind == "proxy" else (t("proxy.redirect") if kind == "redirect" else "") }}</th><th>Status</th>{% if kind == "proxy" %}<th>{{ t("proxy.health") }}</th>{% endif %}<th>{{ t("proxy.visitors_30d") }}</th><th>SSL</th><th></th></tr></thead>
     <tbody>
     {% for s in sites %}{% set tg = s.target or {} %}
       <tr x-show="!q || {{ s.domains | join(' ') | tojson | forceescape }}.includes(q.toLowerCase())" style="{{ 'opacity: .5' if not s.enabled }}">
@@ -29,7 +29,8 @@
           {% elif kind == "redirect" %}{{ s.redirect.code }} → {{ s.redirect.domain }}{% endif %}
         </td>
         <td>{% if s.enabled %}<span class="badge ok"><i class="bi bi-check2"></i> {{ t("proxy.active") }}</span>{% else %}<span class="badge">{{ t("proxy.disabled") }}</span>{% endif %}</td>
-        <td hx-get="/analytics/spark?domains={{ s.domains | join(',') }}" hx-trigger="load" hx-swap="innerHTML"><span class="muted small">…</span></td>
+        {% if kind == "proxy" %}<td class="nowrap"><div id="health-{{ s.id }}">{% if s.enabled %}<span class="muted small">…</span>{% else %}<span class="muted small">—</span>{% endif %}</div></td>{% endif %}
+        <td><div id="spark-{{ s.id }}"><span class="muted small">…</span></div></td>
         <td>
           {% if s.ingress == "cloudflare" %}<span class="badge ok" title="{{ t('proxy.cf_https') }}"><i class="bi bi-cloud-check"></i></span>
           {% elif s.cert_id and certs.get(s.cert_id) %}{{ status_badge(certs[s.cert_id].status) }}
@@ -47,6 +48,9 @@
     </tbody>
   </table>
   </div>
+  {% set ids = sites | map(attribute="id") | join(",") %}
+  <div hx-get="/analytics/sparks?ids={{ ids }}" hx-trigger="load" hx-swap="none"></div>
+  {% if kind == "proxy" %}<div hx-get="/proxy/health?ids={{ ids }}" hx-trigger="load, every 60s [!document.hidden]" hx-swap="none"></div>{% endif %}
   {% else %}
   {{ empty("signpost-split", t("proxy.empty_title"), t("proxy.empty_text")) }}
   {% endif %}

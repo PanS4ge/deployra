@@ -158,3 +158,35 @@ def test_token_rejects_bad_subnets(ctx, subnet):
     with pytest.raises(ValueError):
         ctx.register_token("abc123", "s" * 20, "x", [subnet], 60)
         ctx.hub.add_peer("abc123", "node", "x", wg.genkey()[1], [subnet])
+
+
+def test_check_batch(ctx):
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200 if self.headers.get("Host") == "ok.example.com" else 503)
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    port = server.server_address[1]
+    boot = TestClient(create_bootstrap_app(ctx))
+    api = TestClient(create_api_app(ctx, start_scheduler=False))
+    secret, _ = _pair(boot, ctx, with_wg=False)
+    items = [
+        {"id": "1", "url": f"http://127.0.0.1:{port}/", "host": "ok.example.com"},
+        {"id": "2", "url": f"http://127.0.0.1:{port}/", "host": "zle.example.com"},
+        {"id": "3", "url": "http://127.0.0.1:1/", "host": None},
+        {"id": "4", "url": "ftp://x/", "host": None},
+    ]
+    results = _signed(api, secret, "POST", "/api/check/batch", {"items": items}).json()["results"]
+    server.shutdown()
+    assert results["1"]["ok"] and results["1"]["status"] == 200 and "ms" in results["1"]
+    assert results["2"]["status"] == 503 and not results["2"]["ok"]
+    assert results["3"]["status"] is None and not results["3"]["ok"]
+    assert not results["4"]["ok"]

@@ -81,6 +81,17 @@ def access_lists(request: Request, panel: Panel = Depends(get_panel)):
     return render(request, "proxy/access.html", title=t("proxy.tab_access"), tab="access", lists=rows, used=used)
 
 
+@router.get("/proxy/health")
+async def health(request: Request, ids: str = "", panel: Panel = Depends(get_panel)):
+    """Czy cele hostów proxy odpowiadają — bramka sprawdza je wszystkie naraz."""
+    from ..services import proxy_health
+
+    wanted = [int(i) for i in ids.split(",") if i.isdigit()][:500]
+    rows = panel.db.fetchall(f"SELECT * FROM sites WHERE kind = 'proxy' AND enabled = 1 AND id IN ({','.join('?' for _ in wanted)})",
+                             wanted) if wanted else []  # fmt: skip
+    return render(request, "partials/health_oob.html", results=await proxy_health.check(panel, rows))
+
+
 @router.get("/proxy/{kind_slug}")
 def sites(request: Request, kind_slug: str, panel: Panel = Depends(get_panel)):
     kind = KIND_SLUG.get(kind_slug)

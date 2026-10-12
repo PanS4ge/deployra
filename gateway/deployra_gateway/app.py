@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -114,6 +115,14 @@ class BanSettings(BaseModel):
 class CheckRequest(BaseModel):
     url: str
     host: str | None = None
+
+
+class CheckItem(CheckRequest):
+    id: str
+
+
+class CheckBatch(BaseModel):
+    items: list[CheckItem] = Field(default_factory=list, max_length=200)
 
 
 def _job_response(job: Job) -> dict:
@@ -341,17 +350,12 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
         ctx.apply_proxy()
         return {"ok": True}
 
-    @router.post("/check")
-    async def check(body: CheckRequest) -> dict:
-        if not body.url.startswith(("http://", "https://")):
-            raise HTTPException(400, tr("gw.url_scheme"))
-        import httpx  # leniwie — bramka potrzebuje go tylko do testów HTTP
+    async def _probe(client: Any, url: str, host: str | None) -> dict:
+        import httpx
 
         started = time.perf_counter()
-        headers = {"Host": body.host} if body.host else {}
         try:
-            async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=False) as client:
-                response = await client.get(body.url, headers=headers)
+            response = await client.get(url, headers={"Host": host} if host else {})
             return {"ok": response.status_code < 500, "status": response.status_code, "ms": round((time.perf_counter() - started) * 1000)}
         except httpx.ConnectError:
             return {"ok": False, "status": None, "error": tr("gw.check_refused")}
@@ -359,6 +363,32 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
             return {"ok": False, "status": None, "error": tr("gw.check_timeout")}
         except httpx.HTTPError as exc:
             return {"ok": False, "status": None, "error": str(exc) or type(exc).__name__}
+
+    @router.post("/check")
+    async def check(body: CheckRequest) -> dict:
+        if not body.url.startswith(("http://", "https://")):
+            raise HTTPException(400, tr("gw.url_scheme"))
+        import httpx  # leniwie — bramka potrzebuje go tylko do testów HTTP
+
+        async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=False) as client:
+            return await _probe(client, body.url, body.host)
+
+    @router.post("/check/batch")
+    async def check_batch(body: CheckBatch) -> dict:
+        """Wiele celów naraz (lista hostów proxy w panelu) — równolegle, z krótszym limitem czasu."""
+        import httpx
+
+        semaphore = asyncio.Semaphore(16)
+
+        async def one(item: CheckItem) -> tuple[str, dict]:
+            if not item.url.startswith(("http://", "https://")):
+                return item.id, {"ok": False, "status": None, "error": tr("gw.url_scheme")}
+            async with semaphore:
+                return item.id, await _probe(client, item.url, item.host)
+
+        async with httpx.AsyncClient(timeout=5, verify=False, follow_redirects=False) as client:
+            results = await asyncio.gather(*(one(item) for item in body.items))
+        return {"results": dict(results)}
 
     def _job(job_id: str, ctx: Context = Depends(get_ctx)) -> Job:
         found = ctx.jobs.get(job_id)

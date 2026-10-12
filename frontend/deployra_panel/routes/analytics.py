@@ -26,6 +26,22 @@ async def spark(request: Request, domains: str = "", panel: Panel = Depends(get_
     return render(request, "partials/spark.html", data=data, svg=charts.sparkline(uniques), total=charts.short_number(data["summary"]["uniques"]))
 
 
+@router.get("/analytics/sparks")
+async def sparks(request: Request, ids: str = "", panel: Panel = Depends(get_panel)):
+    """Wykresy odwiedzin dla całej listy hostów proxy jednym zapytaniem (podmiana out-of-band w wierszach)."""
+    wanted = [int(i) for i in ids.split(",") if i.isdigit()][:500]
+    rows = panel.db.fetchall(f"SELECT id, domains FROM sites WHERE id IN ({','.join('?' for _ in wanted)})", wanted) if wanted else []
+    items = []
+    for row in rows:
+        data = await analytics.daily(panel, row["domains"] or [], 30)  # dane z pamięci podręcznej — bramka pytana raz
+        if data is None:
+            items.append({"id": row["id"], "data": None})
+            continue
+        uniques = [r["uniques"] for r in data["series"]]
+        items.append({"id": row["id"], "data": data, "svg": charts.sparkline(uniques), "total": charts.short_number(data["summary"]["uniques"])})
+    return render(request, "partials/sparks_oob.html", items=items)
+
+
 @router.get("/analytics/chart")
 async def chart(request: Request, domains: str = "", all: int = 0, days: int = 30, panel: Panel = Depends(get_panel)):
     names = None if all else _domains(domains)

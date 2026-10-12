@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -12,6 +13,7 @@ from deployra_common.client import RemoteError
 
 CACHE_SECONDS = 60
 _cache: dict[tuple, tuple[float, Any]] = {}
+_locks: dict[tuple, asyncio.Lock] = {}
 
 
 async def _get(panel: Any, path: str) -> dict | None:
@@ -19,15 +21,19 @@ async def _get(panel: Any, path: str) -> dict | None:
     cached = _cache.get(key)
     if cached and time.time() - cached[0] < CACHE_SECONDS:
         return cached[1]
-    client = panel.gateway_client()
-    if not client:
-        return None
-    try:
-        data = await client.get(path, timeout=8)
-    except (RemoteError, httpx.HTTPError):
-        return cached[1] if cached else None
-    _cache[key] = (time.time(), data)
-    return data
+    async with _locks.setdefault(key, asyncio.Lock()):  # wiele wykresów naraz = jedno zapytanie do bramki
+        cached = _cache.get(key)
+        if cached and time.time() - cached[0] < CACHE_SECONDS:
+            return cached[1]
+        client = panel.gateway_client()
+        if not client:
+            return None
+        try:
+            data = await client.get(path, timeout=8)
+        except (RemoteError, httpx.HTTPError):
+            return cached[1] if cached else None
+        _cache[key] = (time.time(), data)
+        return data
 
 
 def _days(count: int) -> list[str]:

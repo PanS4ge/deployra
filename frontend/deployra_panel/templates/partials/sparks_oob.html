@@ -1,0 +1,2 @@
+{% for i in items %}<div id="spark-{{ i.id }}" hx-swap-oob="true">{% with data=i.data, svg=i.svg, total=i.total %}{% include "partials/spark.html" %}{% endwith %}</div>
+{% endfor %}
