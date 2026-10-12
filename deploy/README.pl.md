@@ -22,6 +22,15 @@ Typowy układ: `vps.compose.yml` na VPS, `node.compose.yml` (albo `proxmox.compo
  Dom:   node.compose.yml  /  proxmox.compose.yml  /  install-native.sh
 ```
 
+Dwie bramki („widelec”): ruch publiczny na jednym VPS-ie (np. Oracle), WireGuard na drugim (np. mikr.us). Bramka brzegowa to ten sam
+`gateway.compose.yml` z `DEPLOYRA_HUB` i `DEPLOYRA_JOIN` (polecenie daje panel: **Tunel → Bramka brzegowa**):
+
+```
+ Oracle:   gateway.compose.yml + DEPLOYRA_HUB=srv12.mikr.us:20123 DEPLOYRA_JOIN=…   (80/443, certyfikaty, statystyki)
+ mikr.us:  gateway.compose.yml + DEPLOYRA_WG_PORT / DEPLOYRA_BOOTSTRAP_PORT        (hub WireGuard)
+ Dom:      panel-node.compose.yml  albo  node.compose.yml
+```
+
 Panel w domu obok aplikacji, bramka sama na VPS-ie:
 
 ```
@@ -54,6 +63,8 @@ Zmienne w `deploy/.env` (obok plików compose):
 | `DEPLOYRA_NAME`, `DEPLOYRA_GATEWAY`, `DEPLOYRA_JOIN` | — | dołączanie węzła; gotowe wartości daje panel (Węzły → Dodaj węzeł) |
 | `DEPLOYRA_UPDATE_REPO` | `PanS4ge/deployra` | skąd panel sprawdza wydania |
 | `DEPLOYRA_LANG` | `pl` (panel: z przeglądarki) | język logów, stron dla odwiedzających i domyślny język panelu (`pl` / `en`) |
+| `DEPLOYRA_HUB`, `DEPLOYRA_JOIN` | — | bramka brzegowa: adres huba WireGuard i token z panelu (Tunel → Bramka brzegowa) |
+| `DEPLOYRA_WG_PORT`, `DEPLOYRA_BOOTSTRAP_PORT` | `51820`, `51821` | porty bramki (np. przydzielone przez mikr.us) |
 | `DEPLOYRA_MAX_TRANSFER_MB` | `51200` | węzeł: największa paczka przyjmowana przy przenoszeniu aplikacji |
 | `DEPLOYRA_PLUGINS_DIR` | `<DEPLOYRA_DATA>/plugins` | panel: katalog pluginów ([docs/plugins.pl.md](../docs/plugins.pl.md)) |
 | `DEPLOYRA_GEOIP` | `on` | kraj i ISP adresów IP (bazy DB-IP Lite pobierane przez bramkę) |

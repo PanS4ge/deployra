@@ -63,13 +63,31 @@ class Panel:
         return client
 
     def gateway(self) -> dict[str, Any] | None:
-        return self.db.fetchone("SELECT * FROM gateway ORDER BY id LIMIT 1")
+        """Bramka z hubem WireGuard (do niej dołączają węzły i panel)."""
+        return self.db.fetchone("SELECT * FROM gateway WHERE role = 'hub' ORDER BY id LIMIT 1")
+
+    def edge_row(self) -> dict[str, Any] | None:
+        """Bramka brzegowa („widelec”), także jeszcze niesparowana."""
+        return self.db.fetchone("SELECT * FROM gateway WHERE role = 'edge' ORDER BY id LIMIT 1")
+
+    def edge(self) -> dict[str, Any] | None:
+        """Bramka z ruchem publicznym: brzegowa, jeśli jest sparowana, inaczej hub."""
+        row = self.edge_row()
+        return row if row and row.get("secret") else self.gateway()
 
     def gateway_client(self) -> SignedClient | None:
+        """Bramka z ruchem publicznym: proxy, certyfikaty, statystyki, bany, test HTTP."""
+        gw = self.edge()
+        if not gw or not gw.get("secret"):
+            return None
+        return self._client(gw["role"], gw["api_url"], self.sealer.unseal_bytes(gw["secret"]))
+
+    def hub_client(self) -> SignedClient | None:
+        """Hub WireGuard: peery, tokeny dołączenia, status tunelu."""
         gw = self.gateway()
         if not gw or not gw.get("secret"):
             return None
-        return self._client("gateway", gw["api_url"], self.sealer.unseal_bytes(gw["secret"]))
+        return self._client("hub", gw["api_url"], self.sealer.unseal_bytes(gw["secret"]))
 
     @staticmethod
     def node_url(node: dict[str, Any]) -> str:
@@ -90,8 +108,13 @@ class Panel:
         if node["transport"] == "tunnel":
             return node.get("tunnel_ip")
         if node.get("proxy_address") == LOCAL_UPSTREAM:  # węzeł obok panelu — bramka widzi go przez tunel panelu
-            gateway = self.gateway() or {}
-            return str(gateway.get("panel_address") or "127.0.0.1").split("/")[0]
+            hub = self.gateway() or {}
+            if hub.get("panel_address"):
+                return str(hub["panel_address"]).split("/")[0]
+            edge = self.edge_row()
+            if edge and edge.get("secret"):  # panel przy hubie, ruch wchodzi bramką brzegową — przez adres huba w tunelu
+                return str(hub.get("hub_address") or "127.0.0.1")
+            return "127.0.0.1"
         return node.get("proxy_address") or None
 
     async def aclose(self) -> None:

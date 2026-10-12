@@ -12,7 +12,7 @@
           <div class="row" style="gap: 8px">
             <span class="dot {{ 'ok' if p.online else ('warn' if p.latest_handshake else 'err') }}"></span>
             {% if node %}<a class="name" href="/nodes/{{ node.id }}">{{ p.name }}</a>{% else %}<span class="name">{{ p.name }}</span>{% endif %}
-            <span class="badge {{ 'violet' if p.kind == 'panel' else '' }}">{{ "panel" if p.kind == "panel" else t("tunnel.node") }}</span>
+            <span class="badge {{ 'violet' if p.kind in ('panel', 'edge') else '' }}">{{ "panel" if p.kind == "panel" else (t("edge.short") if p.kind == "edge" else t("tunnel.node")) }}</span>
           </div>
         </td>
         <td class="mono">{{ p.address }}</td>

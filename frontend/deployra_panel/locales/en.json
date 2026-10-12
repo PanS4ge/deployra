@@ -378,6 +378,23 @@
     "tunnel": "Tunnel",
     "verify_token": "Verify token"
   },
+  "edge": {
+    "add": "Add an edge gateway",
+    "after": "Once it joins, the panel pairs with it by itself and proxy hosts, certificates and statistics move to it. Point your domains at its address.",
+    "already": "An edge gateway is already linked — unlink it first",
+    "bad_host": "Enter the edge gateway's address (domain or IP, no port)",
+    "in_tunnel": "In the tunnel",
+    "linked": "Edge gateway {host} linked — public traffic goes through it",
+    "not_edge": "No edge gateway answers at this address",
+    "pending": "Waiting for {host} to join the hub — run the command below there (a new token replaces the previous one).",
+    "public_host": "Public address",
+    "run_on": "On {host}, in the Deployra repository directory:",
+    "short": "edge",
+    "title": "Edge gateway",
+    "unlink": "Unlink the edge gateway",
+    "unlink_confirm": "Unlink the edge gateway? Public traffic goes back to the hub.",
+    "unlinked": "Edge gateway unlinked — proxy hosts are back on the hub"
+  },
   "images": {
     "cleanup": "Cleanup",
     "delete_confirm": "Delete image {name}?",
@@ -1168,6 +1185,7 @@
     "available_toast": "Version {version} is available ✦",
     "bad_release_version": "the release has an invalid version number: {version}",
     "bad_source": "Release source: a GitHub owner/repo (e.g. your-login/deployra) or a JSON URL",
+    "comp_edge": "Edge gateway",
     "comp_gateway": "Deployra-WG (gateway)",
     "comp_panel": "Deployra panel",
     "failed": "Not updated: {names}",

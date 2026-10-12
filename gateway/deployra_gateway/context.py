@@ -49,6 +49,9 @@ class Context:
         config.ensure_dirs()
         self.state = State(config.data_dir / "state.json")
         self.hub = Hub(config, self.state, wg_control)
+        from .edge import EdgeTunnel
+
+        self.edge = EdgeTunnel(config, self.state, wg_control) if config.edge else None
         self.nginx = NginxControl(config.nginx_dir, config.nginx_reload, config.reload_timeout)
         self.jobs = JobRegistry()
         self.guard = SignatureGuard(lambda key: self.state.panel_secret if key == "panel" else None, NonceCache())
@@ -100,7 +103,7 @@ class Context:
             self.gate.fail()
             raise PermissionError(tr("gw.bad_code")) from None
         tunnel = None
-        if request.get("wg_public_key"):
+        if request.get("wg_public_key") and not self.edge:  # bramka brzegowa nie jest hubem — panel ma tunel z hubem
             address = self.hub.add_peer("panel", "panel", str(request.get("name") or "Deployra")[:40], request["wg_public_key"])
             tunnel = self.hub.tunnel_config(address).model_dump()
         private, public = pairing.new_keypair()
@@ -118,8 +121,16 @@ class Context:
             },
         )
 
+    @property
+    def api_url(self) -> str:
+        if self.edge and self.edge.address:
+            return f"http://{self.edge.address}:{self.config.api_port}"
+        return self.config.api_url
+
     def public_info(self) -> dict:
         return {
+            "role": "edge" if self.edge else "hub",
+            "tunnel_address": self.edge.address if self.edge else self.config.hub_address,
             "version": __version__,
             "public_host": self.config.public_host,
             "wg_port": self.config.wg_port,
@@ -127,20 +138,23 @@ class Context:
             "subnet": self.config.wg_subnet,
             "hub_address": self.config.hub_address,
             "hub_public_key": self.hub.public_key,
-            "api_url": self.config.api_url,
+            "api_url": self.api_url,
         }
 
     # --- dołączanie węzłów ----------------------------------------------------------
 
-    def register_token(self, token_id: str, join_secret: str, name: str, lan_subnets: list[str], ttl_minutes: int) -> dict:
-        if not token_id.isalnum() or len(token_id) > 32 or len(join_secret) < 16:
+    def register_token(self, token_id: str, join_secret: str, name: str, lan_subnets: list[str], ttl_minutes: int, kind: str = "node") -> dict:
+        if self.edge:
+            raise LookupError(tr("gw.edge.not_hub"))
+        if not token_id.isalnum() or len(token_id) > 32 or len(join_secret) < 16 or kind not in ("node", "edge"):
             raise ValueError(tr("gw.bad_token"))
         for subnet in lan_subnets:
             wg.WgPeer(self.hub.public_key, [subnet])  # walidacja podsieci
         entry = {
             "join_secret": join_secret,
             "name": name[:60],
-            "lan_subnets": lan_subnets,
+            "lan_subnets": lan_subnets if kind == "node" else [],
+            "kind": kind,
             "expires": time.time() + ttl_minutes * 60,
             "used_by": None,
         }
@@ -167,7 +181,8 @@ class Context:
             raise LookupError(tr("gw.token_used"))
         if not token["used_by"] and time.time() > token["expires"]:
             raise PermissionError(tr("gw.token_expired"))
-        address = self.hub.add_peer(token_id, "node", token["name"] or str(request.get("name", ""))[:60], public_key, token["lan_subnets"])
+        kind = token.get("kind", "node")
+        address = self.hub.add_peer(token_id, kind, token["name"] or str(request.get("name", ""))[:60], public_key, token["lan_subnets"])
 
         def mark(tokens: dict) -> dict:
             tokens[token_id] = {**tokens[token_id], "used_by": public_key, "joined_at": time.time()}

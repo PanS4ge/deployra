@@ -75,6 +75,11 @@ class TokenRequest(BaseModel):
     name: str = ""
     lan_subnets: list[str] = Field(default_factory=list)
     ttl_minutes: int = Field(default=60, ge=5, le=7 * 24 * 60)
+    kind: str = "node"
+
+
+class RoutesRequest(BaseModel):
+    subnets: list[str] = Field(default_factory=list)
 
 
 class PeerUpdate(BaseModel):
@@ -188,8 +193,9 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
         return {
             **ctx.public_info(),
             "service": NAME,
-            "wg_up": ctx.hub.control.is_up() if ctx.config.wg_enabled else False,
-            "peers": ctx.hub.status(),
+            "wg_up": (ctx.edge or ctx.hub).control.is_up() if ctx.config.wg_enabled else False,
+            "peers": [] if ctx.edge else ctx.hub.status(),
+            "edge": ctx.edge.status() if ctx.edge else None,
             "tokens": [
                 {"id": tid, "name": t["name"], "expires": t["expires"], "used": bool(t["used_by"])}
                 for tid, t in tokens.items()
@@ -280,7 +286,14 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
 
     @router.post("/join-tokens")
     def add_token(body: TokenRequest, ctx: Context = Depends(get_ctx)) -> dict:
-        return ctx.register_token(body.id, body.join_secret, body.name, body.lan_subnets, body.ttl_minutes)
+        return ctx.register_token(body.id, body.join_secret, body.name, body.lan_subnets, body.ttl_minutes, body.kind)
+
+    @router.put("/routes")
+    def set_routes(body: RoutesRequest, ctx: Context = Depends(get_ctx)) -> dict:
+        """Bramka brzegowa: podsieci LAN węzłów, do których ruch idzie tunelem przez hub."""
+        if not ctx.edge:
+            return {"routes": [], "edge": False}
+        return {"routes": ctx.edge.set_routes(body.subnets), "edge": True}
 
     @router.delete("/join-tokens/{token_id}")
     def drop_token(token_id: str, ctx: Context = Depends(get_ctx)) -> dict:

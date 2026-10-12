@@ -24,6 +24,7 @@ services:
       DEPLOYRA_JOIN: ${DEPLOYRA_JOIN:-}
       DEPLOYRA_PORT_POOL: ${DEPLOYRA_PORT_POOL:-20000-29999}
       DEPLOYRA_LANG: ${DEPLOYRA_LANG:-pl}           # język logów (pl / en)
+      DEPLOYRA_WG_IFACE: ${DEPLOYRA_WG_IFACE:-wg0}   # wg1, gdy na tej maszynie stoi też bramka (zajmuje wg0)
       DEPLOYRA_API_BIND: ${DEPLOYRA_API_BIND:-}     # węzeł na tym samym VPS co panel: 127.0.0.1 (bez tunelu, API tylko lokalnie)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

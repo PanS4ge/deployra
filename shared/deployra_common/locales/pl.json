@@ -19,6 +19,18 @@
     "cert_installed": "Certyfikat zainstalowany — przeładowuję nginx",
     "check_refused": "połączenie odrzucone — nic nie słucha na tym porcie (albo brak trasy przez tunel)",
     "check_timeout": "przekroczony czas odpowiedzi (10 s)",
+    "edge": {
+      "bad_route": "Nieprawidłowa podsieć LAN: {subnet}",
+      "hub_mismatch": "Odpowiedź huba nie pasuje do zapytania",
+      "join_rejected": "Hub odrzucił dołączenie ({code}): {error}",
+      "join_retry": "Dołączanie do huba nie wyszło ({error}) — ponowię za {delay} s",
+      "joined": "Bramka brzegowa dołączona do huba {hub} jako {address}",
+      "need_token": "Bramka brzegowa potrzebuje DEPLOYRA_JOIN (token z panelu: Tunel → Bramka brzegowa)",
+      "not_hub": "To bramka brzegowa — węzły dołączają do huba",
+      "not_joined": "Bramka brzegowa nie dołączyła jeszcze do huba",
+      "tunnel_up": "Tunel do huba działa: {address} → {hub}",
+      "waiting_panel": "Bramka brzegowa w tunelu jako {address} — panel sparuje się sam"
+    },
     "job": {
       "cert": "Certyfikat {domains}",
       "renew": "Odnowienie {domains}"

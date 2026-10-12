@@ -39,6 +39,24 @@ async def serve(ctx: Context, api_host: str) -> None:
     await asyncio.gather(*(server.serve() for server in servers))
 
 
+def _join_hub(ctx: Context) -> None:
+    """Bramka brzegowa: dołączenie do huba (ponawiane — hub albo sieć mogą jeszcze nie odpowiadać)."""
+    import time
+
+    if not ctx.config.join_token:
+        logger.critical(tr("gw.edge.need_token"))
+        sys.exit(2)
+    delay = 5
+    while True:
+        try:
+            ctx.edge.join()
+            return
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(tr("gw.edge.join_retry", error=exc, delay=delay))
+            time.sleep(delay)
+            delay = min(delay * 2, 60)
+
+
 def main() -> None:
     i18n.current.set(i18n.default_language())  # logi w języku DEPLOYRA_LANG
     config = Config()
@@ -56,14 +74,24 @@ def main() -> None:
     if nginx_ctl.install_base(config.nginx_dir, config.nginx_bundle):
         logger.info(tr("gw.log.nginx_base_updated"))
     nginx_driver.write_snippets(config.nginx_dir)
-    wg_up = ctx.hub.up()
+    if ctx.edge:
+        if not ctx.edge.conf:
+            _join_hub(ctx)
+        wg_up = ctx.edge.up()
+    else:
+        wg_up = ctx.hub.up()
     result = ctx.apply_proxy()
     ctx.banwall.sync(ctx.bans.nets())
     logger.info(tr("gw.log.nginx_config", status=result.status, message=result.message).rstrip())
 
-    api_host = config.api_bind or (config.hub_address if wg_up else "127.0.0.1")
+    if ctx.edge:
+        api_host = config.api_bind or (ctx.edge.address if wg_up else "127.0.0.1")
+    else:
+        api_host = config.api_bind or (config.hub_address if wg_up else "127.0.0.1")
     code = ctx.ensure_pairing_code()
-    if code:
+    if ctx.edge and code:
+        logger.info(tr("gw.edge.waiting_panel", address=ctx.edge.address))
+    elif code:
         _banner(
             [
                 tr("gw.log.waiting_sync"),

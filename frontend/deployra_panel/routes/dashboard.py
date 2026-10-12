@@ -48,7 +48,7 @@ async def dashboard(request: Request, panel: Panel = Depends(get_panel)):
 
 @router.get("/dashboard/tunnel")
 async def tunnel_card(request: Request, panel: Panel = Depends(get_panel)):
-    client = panel.gateway_client()
+    client = panel.hub_client()
     status, error = None, None
     if client:
         try:

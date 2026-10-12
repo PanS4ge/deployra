@@ -77,7 +77,7 @@ async def public_ip(panel: Any) -> str:
     configured = (panel.db.setting("public_ip") or "").strip()
     if configured:
         return str(ipaddress.ip_address(configured))
-    gateway = panel.gateway()
+    gateway = panel.edge()  # domeny wskazują na bramkę z ruchem publicznym
     if not gateway:
         raise DnsError(t("dns.msg.no_gateway"))
     host = gateway["public_host"].strip("[]")

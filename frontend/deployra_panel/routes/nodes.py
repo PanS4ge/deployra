@@ -155,11 +155,12 @@ def rename(request: Request, name: str = Form(...), node: dict = Depends(node_or
 async def subnets(request: Request, lan_subnets: str = Form(""), node: dict = Depends(node_or_404), panel: Panel = Depends(get_panel),
                   user: dict = Depends(require(Permission.ALLOW_TUNNEL))):  # fmt: skip
     values = sync._check_subnets([s for s in lan_subnets.replace(",", "\n").splitlines()])
-    client = panel.gateway_client()
+    client = panel.hub_client()
     if node["transport"] != "tunnel" or not client:
         raise LookupError(t("msg.lan_tunnel_only"))
     await client.request("PATCH", f"/api/peers/{node['peer_id']}", json={"lan_subnets": values})
     panel.db.update("nodes", node["id"], lan_subnets=values)
+    await sync.push_edge_routes(panel)
     return toast(t("msg.subnets_saved"), "ok")
 
 

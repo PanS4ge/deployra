@@ -1,0 +1,7 @@
+{% from "_macros.html" import copy_pill %}
+<div class="stack" style="margin-top: 6px">
+  <div class="small muted">{{ t("edge.run_on", host=host) }}</div>
+  <pre class="log short" style="white-space: pre-wrap">{{ snippet }}</pre>
+  <div>{{ copy_pill(snippet) }}</div>
+  <div class="small muted">{{ t("edge.after") }}</div>
+</div>

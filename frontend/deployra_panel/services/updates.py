@@ -228,9 +228,12 @@ async def components(panel: Any, log_lines: int = 0) -> list[dict[str, Any]]:
          "update": panel.updates.info(log_lines), "client": None},
     ]  # fmt: skip
     remote: list[tuple[str, str, str, Any]] = []
-    gateway = panel.gateway_client()
-    if gateway:
-        remote.append(("gateway", t("upd.comp_gateway"), "diagram-3", gateway))
+    hub = panel.hub_client()
+    if hub:
+        remote.append(("gateway", t("upd.comp_gateway"), "diagram-3", hub))
+    edge = panel.edge_row()
+    if edge and edge.get("secret"):
+        remote.append(("edge", t("upd.comp_edge"), "signpost-split", panel.gateway_client()))
     for node in panel.db.all("nodes"):
         if node["status"] == "paired" and node.get("secret"):
             remote.append((f"node-{node['id']}", node["name"], "hdd-network", panel.node_client(node)))
@@ -286,7 +289,7 @@ async def run(panel: Any, job: Job, target: str, only: set[str] | None = None) -
     if nodes:
         done = await asyncio.gather(*(_remote(job, c, target) for c in nodes))
         results.update({c["name"]: ok for c, ok in zip(nodes, done)})
-    for item in (c for c in todo if c["key"] == "gateway"):
+    for item in (c for c in todo if c["key"] in ("edge", "gateway")):
         results[item["name"]] = await _remote(job, item, target)
     failed = [name for name, ok in results.items() if not ok]
     me = next((c for c in todo if c["key"] == "panel"), None)

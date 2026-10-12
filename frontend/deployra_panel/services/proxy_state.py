@@ -103,6 +103,9 @@ async def push(panel: Any) -> dict:
         return {"ok": False, "status": "no-gateway", "message": t("proxy.msg.no_gateway")}
     state = build_state(panel)
     result = await client.put("/api/proxy", json=state.model_dump(mode="json"))
+    from .sync import push_edge_routes
+
+    await push_edge_routes(panel)
     if result.get("status") != "rejected" and panel.db.setting("cf_tunnel_id"):
         from . import cloudflared
 

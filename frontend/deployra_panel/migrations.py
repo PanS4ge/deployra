@@ -131,4 +131,15 @@ def v5(dialect: str) -> list[str]:
     ]
 
 
-MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1), (2, v2), (3, v3), (4, v4), (5, v5)]
+def v6(dialect: str) -> list[str]:
+    """Bramka brzegowa („widelec”): rola bramki (hub WireGuard / brzeg z ruchem publicznym) i oczekujące dołączenie."""
+    x = _types(dialect)["text"]
+    return [
+        "ALTER TABLE gateway ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'hub'",
+        "ALTER TABLE gateway ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'paired'",
+        f"ALTER TABLE gateway ADD COLUMN pair_secret {x}",
+        "ALTER TABLE gateway ADD COLUMN token_id VARCHAR(64)",
+    ]
+
+
+MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6)]

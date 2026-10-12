@@ -55,6 +55,13 @@ class Config:
     ban_firewall: bool = field(default_factory=lambda: _flag("DEPLOYRA_BAN_FIREWALL", True))  # bany także w ipset/iptables
     update_dir: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_UPDATE_DIR", "/run/deployra-update")))
     nginx_bundle: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_NGINX_BUNDLE", str(_bundle_dir()))))
+    # bramka brzegowa („widelec”): WireGuard trzyma inna bramka (hub), ta dołącza do niej tokenem z panelu
+    hub: str = field(default_factory=lambda: _env("DEPLOYRA_HUB"))
+    join_token: str = field(default_factory=lambda: _env("DEPLOYRA_JOIN"))
+
+    @property
+    def edge(self) -> bool:
+        return bool(self.hub)
 
     @property
     def hub_address(self) -> str:

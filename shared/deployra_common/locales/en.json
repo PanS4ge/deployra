@@ -19,6 +19,18 @@
     "cert_installed": "Certificate installed — reloading nginx",
     "check_refused": "connection refused — nothing listens on that port (or there's no route through the tunnel)",
     "check_timeout": "response timed out (10 s)",
+    "edge": {
+      "bad_route": "Invalid LAN subnet: {subnet}",
+      "hub_mismatch": "The hub's reply doesn't match the request",
+      "join_rejected": "The hub rejected the join ({code}): {error}",
+      "join_retry": "Joining the hub failed ({error}) — retrying in {delay} s",
+      "joined": "Edge gateway joined hub {hub} as {address}",
+      "need_token": "An edge gateway needs DEPLOYRA_JOIN (token from the panel: Tunnel → Edge gateway)",
+      "not_hub": "This is an edge gateway — nodes join the hub",
+      "not_joined": "The edge gateway hasn't joined the hub yet",
+      "tunnel_up": "Tunnel to the hub is up: {address} → {hub}",
+      "waiting_panel": "Edge gateway in the tunnel as {address} — the panel pairs by itself"
+    },
     "job": {
       "cert": "Certificate {domains}",
       "renew": "Renewing {domains}"

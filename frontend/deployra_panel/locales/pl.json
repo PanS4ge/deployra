@@ -378,6 +378,23 @@
     "tunnel": "Tunel",
     "verify_token": "Sprawdź token"
   },
+  "edge": {
+    "add": "Dodaj bramkę brzegową",
+    "after": "Po dołączeniu panel sparuje się z nią sam, a hosty proxy, certyfikaty i statystyki przejdą na nią. Domeny skieruj na jej adres.",
+    "already": "Bramka brzegowa jest już połączona — najpierw ją odłącz",
+    "bad_host": "Podaj adres bramki brzegowej (domena albo IP, bez portu)",
+    "in_tunnel": "W tunelu",
+    "linked": "Bramka brzegowa {host} połączona — ruch publiczny idzie przez nią",
+    "not_edge": "Pod tym adresem nie odpowiada bramka brzegowa",
+    "pending": "Czekam, aż {host} dołączy do huba — uruchom tam polecenie poniżej (nowy token unieważnia poprzedni).",
+    "public_host": "Adres publiczny",
+    "run_on": "Na {host}, w katalogu z repozytorium Deployry:",
+    "short": "brzeg",
+    "title": "Bramka brzegowa",
+    "unlink": "Odłącz bramkę brzegową",
+    "unlink_confirm": "Odłączyć bramkę brzegową? Ruch publiczny wróci na hub.",
+    "unlinked": "Bramka brzegowa odłączona — hosty proxy wróciły na hub"
+  },
   "images": {
     "cleanup": "Sprzątanie",
     "delete_confirm": "Usunąć obraz {name}?",
@@ -1168,6 +1185,7 @@
     "available_toast": "Dostępna wersja {version} ✦",
     "bad_release_version": "wydanie ma nieprawidłowy numer wersji: {version}",
     "bad_source": "Źródło wydań: owner/repo z GitHuba (np. twoj-login/deployra) albo adres JSON",
+    "comp_edge": "Bramka brzegowa",
     "comp_gateway": "Deployra-WG (bramka)",
     "comp_panel": "Panel Deployry",
     "failed": "Nie zaktualizowano: {names}",

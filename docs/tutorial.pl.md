@@ -154,6 +154,40 @@ VPS potrzebuje wtedy tylko ~250 MB RAM, a panel, aplikacje i ich dane są u cieb
 Ruch z internetu idzie: domena → bramka na VPS-ie → tunel WireGuard → aplikacje w domu. Domowy serwer nie potrzebuje publicznego IP
 ani otwartych portów. Porty aplikacji są osiągalne tylko przez tunel (i z samej maszyny), SFTP (`2222`) — z sieci lokalnej.
 
+## Wariant: dwie bramki — ruch publiczny na jednym VPS-ie, WireGuard na drugim („widelec”)
+
+Np. **Oracle** ma publiczne 80/443 i aplikacje w chmurze, a **mikr.us** trzyma WireGuarda, do którego dołącza dom.
+Ruch idzie: internet → bramka brzegowa (Oracle) → tunel przez hub (mikr.us) → dom. To jeden przeskok sieciowy przez hub —
+bez drugiego nginx po drodze, a certyfikaty, bany i statystyki są na Oracle.
+
+```
+ Internet ─► Oracle: bramka brzegowa ═╗
+                                       ║ WireGuard
+             mikr.us: hub ◄════════════╝══════► dom: węzeł (albo panel + węzeł)
+```
+
+1. **mikr.us — hub.** W panelu mikr.us sprawdź przydzielone porty (np. `20123` i `20124`) i użyj ich zamiast 51820/51821:
+
+   ```bash
+   printf 'DEPLOYRA_PUBLIC_HOST=srv12.mikr.us\nDEPLOYRA_WG_PORT=20124\nDEPLOYRA_BOOTSTRAP_PORT=20123\nDEPLOYRA_IMAGES=deployra\n' > deploy/.env
+   ```
+   ```bash
+   docker compose -f deploy/gateway.compose.yml up -d --build
+   ```
+
+2. **Panel** (w domu z `panel-node.compose.yml` albo gdziekolwiek) — **Tunel → Połącz z Deployra-WG**: `srv12.mikr.us:20123` + kod
+   z `docker logs deployra-wg` na mikr.us.
+3. **Oracle — bramka brzegowa.** W panelu: **Tunel → Bramka brzegowa** → wpisz publiczny adres Oracle → **Dodaj**. Panel pokaże
+   polecenie z `DEPLOYRA_HUB` i jednorazowym tokenem `DEPLOYRA_JOIN` — uruchom je na Oracle w katalogu z repozytorium
+   (z `DEPLOYRA_IMAGES=deployra` w `deploy/.env` dopisz `--build`). Na Oracle otwórz `80/tcp` i `443/tcp`; UDP nie jest potrzebne,
+   bo to Oracle łączy się z mikr.us.
+4. Po minucie odśwież stronę **Tunel**: panel sam sparuje się z bramką brzegową, przeniesie na nią hosty proxy i certyfikaty,
+   a hub dostanie pusty stan. Rekordy DNS domen kieruj na **Oracle** (z tokenem Cloudflare panel robi to sam).
+
+Aplikacje w chmurze na Oracle: postaw tam węzeł przez tunel (**Węzły → Dodaj węzeł → Przez tunel**, polecenie z panelu
+z dopiskiem `DEPLOYRA_WG_IFACE=wg1`, bo `wg0` zajmuje bramka) albo podepnij gotowe usługi hostem proxy na **Dowolny adres** `127.0.0.1:port`.
+Hosty proxy z adresem `127.0.0.1` po włączeniu bramki brzegowej wskazują na maszynę Oracle, nie na hub.
+
 ## 7. Pierwsza aplikacja
 
 **Aplikacje → Nowa aplikacja**:

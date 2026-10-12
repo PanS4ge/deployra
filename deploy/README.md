@@ -22,6 +22,15 @@ Typical setup: `vps.compose.yml` on the VPS, `node.compose.yml` (or `proxmox.com
  Home:   node.compose.yml  /  proxmox.compose.yml  /  install-native.sh
 ```
 
+Two gateways ("fork"): public traffic on one VPS (e.g. Oracle), WireGuard on another (e.g. mikr.us). The edge gateway is the same
+`gateway.compose.yml` with `DEPLOYRA_HUB` and `DEPLOYRA_JOIN` (the panel gives you the command: **Tunnel → Edge gateway**):
+
+```
+ Oracle:   gateway.compose.yml + DEPLOYRA_HUB=srv12.mikr.us:20123 DEPLOYRA_JOIN=…   (80/443, certificates, statistics)
+ mikr.us:  gateway.compose.yml + DEPLOYRA_WG_PORT / DEPLOYRA_BOOTSTRAP_PORT        (WireGuard hub)
+ Home:     panel-node.compose.yml  or  node.compose.yml
+```
+
 Panel at home next to the apps, gateway alone on the VPS:
 
 ```
@@ -54,6 +63,8 @@ Variables in `deploy/.env` (next to the compose files):
 | `DEPLOYRA_NAME`, `DEPLOYRA_GATEWAY`, `DEPLOYRA_JOIN` | — | joining a node; the panel gives you the values (Nodes → Add node) |
 | `DEPLOYRA_UPDATE_REPO` | `PanS4ge/deployra` | where the panel checks for releases |
 | `DEPLOYRA_LANG` | `pl` (panel: from the browser) | language of logs, visitor pages and the panel default (`pl` / `en`) |
+| `DEPLOYRA_HUB`, `DEPLOYRA_JOIN` | — | edge gateway: WireGuard hub address and the token from the panel (Tunnel → Edge gateway) |
+| `DEPLOYRA_WG_PORT`, `DEPLOYRA_BOOTSTRAP_PORT` | `51820`, `51821` | gateway ports (e.g. the ones mikr.us assigns) |
 | `DEPLOYRA_MAX_TRANSFER_MB` | `51200` | node: largest bundle accepted when an app moves here |
 | `DEPLOYRA_PLUGINS_DIR` | `<DEPLOYRA_DATA>/plugins` | panel: plugin directory ([docs/plugins.md](../docs/plugins.md)) |
 | `DEPLOYRA_GEOIP` | `on` | country and ISP of IP addresses (DB-IP Lite databases, downloaded by the gateway) |

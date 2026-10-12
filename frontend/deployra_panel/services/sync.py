@@ -97,15 +97,125 @@ async def pair_gateway(panel: Any, address: str, code: str, colocated: bool, api
 
 
 async def gateway_status(panel: Any) -> dict | None:
-    client = panel.gateway_client()
+    client = panel.hub_client()
     if not client:
         return None
     return await client.get("/api/status")
 
 
 async def unlink_gateway(panel: Any) -> None:
-    panel.db.execute("DELETE FROM gateway")
-    panel._clients.pop("gateway", None)
+    panel.db.execute("DELETE FROM gateway")  # bez huba bramka brzegowa nie ma tunelu — znika razem z nim
+    for key in ("hub", "edge"):
+        panel._clients.pop(key, None)
+
+
+# --- bramka brzegowa („widelec”) -----------------------------------------------------------
+# Ruch publiczny przyjmuje inna maszyna niż hub WireGuard (np. Oracle + mikr.us). Bramka brzegowa
+# dołącza do huba tokenem jak węzeł, a panel paruje się z nią przez tunel sekretem z tokenu.
+
+
+def edge_snippet(hub: dict, public_host: str, token: str) -> str:
+    """Polecenie dla maszyny z bramką brzegową (deploy/gateway.compose.yml z DEPLOYRA_HUB i DEPLOYRA_JOIN)."""
+    bootstrap = urlparse(hub["bootstrap_url"]).port or 51821
+    return (f'DEPLOYRA_PUBLIC_HOST="{public_host}" DEPLOYRA_HUB="{hub["public_host"]}:{bootstrap}" \\\n'
+            f'DEPLOYRA_JOIN="{token}" docker compose -f deploy/gateway.compose.yml up -d')  # fmt: skip
+
+
+async def invite_edge(panel: Any, public_host: str, ttl_minutes: int = 24 * 60) -> tuple[int, str]:
+    hub, client = panel.gateway(), panel.hub_client()
+    if not hub or not client:
+        raise LookupError(t("sync.link_gateway_first"))
+    public_host = public_host.strip().lower()
+    if not public_host or any(c.isspace() or c in "/:@" for c in public_host.strip("[]")):
+        raise ValueError(t("edge.bad_host"))
+    old = panel.edge_row()
+    if old and old.get("secret"):
+        raise LookupError(t("edge.already"))
+    if old:  # poprzednie, niedokończone zaproszenie
+        await _drop_edge_peer(client, old)
+        panel.db.delete("gateway", old["id"])
+    token = pairing.JoinToken.generate()
+    await client.post("/api/join-tokens", json={"id": token.id, "join_secret": token.join_secret, "name": public_host,
+                                                "ttl_minutes": ttl_minutes, "kind": "edge"})  # fmt: skip
+    row_id = panel.db.insert("gateway", name="Deployra-WG (edge)", role="edge", status="pending", public_host=public_host,
+                             token_id=token.id, pair_secret=panel.sealer.seal(token.pair_secret), created_at=now())  # fmt: skip
+    return row_id, token.encode()
+
+
+async def _drop_edge_peer(client: Any, row: dict) -> None:
+    try:
+        await client.delete(f"/api/peers/{row['token_id']}")
+    except (RemoteError, httpx.HTTPError):
+        pass
+
+
+async def pair_edge(panel: Any, row: dict, address: str) -> dict:
+    """Parowanie z bramką brzegową przez tunel (jej bootstrap na adresie w tunelu, kod = sekret z tokenu)."""
+    psk = panel.sealer.unseal(row.get("pair_secret"))
+    if not psk:
+        raise LookupError(t("sync.no_pair_secret"))
+    x_private, x_public = pairing.new_keypair()
+    nonce = secrets.token_hex(12)
+    bootstrap = f"http://{address}:51821"
+    response = await _post_unsigned(f"{bootstrap}/pair", pairing.seal(psk, {"kind": "pair-gateway", "x25519": x_public, "nonce": nonce,
+                                                                             "name": "Deployra"}))  # fmt: skip
+    try:
+        data = pairing.unseal(psk, response, "pair-gateway-ok")
+    except ValueError:
+        raise PermissionError(t("sync.gateway_bad_reply")) from None
+    if data.get("nonce") != nonce:
+        raise PermissionError(t("sync.gateway_mismatch"))
+    info = data["gateway"]
+    if info.get("role") != "edge":
+        raise PermissionError(t("edge.not_edge"))
+    secret = pairing.derive_secret(x_private, data["x25519"], psk, GATEWAY_CONTEXT)
+    panel.db.update("gateway", row["id"], secret=panel.sealer.seal(secret), status="paired", pair_secret=None, bootstrap_url=bootstrap,
+                    api_url=info["api_url"], public_host=info.get("public_host") or row["public_host"], wg_port=info.get("wg_port"),
+                    subnet=info.get("subnet"), hub_address=info.get("hub_address"), hub_public_key=info.get("hub_public_key"),
+                    panel_address=info.get("tunnel_address"), info=info)  # fmt: skip
+    panel._clients.pop("edge", None)
+    panel.notify(t("edge.linked", host=info.get("public_host") or row["public_host"]), "ok")
+    await _switch_ingress(panel)
+    return panel.edge_row()
+
+
+async def unlink_edge(panel: Any) -> None:
+    row = panel.edge_row()
+    if not row:
+        return
+    client = panel.hub_client()
+    if client and row.get("token_id"):
+        await _drop_edge_peer(client, row)
+    panel.db.delete("gateway", row["id"])
+    panel._clients.pop("edge", None)
+    await _switch_ingress(panel)
+
+
+async def _switch_ingress(panel: Any) -> None:
+    """Hosty proxy idą do bramki z ruchem publicznym; hub dostaje pusty stan, gdy ruch wchodzi bramką brzegową."""
+    from deployra_common.schemas import ProxyState
+
+    from . import proxy_state
+
+    try:
+        await proxy_state.push(panel)
+        edge, hub = panel.edge_row(), panel.hub_client()
+        if edge and edge.get("secret") and hub:
+            await hub.put("/api/proxy", json=ProxyState().model_dump(mode="json"))
+    except (RemoteError, httpx.HTTPError):
+        pass  # następny zapis hostów proxy wyśle stan jeszcze raz
+
+
+async def push_edge_routes(panel: Any) -> None:
+    """Podsieci LAN węzłów → bramka brzegowa (żeby ruch do np. 192.168.1.0/24 szedł tunelem przez hub)."""
+    edge = panel.edge_row()
+    if not edge or not edge.get("secret"):
+        return
+    subnets = sorted({s for node in panel.db.all("nodes") for s in (node.get("lan_subnets") or [])})
+    try:
+        await panel.gateway_client().put("/api/routes", json={"subnets": subnets})
+    except (RemoteError, httpx.HTTPError):
+        pass
 
 
 # --- węzły -------------------------------------------------------------------------------
@@ -122,7 +232,7 @@ def _check_subnets(values: list[str]) -> list[str]:
 
 async def invite_node(panel: Any, name: str, lan_subnets: list[str], ttl_minutes: int = 60) -> tuple[int, str]:
     """Tworzy węzeł „oczekujący” i token dołączenia. Zwraca (id węzła, token)."""
-    client = panel.gateway_client()
+    client = panel.hub_client()
     if not client:
         raise LookupError(t("sync.link_gateway_first"))
     name = name.strip()[:60] or t("tunnel.node")
@@ -142,11 +252,19 @@ async def invite_node(panel: Any, name: str, lan_subnets: list[str], ttl_minutes
 async def refresh_pending(panel: Any) -> int:
     """Sprawdza na bramce, które oczekujące węzły dołączyły, i dokańcza ich parowanie."""
     pending = panel.db.fetchall("SELECT * FROM nodes WHERE transport = 'tunnel' AND status IN ('pending', 'joined')")
-    if not pending:
+    edge = panel.edge_row()
+    edge_pending = edge if edge and not edge.get("secret") else None
+    if not pending and not edge_pending:
         return 0
     status = await gateway_status(panel)
     peers = {p["id"]: p for p in (status or {}).get("peers", [])}
     done = 0
+    if edge_pending and peers.get(edge_pending["token_id"]):
+        try:
+            await pair_edge(panel, edge_pending, peers[edge_pending["token_id"]]["address"])
+            done += 1
+        except (httpx.HTTPError, RemoteError, PermissionError):
+            pass  # bramka brzegowa jeszcze nie słucha w tunelu
     for node in pending:
         peer = peers.get(node["peer_id"])
         if not peer:
@@ -210,7 +328,7 @@ async def add_direct_node(panel: Any, name: str, url: str, code: str, proxy_addr
 
 
 async def remove_node(panel: Any, node: dict) -> None:
-    client = panel.gateway_client()
+    client = panel.hub_client()
     if node["transport"] == "tunnel" and client and node.get("peer_id"):
         try:
             await client.delete(f"/api/peers/{node['peer_id']}")
