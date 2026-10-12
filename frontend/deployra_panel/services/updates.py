@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from urllib.parse import urlparse
 from typing import Any
 
 import httpx
@@ -225,21 +226,23 @@ async def components(panel: Any, log_lines: int = 0) -> list[dict[str, Any]]:
     """Panel, bramka i sparowane węzły z wersją i stanem aktualizatora."""
     items: list[dict[str, Any]] = [
         {"key": "panel", "name": t("upd.comp_panel"), "icon": "window-stack", "online": True, "version": __version__,
-         "update": panel.updates.info(log_lines), "client": None},
+         "update": panel.updates.info(log_lines), "client": None, "address": panel.db.setting("panel_domain") or None},
     ]  # fmt: skip
-    remote: list[tuple[str, str, str, Any]] = []
-    hub = panel.hub_client()
-    if hub:
-        remote.append(("gateway", t("upd.comp_gateway"), "diagram-3", hub))
+    remote: list[tuple[str, str, str, Any, str | None]] = []
+    hub, hub_client = panel.gateway(), panel.hub_client()
+    if hub_client:
+        remote.append(("gateway", t("upd.comp_gateway"), "diagram-3", hub_client, (hub or {}).get("public_host")))
     edge = panel.edge_row()
     if edge and edge.get("secret"):
-        remote.append(("edge", t("upd.comp_edge"), "signpost-split", panel.gateway_client()))
+        remote.append(("edge", t("upd.comp_edge"), "signpost-split", panel.gateway_client(), edge.get("public_host")))
     for node in panel.db.all("nodes"):
         if node["status"] == "paired" and node.get("secret"):
-            remote.append((f"node-{node['id']}", node["name"], "hdd-network", panel.node_client(node)))
+            address = node.get("tunnel_ip") if node["transport"] == "tunnel" else urlparse(node.get("api_url") or "").hostname
+            remote.append((f"node-{node['id']}", node["name"], "hdd-network", panel.node_client(node), address))
 
-    async def fetch(key: str, name: str, icon: str, client: Any) -> dict[str, Any]:
-        item = {"key": key, "name": name, "icon": icon, "online": False, "version": None, "update": None, "client": client, "error": None}
+    async def fetch(key: str, name: str, icon: str, client: Any, address: str | None) -> dict[str, Any]:
+        item = {"key": key, "name": name, "icon": icon, "online": False, "version": None, "update": None, "client": client, "error": None,
+                "address": address}  # fmt: skip
         try:
             data = await asyncio.wait_for(client.get("/api/update", params={"log": log_lines} if log_lines else None), 8)
             item.update(online=True, version=data.get("version"), update={k: v for k, v in data.items() if k not in ("service", "version")})

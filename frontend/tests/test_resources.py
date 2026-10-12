@@ -424,3 +424,15 @@ def test_auto_move_only_for_stateless_opt_in(admin, nodes, monkeypatch):
     spec = AppSpec.model_validate({"slug": "db", "source": {"kind": "image", "image": "postgres"}, "container_port": 5432,
                                    "volumes": [{"source": "dane", "target": "/data"}]})  # fmt: skip
     assert not migrate.auto_capable(spec) and with_volume
+
+
+def test_app_access_list(admin, nodes):
+    panel = admin.app.state.panel
+    app = make_app(admin, nodes)
+    acl = panel.db.insert("access_lists", name="Rodzina", users=[{"username": "mama", "htpasswd": "$apr1$x$y"}], clients=[])
+    assert "Rodzina" in admin.get(f"/apps/{app['id']}", headers={"HX-Request": ""}).text
+    assert admin.post(f"/apps/{app['id']}/access", data={"access_list_id": str(acl)}).status_code == 200
+    assert panel.db.get("sites", app["site_id"])["access_list_id"] == acl
+    assert admin.post(f"/apps/{app['id']}/access", data={"access_list_id": ""}).status_code == 200
+    assert panel.db.get("sites", app["site_id"])["access_list_id"] is None
+    assert admin.post(f"/apps/{app['id']}/access", data={"access_list_id": "999"}).status_code == 400

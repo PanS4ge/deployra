@@ -37,10 +37,11 @@ def test_csrf_required(admin):
     assert admin.post("/settings", data={"base_domain": "x.pl"}).status_code == 200
 
 
-def test_npm_import_can_be_hidden(admin):
-    assert 'href="/import/npm"' in admin.get("/", headers={"HX-Request": ""}).text
-    assert admin.post("/settings", data={"base_domain": "example.com", "hide_npm_import": "1"}).status_code == 200
-    assert 'href="/import/npm"' not in admin.get("/", headers={"HX-Request": ""}).text
-    assert admin.get("/import/npm", headers={"HX-Request": ""}).status_code == 200  # strona dalej działa pod adresem
-    admin.post("/settings", data={"base_domain": "example.com"})
-    assert 'href="/import/npm"' in admin.get("/", headers={"HX-Request": ""}).text
+
+def test_npm_import_lives_in_settings(admin):
+    home = admin.get("/", headers={"HX-Request": ""}).text
+    assert 'href="/import/npm"' not in home.split("<main")[0]  # nie ma go w menu bocznym
+    settings = admin.get("/settings", headers={"HX-Request": ""}).text
+    assert 'href="/import/npm"' in settings
+    page = admin.get("/import/npm", headers={"HX-Request": ""}).text
+    assert 'class="tabs"' in page and 'class="active"' in page

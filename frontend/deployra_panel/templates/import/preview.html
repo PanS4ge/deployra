@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block crumbs %}<div class="crumbs"><a href="/import/npm">{{ t("nav.import") }}</a> /</div>{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="/settings">{{ t("nav.settings") }}</a> / <a href="/import/npm">{{ t("nav.import") }}</a> /</div>{% endblock %}
 {% block content %}
 <div class="grid grid-4">
   <div class="card stat"><div class="label">{{ t("dashboard.proxy_hosts") }}</div><div class="value">{{ data.proxy_hosts | length }}</div></div>

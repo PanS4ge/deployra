@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+{% set tab = "import" %}{% include "settings/_tabs.html" %}
 <div class="callout"><i class="bi bi-magic"></i><div class="small">{{ t("import.intro") }}</div></div>
 <div class="grid grid-2" x-data="{ mode: 'file' }">
   <div class="card" :class="mode === 'file' && 'glow'">

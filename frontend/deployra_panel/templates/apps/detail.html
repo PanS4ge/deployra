@@ -105,6 +105,16 @@
         <dt>{{ t("apps.last_deploy") }}</dt><dd>{{ app.last_deploy_at | ago }}</dd>
         {% if site %}<dt>{{ t("apps.proxy_host") }}</dt><dd><a href="/proxy/hosts/{{ site.id }}">#{{ site.id }}</a></dd>{% endif %}
       </dl>
+      {% if site and has(user, P.ALLOW_PROXY) %}
+      <form class="row" style="gap: 8px; margin-top: 12px" hx-post="/apps/{{ app.id }}/access" hx-trigger="change" hx-swap="none">
+        <i class="bi bi-lock"></i>
+        <select class="select" name="access_list_id" style="flex: 1">
+          <option value="">{{ t("site.public") }}</option>
+          {% for a in acls %}<option value="{{ a.id }}" {{ "selected" if site.access_list_id == a.id }}>{{ a.name }}</option>{% endfor %}
+        </select>
+        <a class="btn sm ghost" href="/proxy/access" title="{{ t('site.access_list') }}"><i class="bi bi-sliders"></i></a>
+      </form>
+      {% endif %}
     </div>
   </div>
 

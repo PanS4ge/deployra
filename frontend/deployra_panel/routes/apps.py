@@ -225,7 +225,25 @@ def app_page(request: Request, job: str = "", app: dict = Depends(_app), panel: 
         job=live_job, hook_url=hook_url, hook_secret=panel.sealer.unseal(app.get("webhook_secret")),
         monitor=monitor, monitor_stats=uptime.stats_for(panel, [("app", app["id"])]).get(("app", app["id"])),
         settings=panel.db.settings(), other_nodes=others, auto_capable=migrate.auto_capable(spec),
+        acls=panel.db.fetchall("SELECT id, name FROM access_lists ORDER BY name"),
     )  # fmt: skip
+
+
+@router.post("/apps/{app_id}/access")
+async def set_access(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                     user: dict = Depends(require(Permission.ALLOW_PROXY))):  # fmt: skip
+    """Lista dostępu (hasło / adresy IP) na hoście proxy aplikacji — jak „Access List” w NPM."""
+    from ..services import proxy_state
+
+    form = await request.form()
+    if not app.get("site_id"):
+        return toast(t("apps.access_no_domain"), "err", status=400)
+    acl_id = int(form.get("access_list_id") or 0) or None
+    if acl_id and not panel.db.get("access_lists", acl_id):
+        return toast(t("apps.access_missing"), "err", status=400)
+    panel.db.update("sites", app["site_id"], access_list_id=acl_id)
+    message, level = proxy_state.push_message(await proxy_state.push(panel))
+    return toast(message, level if level != "ok" else "ok")
 
 
 # --- przejęcie kontenera spoza Deployry -----------------------------------------------------------

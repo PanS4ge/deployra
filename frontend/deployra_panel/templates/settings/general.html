@@ -7,7 +7,6 @@
     <div class="field"><label>{{ t("settings.base_domain") }}</label><input class="input" name="base_domain" value="{{ s.base_domain or '' }}" placeholder="example.com"><div class="hint">{{ t("settings.base_domain_hint", base=s.base_domain or "example.com") }}</div></div>
     <div class="field"><label>{{ t("settings.acme_email") }}</label><input class="input" name="acme_email" type="email" value="{{ s.acme_email or '' }}"></div>
     <div class="field" style="justify-content: flex-end"><label class="check"><input type="checkbox" name="acme_staging" value="1" {{ "checked" if s.acme_staging }}><span class="sw"></span><span>{{ t("settings.acme_staging") }}</span></label></div>
-    <div class="field" style="justify-content: flex-end"><label class="check"><input type="checkbox" name="hide_npm_import" value="1" {{ "checked" if s.hide_npm_import }}><span class="sw"></span><span>{{ t("settings.hide_npm_import") }}</span></label></div>
     <div class="field"><label>{{ t("settings.default_language") }}</label>
       <select class="select" name="language">
         <option value="" {{ "selected" if not s.language }}>{{ t("settings.language_auto") }}</option>
