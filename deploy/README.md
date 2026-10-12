@@ -38,6 +38,20 @@ Panel at home next to the apps, gateway alone on the VPS:
  Home:   panel-node.compose.yml  = panel.compose.yml + node.compose.yml (paired automatically)
 ```
 
+## Paste-ready stacks (`deploy/stacks/`)
+
+Self-contained files with no `build:` and no references to other files — paste them into Portainer (**Stacks → Add stack → Web editor**)
+or run `docker compose -f <file> up -d`. Only change the lines marked `←`. Images are pulled from GHCR.
+
+| File | What it starts |
+|---|---|
+| `stacks/vps.yml` | gateway + panel on one VPS |
+| `stacks/gateway.yml` | just the gateway (also a hub on mikr.us or an edge gateway on Oracle) |
+| `stacks/panel-node.yml` | panel + node on one machine (the panel pairs the node by itself) |
+| `stacks/node.yml` | just a node (token from the panel) |
+
+No updater containers — update with **Pull and redeploy** in Portainer (or `docker compose pull && docker compose up -d`).
+
 ## Updater (`*-updater` services)
 
 Every file includes a small `deployra-*-updater` container: ~1 MB RAM when idle, no network, only `docker.sock`.

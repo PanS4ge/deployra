@@ -38,6 +38,20 @@ Panel w domu obok aplikacji, bramka sama na VPS-ie:
  Dom:   panel-node.compose.yml  = panel.compose.yml + node.compose.yml (parowane automatycznie)
 ```
 
+## Stacki do wklejenia (`deploy/stacks/`)
+
+Samodzielne pliki bez `build:` i bez odwołań do innych plików — wklejasz do Portainera (**Stacks → Add stack → Web editor**)
+albo uruchamiasz `docker compose -f <plik> up -d`. Zmieniasz tylko linie oznaczone `←`. Obrazy pobierają się z GHCR.
+
+| Plik | Co stawia |
+|---|---|
+| `stacks/vps.yml` | bramka + panel na jednym VPS-ie |
+| `stacks/gateway.yml` | sama bramka (też hub na mikr.us albo bramka brzegowa na Oracle) |
+| `stacks/panel-node.yml` | panel + węzeł na jednej maszynie (panel sam paruje węzeł) |
+| `stacks/node.yml` | sam węzeł (token z panelu) |
+
+Bez kontenerów aktualizatora — aktualizacja to **Pull and redeploy** w Portainerze (albo `docker compose pull && docker compose up -d`).
+
 ## Aktualizator (usługi `*-updater`)
 
 Każdy plik ma mały kontener `deployra-*-updater`: w spoczynku ~1 MB RAM, bez sieci, tylko z `docker.sock`.

@@ -1,0 +1,60 @@
+# ─── Deployra-WG: bramka (WireGuard + nginx dla ruchu z internetu) ────────────────────────────
+# Samodzielny plik do wklejenia jako stack (Portainer → Stacks → Add stack → Web editor) albo do
+# `docker compose -f gateway.yml up -d`. Nie potrzebuje repozytorium ani innych plików.
+#
+# Porty na firewallu: 80/tcp, 443/tcp + port WireGuarda (UDP) i dołączania (TCP) z ustawień niżej.
+# Kod synchronizacji dla panelu: docker logs deployra-wg
+#
+# Dwie bramki („widelec”, np. hub na mikr.us + ruch publiczny na Oracle): na mikr.us ten plik bez zmian
+# poza adresem i portami; na Oracle ten sam plik z odkomentowanymi DEPLOYRA_HUB i DEPLOYRA_JOIN
+# (wartości daje panel: Tunel → Bramka brzegowa).
+# Aktualizacja: Portainer → stack → „Pull and redeploy” (albo `docker compose pull && docker compose up -d`).
+services:
+  deployra-wg:
+    image: ghcr.io/pans4ge/deployra-wg:latest
+    container_name: deployra-wg
+    network_mode: host                     # wg0 w sieci hosta: nginx widzi węzły pod 10.66.0.x
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun]                # zapasowy wireguard-go, gdy jądro nie ma WireGuarda
+    environment:
+      DEPLOYRA_PUBLIC_HOST: "vps.example.com"   # ← publiczny adres albo IP tej maszyny
+      DEPLOYRA_WG_PORT: "51820"                 # ← UDP WireGuarda (na mikr.us: port przydzielony w panelu mikr.us)
+      DEPLOYRA_BOOTSTRAP_PORT: "51821"          # ← TCP dołączania (na mikr.us: drugi przydzielony port)
+      DEPLOYRA_LANG: "pl"
+      # DEPLOYRA_HUB: "srv12.mikr.us:20123"     # ← tylko bramka brzegowa: adres huba (host:port dołączania)
+      # DEPLOYRA_JOIN: "dplr1.…"                # ← tylko bramka brzegowa: token z panelu
+    volumes:
+      - wg-data:/var/lib/deployra-wg
+      - nginx-conf:/etc/nginx/deployra
+      - certs:/etc/deployra/certs
+      - acme:/var/www/acme
+    restart: unless-stopped
+    mem_limit: 128m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: deployra-nginx
+    network_mode: host
+    depends_on: [deployra-wg]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until [ -f /etc/nginx/deployra/base/nginx.conf ]; do echo "czekam na konfigurację od deployra-wg…"; sleep 2; done
+        ln -sf /etc/nginx/deployra/base/nginx.conf /etc/nginx/nginx.conf
+        sh /etc/nginx/deployra/base/deployra-reloader.sh
+        exec /docker-entrypoint.sh nginx -g 'daemon off;'
+    volumes:
+      - nginx-conf:/etc/nginx/deployra
+      - certs:/etc/deployra/certs:ro
+      - acme:/var/www/acme:ro
+    restart: unless-stopped
+    mem_limit: 96m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+volumes:
+  wg-data:
+  nginx-conf:
+  certs:
+  acme:

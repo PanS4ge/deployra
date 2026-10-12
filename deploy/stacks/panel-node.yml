@@ -1,0 +1,54 @@
+# ─── Deployra: panel + węzeł na jednej maszynie (np. domowy serwer) ─────────────────────────────
+# Samodzielny plik do wklejenia jako stack (Portainer → Stacks → Add stack → Web editor) albo do
+# `docker compose -f panel-node.yml up -d`. Nie potrzebuje repozytorium ani innych plików.
+# Bramkę (Deployra-WG) stawiasz osobno na VPS-ie — plik gateway.yml.
+#
+# Po starcie: http://<adres-tej-maszyny>:8080 → konto administratora → Tunel → Połącz z Deployra-WG
+# (adres bramki + kod z `docker logs deployra-wg` na VPS-ie). Węzeł z tej maszyny panel sparuje sam.
+# Aktualizacja: Portainer → stack → „Pull and redeploy” (albo `docker compose pull && docker compose up -d`).
+services:
+  deployra:
+    image: ghcr.io/pans4ge/deployra-panel:latest
+    container_name: deployra-panel
+    network_mode: host                     # panel stawia tunel WireGuard do bramki
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun]
+    environment:
+      DEPLOYRA_BIND: "0.0.0.0"             # panel w sieci lokalnej; "127.0.0.1" = tylko z tej maszyny
+      DEPLOYRA_PORT: "8080"                # ← zmień, jeśli 8080 jest zajęty
+      DEPLOYRA_LANG: "pl"
+      DEPLOYRA_LOCAL_NODE: "http://127.0.0.1:2750"
+      DEPLOYRA_LOCAL_NODE_NAME: "dom"      # ← nazwa tego serwera w panelu
+    volumes:
+      - panel-data:/var/lib/deployra-panel
+      - local-pair:/run/deployra-pair:ro
+    restart: unless-stopped
+    mem_limit: 160m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+  deployra-backend:
+    image: ghcr.io/pans4ge/deployra-backend:latest
+    container_name: deployra-backend
+    network_mode: host
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun]
+    labels:
+      deployra.system: backend
+    environment:
+      DEPLOYRA_NAME: "dom"                 # ← ta sama nazwa co wyżej
+      DEPLOYRA_API_BIND: "127.0.0.1"       # API węzła tylko dla panelu obok; aplikacje z zewnątrz tylko przez tunel
+      DEPLOYRA_SFTP_BIND: "0.0.0.0"        # SFTP (port 2222) z sieci lokalnej
+      DEPLOYRA_PAIR_FILE: "/run/deployra-pair/code"
+      DEPLOYRA_LANG: "pl"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/deployra:/var/lib/deployra   # klucze i stan węzła
+      - /srv/deployra:/srv/deployra           # pliki aplikacji, stacki (ta sama ścieżka na hoście i w kontenerze)
+      - local-pair:/run/deployra-pair
+    restart: unless-stopped
+    mem_limit: 192m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+volumes:
+  panel-data:
+  local-pair:

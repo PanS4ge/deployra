@@ -1,0 +1,29 @@
+# ─── Deployra: węzeł (serwer, na którym działają aplikacje) ───────────────────────────────────
+# Samodzielny plik do wklejenia jako stack (Portainer → Stacks → Add stack → Web editor) albo do
+# `docker compose -f node.yml up -d`. Nie potrzebuje repozytorium ani innych plików.
+#
+# Wartości DEPLOYRA_GATEWAY i DEPLOYRA_JOIN daje panel: Węzły → Dodaj węzeł → Przez tunel.
+# Węzeł dołączy do bramki tunelem WireGuard — nie potrzebuje publicznego IP ani otwartych portów.
+# Aktualizacja: Portainer → stack → „Pull and redeploy” (albo `docker compose pull && docker compose up -d`).
+services:
+  deployra-backend:
+    image: ghcr.io/pans4ge/deployra-backend:latest
+    container_name: deployra-backend
+    network_mode: host                     # wg0 i pula portów aplikacji na hoście
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun]
+    labels:
+      deployra.system: backend
+    environment:
+      DEPLOYRA_NAME: "dom"                       # ← nazwa tego serwera w panelu
+      DEPLOYRA_GATEWAY: "vps.example.com:51821"  # ← z panelu
+      DEPLOYRA_JOIN: "dplr1.wklej-token-z-panelu" # ← z panelu (jednorazowy)
+      DEPLOYRA_LANG: "pl"
+      # DEPLOYRA_WG_IFACE: "wg1"                 # ← tylko gdy na tej maszynie stoi też bramka (zajmuje wg0)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/deployra:/var/lib/deployra   # klucze i stan węzła
+      - /srv/deployra:/srv/deployra           # pliki aplikacji, stacki (ta sama ścieżka na hoście i w kontenerze)
+    restart: unless-stopped
+    mem_limit: 192m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }

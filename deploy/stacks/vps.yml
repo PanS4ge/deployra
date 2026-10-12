@@ -1,0 +1,73 @@
+# ─── Deployra: bramka + panel na jednym VPS-ie ───────────────────────────────────────────────
+# Samodzielny plik do wklejenia jako stack (Portainer → Stacks → Add stack → Web editor) albo do
+# `docker compose -f vps.yml up -d`. Nie potrzebuje repozytorium ani innych plików.
+#
+# Porty na firewallu: 80/tcp, 443/tcp, 51820/udp, 51821/tcp.
+# Po starcie: tunel SSH `ssh -L 8080:127.0.0.1:8080 root@vps` → http://localhost:8080 → konto administratora →
+# Tunel → Połącz z Deployra-WG: adres 127.0.0.1:51821, kod z `docker logs deployra-wg`,
+# zaznacz „Panel działa na tym samym serwerze co bramka”.
+# Aktualizacja: Portainer → stack → „Pull and redeploy” (albo `docker compose pull && docker compose up -d`).
+services:
+  deployra-wg:
+    image: ghcr.io/pans4ge/deployra-wg:latest
+    container_name: deployra-wg
+    network_mode: host
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun]
+    environment:
+      DEPLOYRA_PUBLIC_HOST: "vps.example.com"   # ← publiczny adres albo IP tego VPS-a
+      DEPLOYRA_WG_PORT: "51820"
+      DEPLOYRA_BOOTSTRAP_PORT: "51821"
+      DEPLOYRA_LANG: "pl"
+    volumes:
+      - wg-data:/var/lib/deployra-wg
+      - nginx-conf:/etc/nginx/deployra
+      - certs:/etc/deployra/certs
+      - acme:/var/www/acme
+    restart: unless-stopped
+    mem_limit: 128m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: deployra-nginx
+    network_mode: host
+    depends_on: [deployra-wg]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until [ -f /etc/nginx/deployra/base/nginx.conf ]; do echo "czekam na konfigurację od deployra-wg…"; sleep 2; done
+        ln -sf /etc/nginx/deployra/base/nginx.conf /etc/nginx/nginx.conf
+        sh /etc/nginx/deployra/base/deployra-reloader.sh
+        exec /docker-entrypoint.sh nginx -g 'daemon off;'
+    volumes:
+      - nginx-conf:/etc/nginx/deployra
+      - certs:/etc/deployra/certs:ro
+      - acme:/var/www/acme:ro
+    restart: unless-stopped
+    mem_limit: 96m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+  deployra:
+    image: ghcr.io/pans4ge/deployra-panel:latest
+    container_name: deployra-panel
+    network_mode: host
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun]
+    environment:
+      DEPLOYRA_BIND: "127.0.0.1"           # panel tylko lokalnie — na świat wystawisz go hostem proxy w samej Deployrze
+      DEPLOYRA_PORT: "8080"
+      DEPLOYRA_LANG: "pl"
+    volumes:
+      - panel-data:/var/lib/deployra-panel
+    restart: unless-stopped
+    mem_limit: 160m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+volumes:
+  wg-data:
+  nginx-conf:
+  certs:
+  acme:
+  panel-data:
