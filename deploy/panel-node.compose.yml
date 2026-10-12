@@ -33,11 +33,7 @@ services:
     volumes:
       - local-pair:/run/deployra-pair
 
-  updater:
-    extends: { file: node.compose.yml, service: updater }
-
 volumes:
   panel-data:
   panel-updates:
-  node-updates:
   local-pair:

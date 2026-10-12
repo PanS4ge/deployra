@@ -1157,8 +1157,7 @@
     "no_pair_secret": "no pairing secret for this node",
     "node_bad_reply": "the node's reply failed verification",
     "node_mismatch": "the node's reply doesn't match the request",
-    "snippet_run": "Run",
-    "snippet_updater": "updates from the panel; ~1 MB RAM when idle"
+    "snippet_run": "Run"
   },
   "terminal": {
     "auto": "auto (bash → sh)",
@@ -1312,7 +1311,10 @@
     "pulling": "pulling images",
     "queued": "waiting for the updater",
     "starting": "starting the new containers",
-    "up_failed": "docker compose up failed — see the log"
+    "up_failed": "docker compose up failed — see the log",
+    "verifying": "waiting for the new version to come up",
+    "rolled_back": "the new version didn't come up — the previous one is back",
+    "recreate_failed": "couldn't replace the container — the previous version keeps running"
   },
   "updates": {
     "asking": "Asking components for their versions…",

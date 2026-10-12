@@ -351,7 +351,7 @@ def env_snippet(gateway: dict, token: str, name: str) -> str:
 
 
 def compose_snippet(gateway: dict, token: str, name: str, images: str = DEFAULT_IMAGES) -> str:
-    """Samodzielny node.compose.yml (backend + aktualizator) do wklejenia na nowym węźle."""
+    """Samodzielny node.compose.yml do wklejenia na nowym węźle (backend aktualizuje się sam)."""
     host = gateway["public_host"]
     bootstrap = urlparse(gateway["bootstrap_url"]).port or 51821
     images = (images or DEFAULT_IMAGES).strip().rstrip("-")
@@ -376,18 +376,4 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/deployra:/var/lib/deployra
       - /srv/deployra:/srv/deployra
-      - node-updates:/run/deployra-update
-  updater:   # {t("sync.snippet_updater")}
-    image: ${{DEPLOYRA_IMAGES:-{images}}}-updater:${{DEPLOYRA_VERSION:-latest}}
-    container_name: deployra-updater
-    network_mode: none
-    restart: unless-stopped
-    environment:
-      DEPLOYRA_UPDATE_SERVICES: deployra-backend updater
-      DEPLOYRA_IMAGES: ${{DEPLOYRA_IMAGES:-{images}}}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - node-updates:/run/deployra-update
-volumes:
-  node-updates:
 """

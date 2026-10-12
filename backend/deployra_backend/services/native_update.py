@@ -1,20 +1,42 @@
-"""Aktualizacje backendu: sidecar `deployra-updater` albo (instalacja systemd) `install-native.sh --update`."""
+"""Aktualizacje backendu: sam backend (Docker), `install-native.sh --update` (systemd) albo dawny sidecar."""
 
 from __future__ import annotations
 
 import shutil
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from deployra_common.updates import UpdateAgent
 
 from ..config import Config
+from .self_update import SelfUpdater
 
 
-def update_agent(config: Config) -> UpdateAgent:
+class BackendUpdates:
+    """Backend w Dockerze aktualizuje się sam; sidecar `deployra-updater` zostaje dla starszych instalacji."""
+
+    def __init__(self, updater: SelfUpdater, sidecar: UpdateAgent) -> None:
+        self.updater = updater
+        self.own = UpdateAgent(updater.dir, launcher=updater.launch, launch_mode=updater.mode)
+        self.sidecar = sidecar
+
+    def _pick(self) -> UpdateAgent:
+        return self.sidecar if self.own.mode is None and self.sidecar.mode is not None else self.own
+
+    def info(self, log_lines: int = 0) -> dict[str, Any]:
+        return self._pick().info(log_lines)
+
+    def request(self, version: str) -> dict[str, Any]:
+        return self._pick().request(version)
+
+
+def update_agent(config: Config, docker: Callable[[], Any] | None = None) -> UpdateAgent | BackendUpdates:
     if not config.native_repo:
-        return UpdateAgent(config.update_dir)
+        sidecar = UpdateAgent(config.update_dir)
+        return BackendUpdates(SelfUpdater(config, docker), sidecar) if docker else sidecar
     script = Path(config.native_repo) / "deploy" / "install-native.sh"
 
     def launch(version: str) -> None:

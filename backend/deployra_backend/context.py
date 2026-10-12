@@ -61,7 +61,7 @@ class Context:
         from .enroll import PairingGate
 
         self.pair_gate = PairingGate()
-        self.updates = update_agent(config)
+        self.updates = update_agent(config, lambda: self.docker)
 
     def _lookup(self, key_id: str) -> bytes | None:
         return self.state.secret if key_id == "panel" else None

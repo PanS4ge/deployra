@@ -11,8 +11,11 @@ komponent dzieli katalog `/run/deployra-update`:
     agent     → aktualizator: tryb i znacznik życia, odświeżany co minutę
     log       → aktualizator: pełny przebieg ostatniej aktualizacji
 
-Na hoście bez Dockera (backend jako usługa systemd) tę samą rolę pełni
-`install-native.sh --update`, uruchamiany przez `systemd-run`.
+Backend sidecara nie potrzebuje: ma docker.sock, więc na czas aktualizacji
+uruchamia krótko żyjącą kopię siebie, która podmienia jego kontener i znika
+(deployra_backend.services.self_update) — ten sam protokół plików, tylko w
+katalogu danych backendu. Na hoście bez Dockera (backend jako usługa systemd)
+tę rolę pełni `install-native.sh --update`, uruchamiany przez `systemd-run`.
 """
 
 from __future__ import annotations
@@ -57,7 +60,7 @@ def same_version(a: Any, b: Any) -> bool:
     return pa is not None and pa == pb
 
 
-def _read_kv(path: Path) -> dict[str, str]:
+def read_kv(path: Path) -> dict[str, str]:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -70,26 +73,39 @@ def _read_kv(path: Path) -> dict[str, str]:
     return out
 
 
-def _write_kv(path: Path, values: dict[str, Any]) -> None:
+def write_kv(path: Path, values: dict[str, Any]) -> None:
     tmp = path.with_name(f".{path.name}.tmp")
     lines = [f"{key}={str(value).replace(chr(10), ' ').replace(chr(13), ' ')}" for key, value in values.items()]
     tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
     os.replace(tmp, path)
 
 
+def write_status(directory: Path, state: str, version: str, step: str, message: str = "") -> None:
+    write_kv(Path(directory) / "status", {"state": state, "version": version, "step": step, "message": message, "updated": int(time.time())})
+
+
+def append_log(directory: Path, line: str) -> None:
+    stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    with open(Path(directory) / "log", "a", encoding="utf-8") as out:
+        out.write(f"{stamp} {line}\n")
+
+
 class UpdateAgent:
     """Strona komponentu: czy jest aktualizator, w jakim stanie, i zlecenie aktualizacji.
 
-    `launcher` (tryb natywny) zamiast czekać na sidecar uruchamia aktualizację od razu.
+    `launcher` (systemd albo backend sam dla siebie) zamiast czekać na sidecar uruchamia aktualizację
+    od razu; `launch_mode` mówi, czy i w jakim trybie da się to teraz zrobić.
     """
 
-    def __init__(self, directory: Path, launcher: Callable[[str], None] | None = None, native_ready: bool = False) -> None:
+    def __init__(self, directory: Path, launcher: Callable[[str], None] | None = None, native_ready: bool = False,
+                 launch_mode: Callable[[], str | None] | None = None) -> None:  # fmt: skip
         self.dir = Path(directory)
         self.launcher = launcher
         self.native_ready = native_ready
+        self.launch_mode = launch_mode
 
     def _agent(self) -> dict[str, str] | None:
-        info = _read_kv(self.dir / "agent")
+        info = read_kv(self.dir / "agent")
         if not info:
             return None
         try:
@@ -101,12 +117,14 @@ class UpdateAgent:
     @property
     def mode(self) -> str | None:
         if self.launcher:
+            if self.launch_mode:
+                return self.launch_mode()
             return "native" if self.native_ready else None
         agent = self._agent()
         return agent.get("mode", "image") if agent else None
 
     def info(self, log_lines: int = 0) -> dict[str, Any]:
-        status = _read_kv(self.dir / "status")
+        status = read_kv(self.dir / "status")
         state = status.get("state", "idle")
         try:
             updated = float(status.get("updated", 0)) or None
@@ -137,13 +155,13 @@ class UpdateAgent:
         if current["state"] in ("queued", "running") and current["updated"] and time.time() - current["updated"] < 1800:
             raise LookupError(tr("srv.upd.running", version=current["target"]))
         self.dir.mkdir(parents=True, exist_ok=True)
-        _write_kv(self.dir / "status", {"state": "queued", "version": target, "step": "queued", "message": "", "updated": int(time.time())})
+        write_status(self.dir, "queued", target, "queued")
         if self.launcher:
             try:
                 self.launcher(target)
             except Exception as exc:
-                _write_kv(self.dir / "status", {"state": "error", "version": target, "step": "launch_failed", "message": str(exc), "updated": int(time.time())})
+                write_status(self.dir, "error", target, "launch_failed", str(exc))
                 raise
         else:
-            _write_kv(self.dir / "request", {"version": target, "requested": int(time.time())})
+            write_kv(self.dir / "request", {"version": target, "requested": int(time.time())})
         return self.info()

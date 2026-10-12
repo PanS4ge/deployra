@@ -293,8 +293,9 @@
     },
     "upd": {
       "bad_version": "invalid version number: {value}",
-      "no_updater": "no updater — run the component from a compose file in deploy/ (the *-updater service) or update manually",
-      "running": "the update to {version} is already running"
+      "no_updater": "no updater — update by hand (Portainer: “Pull and redeploy”, compose: pull + up -d)",
+      "running": "the update to {version} is already running",
+      "no_data_mount": "the data directory {path} isn't on a volume — the update state wouldn't survive replacing the container"
     },
     "wg": {
       "bad_endpoint": "invalid endpoint: {value}",

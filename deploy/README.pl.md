@@ -50,13 +50,19 @@ albo uruchamiasz `docker compose -f <plik> up -d`. Zmieniasz tylko linie oznaczo
 | `stacks/panel-node.yml` | panel + węzeł na jednej maszynie (panel sam paruje węzeł) |
 | `stacks/node.yml` | sam węzeł (token z panelu) |
 
-Bez kontenerów aktualizatora — aktualizacja to **Pull and redeploy** w Portainerze (albo `docker compose pull && docker compose up -d`).
+Bez kontenerów aktualizatora: węzeł aktualizuje się sam z panelu, panel i bramkę — **Pull and redeploy** w Portainerze
+(albo `docker compose pull && docker compose up -d`).
 
 ## Aktualizator (usługi `*-updater`)
 
-Każdy plik ma mały kontener `deployra-*-updater`: w spoczynku ~1 MB RAM, bez sieci, tylko z `docker.sock`.
-Panel pokazuje baner „Dostępna aktualizacja”. Po kliknięciu „Aktualizuj” prosi o nią po kolei węzły, bramkę i na końcu siebie,
-a aktualizator każdego z nich pobiera nowe obrazy i podmienia kontenery. Panel i bramka nie mają dostępu do Dockera.
+Panel pokazuje baner „Dostępna aktualizacja”. Po kliknięciu „Aktualizuj” prosi o nią po kolei węzły, bramkę i na końcu siebie.
+
+- **Węzeł** nie potrzebuje aktualizatora: backend i tak ma `docker.sock`, więc uruchamia na chwilę swoją kopię
+  (`deployra-backend-update`), która pobiera nowy obraz, podmienia kontener (te same zmienne, wolumeny, sieć i etykiety
+  stacka), czeka, aż nowa wersja wstanie, a jeśli nie wstanie — przywraca starą. Potem kopia znika.
+  Działa też dla stacków z Portainera. Wersja przypięta w `.env` (`DEPLOYRA_VERSION`) nie jest przestawiana — zmień ją ręcznie.
+- **Panel i bramka** nie mają dostępu do Dockera, więc obok nich stoi mały kontener `deployra-*-updater`
+  (w spoczynku ~1 MB RAM, bez sieci, tylko z `docker.sock`).
 
 ## Obrazy
 
@@ -73,7 +79,7 @@ Zmienne w `deploy/.env` (obok plików compose):
 |---|---|---|
 | `DEPLOYRA_PUBLIC_HOST` | — (wymagana dla bramki) | publiczny adres/IP VPS |
 | `DEPLOYRA_IMAGES` | `ghcr.io/pans4ge/deployra` | prefiks obrazów; `deployra` = budowanie z repo (`up -d --build`, aktualizacja przez git) |
-| `DEPLOYRA_VERSION` | `latest` | przypięcie wersji, np. `1.0.0` (aktualizator przestawi pin sam) |
+| `DEPLOYRA_VERSION` | `latest` | przypięcie wersji, np. `1.0.0` (aktualizator panelu i bramki przestawi pin sam) |
 | `DEPLOYRA_NAME`, `DEPLOYRA_GATEWAY`, `DEPLOYRA_JOIN` | — | dołączanie węzła; gotowe wartości daje panel (Węzły → Dodaj węzeł) |
 | `DEPLOYRA_UPDATE_REPO` | `PanS4ge/deployra` | skąd panel sprawdza wydania |
 | `DEPLOYRA_LANG` | `pl` (panel: z przeglądarki) | język logów, stron dla odwiedzających i domyślny język panelu (`pl` / `en`) |

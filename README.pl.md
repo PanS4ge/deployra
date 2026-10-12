@@ -92,8 +92,9 @@ Panel co 6 godzin sprawdza wydania w `PanS4ge/deployra` (Ustawienia → Aktualiz
 pokazuje baner z wyborem **Aktualizuj / Później / Pomiń tę wersję**. „Aktualizuj” uruchamia zadanie w tle: najpierw węzły (równolegle),
 potem bramka, na końcu panel, a każdy krok czeka, aż komponent wstanie w nowej wersji. Jeśli coś się nie uda, panel zostaje w starej wersji.
 
-Podmianą zajmuje się kontener `*-updater` obok każdego komponentu (w spoczynku ~1 MB RAM, bez sieci). Tylko on ma `docker.sock`,
-panel i bramka go nie dostają. Działa w trzech trybach:
+Węzeł podmienia się sam: backend uruchamia na chwilę swoją kopię, która pobiera nowy obraz, podmienia kontener, a gdy nowa wersja
+nie wstanie — przywraca starą, po czym znika. Panel i bramka nie mają `docker.sock`, więc ich podmianą zajmuje się mały kontener
+`*-updater` (w spoczynku ~1 MB RAM, bez sieci). Tryby:
 
 - **obrazy z GHCR** (domyślnie): `docker compose pull` + `up -d`;
 - **ze źródeł** (`DEPLOYRA_IMAGES=deployra` w `deploy/.env`): `git` przewija repozytorium do taga `vX.Y.Z`, potem `build` + `up -d`;

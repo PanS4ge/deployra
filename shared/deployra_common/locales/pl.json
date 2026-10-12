@@ -293,8 +293,9 @@
     },
     "upd": {
       "bad_version": "nieprawidłowy numer wersji: {value}",
-      "no_updater": "brak aktualizatora — uruchom komponent z pliku compose z katalogu deploy/ (usługa *-updater) albo zaktualizuj ręcznie",
-      "running": "aktualizacja do {version} już trwa"
+      "no_updater": "brak aktualizatora — zaktualizuj ręcznie (Portainer: „Pull and redeploy”, compose: pull + up -d)",
+      "running": "aktualizacja do {version} już trwa",
+      "no_data_mount": "katalog danych {path} nie jest na wolumenie — stan aktualizacji nie przeżyłby podmiany kontenera"
     },
     "wg": {
       "bad_endpoint": "zły endpoint: {value}",

@@ -50,13 +50,19 @@ or run `docker compose -f <file> up -d`. Only change the lines marked `←`. Ima
 | `stacks/panel-node.yml` | panel + node on one machine (the panel pairs the node by itself) |
 | `stacks/node.yml` | just a node (token from the panel) |
 
-No updater containers — update with **Pull and redeploy** in Portainer (or `docker compose pull && docker compose up -d`).
+No updater containers: the node updates itself from the panel; for the panel and the gateway use **Pull and redeploy** in Portainer
+(or `docker compose pull && docker compose up -d`).
 
 ## Updater (`*-updater` services)
 
-Every file includes a small `deployra-*-updater` container: ~1 MB RAM when idle, no network, only `docker.sock`.
-The panel shows an “Update available” banner. After you click “Update” it asks the nodes, the gateway and finally itself to update,
-and each component's updater pulls the new images and replaces the containers. The panel and the gateway get no access to Docker.
+The panel shows an “Update available” banner. After you click “Update” it asks the nodes, the gateway and finally itself to update.
+
+- **A node** needs no updater: the backend has `docker.sock` anyway, so it briefly starts a copy of itself
+  (`deployra-backend-update`) that pulls the new image, replaces the container (same variables, volumes, network and stack labels),
+  waits for the new version to come up and restores the old one if it doesn't. Then the copy is gone.
+  Works for Portainer stacks too. A version pinned in `.env` (`DEPLOYRA_VERSION`) isn't moved — change it by hand.
+- **The panel and the gateway** get no access to Docker, so a small `deployra-*-updater` container sits next to them
+  (~1 MB RAM when idle, no network, only `docker.sock`).
 
 ## Images
 
@@ -73,7 +79,7 @@ Variables in `deploy/.env` (next to the compose files):
 |---|---|---|
 | `DEPLOYRA_PUBLIC_HOST` | — (required for the gateway) | the VPS's public address/IP |
 | `DEPLOYRA_IMAGES` | `ghcr.io/pans4ge/deployra` | image prefix; `deployra` = build from the repo (`up -d --build`, updates via git) |
-| `DEPLOYRA_VERSION` | `latest` | pin a version, e.g. `1.0.0` (the updater moves the pin by itself) |
+| `DEPLOYRA_VERSION` | `latest` | pin a version, e.g. `1.0.0` (the panel's and gateway's updater moves the pin by itself) |
 | `DEPLOYRA_NAME`, `DEPLOYRA_GATEWAY`, `DEPLOYRA_JOIN` | — | joining a node; the panel gives you the values (Nodes → Add node) |
 | `DEPLOYRA_UPDATE_REPO` | `PanS4ge/deployra` | where the panel checks for releases |
 | `DEPLOYRA_LANG` | `pl` (panel: from the browser) | language of logs, visitor pages and the panel default (`pl` / `en`) |

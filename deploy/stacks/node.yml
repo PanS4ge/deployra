@@ -4,7 +4,8 @@
 #
 # Wartości DEPLOYRA_GATEWAY i DEPLOYRA_JOIN daje panel: Węzły → Dodaj węzeł → Przez tunel.
 # Węzeł dołączy do bramki tunelem WireGuard — nie potrzebuje publicznego IP ani otwartych portów.
-# Aktualizacja: Portainer → stack → „Pull and redeploy” (albo `docker compose pull && docker compose up -d`).
+# Aktualizacja węzła: z panelu (Ustawienia → Aktualizacje) — backend podmienia swój kontener sam.
+# Albo ręcznie: Portainer → stack → „Pull and redeploy”.
 services:
   deployra-backend:
     image: ghcr.io/pans4ge/deployra-backend:latest

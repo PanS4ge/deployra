@@ -1157,8 +1157,7 @@
     "no_pair_secret": "brak sekretu parowania dla tego węzła",
     "node_bad_reply": "odpowiedź węzła nie przeszła weryfikacji",
     "node_mismatch": "odpowiedź węzła nie pasuje do żądania",
-    "snippet_run": "Uruchom",
-    "snippet_updater": "aktualizacje z panelu; w spoczynku ~1 MB RAM"
+    "snippet_run": "Uruchom"
   },
   "terminal": {
     "auto": "auto (bash → sh)",
@@ -1312,7 +1311,10 @@
     "pulling": "pobieram obrazy",
     "queued": "czeka na aktualizator",
     "starting": "uruchamiam nowe kontenery",
-    "up_failed": "docker compose up nie powiódł się — szczegóły w logu"
+    "up_failed": "docker compose up nie powiódł się — szczegóły w logu",
+    "verifying": "czekam, aż nowa wersja wstanie",
+    "rolled_back": "nowa wersja nie wstała — przywrócono poprzednią",
+    "recreate_failed": "nie udało się podmienić kontenera — działa poprzednia wersja"
   },
   "updates": {
     "asking": "Pytam komponenty o wersje…",

@@ -6,7 +6,7 @@ from deployra_backend.services.native_update import update_agent
 
 
 def test_update_endpoint_with_sidecar(api, ctx, tmp_path):
-    ctx.updates.dir = tmp_path / "upd"
+    ctx.updates.sidecar.dir = tmp_path / "upd"
     status = api.request("GET", "/api/update").json()
     assert status["available"] is False and status["service"] == "DeployraBackend"
     assert api.request("POST", "/api/update", json={"version": "1.2.0"}).status_code == 409

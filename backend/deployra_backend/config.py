@@ -54,6 +54,8 @@ class Config:
     pve_dir: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_PVE_LXC", "/etc/pve/lxc")))
     native_repo: str = field(default_factory=lambda: _env("DEPLOYRA_NATIVE_REPO"))  # instalacja systemd (install-native.sh)
     update_dir_env: str = field(default_factory=lambda: _env("DEPLOYRA_UPDATE_DIR"))
+    self_update: bool = field(default_factory=lambda: _flag("DEPLOYRA_SELF_UPDATE", True))  # backend podmienia własny kontener
+    container: str = field(default_factory=lambda: _env("DEPLOYRA_CONTAINER"))  # gdy nie da się wykryć, w którym kontenerze działa
 
     @property
     def update_dir(self) -> Path:

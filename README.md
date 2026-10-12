@@ -94,8 +94,9 @@ Every 6 hours the panel checks for releases in `PanS4ge/deployra` (Settings → 
 version appears it shows a banner: **Update / Later / Skip this version**. “Update” starts a background job: nodes first (in parallel),
 then the gateway, the panel last — each step waits until the component is back on the new version. If anything fails, the panel stays put.
 
-A small `*-updater` container next to each component does the swap (~1 MB RAM when idle, no network). Only it gets `docker.sock` —
-the panel and the gateway don't. Three modes:
+A node replaces itself: the backend briefly starts a copy of itself that pulls the new image, swaps the container, restores the old
+one if the new version doesn't come up, and then disappears. The panel and the gateway get no `docker.sock`, so a small `*-updater`
+container does their swap (~1 MB RAM when idle, no network). Modes:
 
 - **GHCR images** (default): `docker compose pull` + `up -d`;
 - **from source** (`DEPLOYRA_IMAGES=deployra` in `deploy/.env`): `git` fast-forwards the repository to the `vX.Y.Z` tag, then `build` + `up -d`;

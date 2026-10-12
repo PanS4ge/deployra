@@ -3,9 +3,9 @@
 Panel co kilka godzin pyta źródło wydań (GitHub Releases `owner/repo` albo własny
 JSON). Gdy jest nowsza wersja, pokazuje baner „Dostępna aktualizacja” z wyborem:
 aktualizuj / później / pomiń tę wersję. „Aktualizuj” uruchamia zadanie, które
-po kolei zleca aktualizację węzłom, bramce i na końcu samemu panelowi (każdy
-komponent ma obok siebie kontener `deployra-updater`), i czeka, aż każdy wstanie
-w nowej wersji. Panel podmienia się ostatni — po restarcie kończy zadanie
+po kolei zleca aktualizację węzłom, bramce i na końcu samemu panelowi (węzeł
+podmienia się sam, panel i bramka mają obok siebie kontener `deployra-updater`),
+i czeka, aż każdy wstanie w nowej wersji. Panel podmienia się ostatni — po restarcie kończy zadanie
 powiadomieniem.
 """
 

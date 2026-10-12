@@ -44,8 +44,9 @@ def create_app(ctx: Context, *, start_services: bool = True, bind_host: str = ""
         ctx.bind_host = bind_host
         if start_services:
             ctx.vitals.start()
-            from .services import transfer
+            from .services import self_update, transfer
 
+            self_update.mark_booted(ctx.config)  # po samodzielnej aktualizacji: znak dla pomocnika, że nowa wersja wstała
             transfer.cleanup(ctx.config)  # paczki po przerwanych przenosinach
             if ctx.state.get("sftp_users"):  # asyncssh to ~20 MB RAM — ładujemy dopiero, gdy są konta
                 await ensure_sftp(ctx)

@@ -18,6 +18,8 @@ RUN apk add --no-cache --virtual .build build-base linux-headers libffi-dev \
 
 COPY backend/deployra_backend ./deployra_backend
 RUN python -m compileall -q /app/deployra_backend
+# aktualizacja instalacji ze źródeł (git + build) — backend nie potrzebuje osobnego kontenera aktualizatora
+COPY updater/deployra-updater.sh /usr/local/bin/deployra-updater.sh
 
 LABEL deployra.component=backend
 

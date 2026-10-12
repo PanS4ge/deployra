@@ -5,7 +5,8 @@
 #
 # Po starcie: http://<adres-tej-maszyny>:8080 → konto administratora → Tunel → Połącz z Deployra-WG
 # (adres bramki + kod z `docker logs deployra-wg` na VPS-ie). Węzeł z tej maszyny panel sparuje sam.
-# Aktualizacja: Portainer → stack → „Pull and redeploy” (albo `docker compose pull && docker compose up -d`).
+# Aktualizacja węzła: z panelu (Ustawienia → Aktualizacje) — backend podmienia swój kontener sam.
+# Panel: Portainer → stack → „Pull and redeploy” (albo `docker compose pull && docker compose up -d`).
 services:
   deployra:
     image: ghcr.io/pans4ge/deployra-panel:latest
