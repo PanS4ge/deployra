@@ -103,6 +103,19 @@ def dt(value: Any) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M") if ts else "—"
 
 
+def elapsed(seconds: Any) -> str:
+    """Krótki czas trwania: 12 s, 4 min 12 s, 1 h 5 min."""
+    try:
+        seconds = int(seconds)
+    except (TypeError, ValueError):
+        return "—"
+    if seconds < 60:
+        return f"{seconds} s"
+    if seconds < 3600:
+        return f"{seconds // 60} min {seconds % 60} s"
+    return f"{seconds // 3600} h {seconds % 3600 // 60} min"
+
+
 def dts(value: Any) -> str:
     """Czas z sekundami (logi)."""
     ts = _to_ts(value)
@@ -132,7 +145,7 @@ def tojson_attr(value: Any) -> Markup:
 
 
 templates.env.filters.update(pct=pct, bytes=human_bytes, ago=ago, dt=dt, duration=duration, jsonattr=tojson_attr, flag=flag,
-                             shjoin=lambda args: shlex.join(args or []), dts=dts)
+                             shjoin=lambda args: shlex.join(args or []), dts=dts, elapsed=elapsed)
 
 
 def update_offer(panel: Any) -> dict | None:

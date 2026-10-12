@@ -7,7 +7,7 @@ PAGES = [
     "/settings/users", "/settings/backup", "/settings/risky", "/notifications", "/analytics/spark?domains=a.example.com",
     "/analytics/chart?all=1", "/analytics/chart?domains=a.example.com&days=1", "/dashboard/tunnel",
     "/settings/updates", "/settings/updates/components", "/traffic", "/traffic/top", "/traffic/suspicious", "/traffic/bans",
-    "/settings/alerts", "/settings/plugins", "/servers", "/settings/users/1/servers", "/logs",
+    "/settings/alerts", "/settings/plugins", "/servers", "/settings/users/1/servers", "/logs", "/jobs/table",
 ]  # fmt: skip
 
 

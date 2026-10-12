@@ -3,22 +3,7 @@
 {% block content %}
 <div class="card">
   {% if jobs %}
-  <div class="table-wrap">
-  <table class="table">
-    <thead><tr><th>{{ t("jobs.col_job") }}</th><th>{{ t("jobs.col_kind") }}</th><th>{{ t("common.state") }}</th><th>{{ t("jobs.col_start") }}</th><th>{{ t("jobs.col_time") }}</th></tr></thead>
-    <tbody>
-    {% for j in jobs %}
-      <tr>
-        <td><a class="name" href="/jobs/{{ j.id }}">{{ j.title }}</a>{% if j.error %}<div class="small" style="color: #fda4af">{{ j.error[:160] }}</div>{% endif %}</td>
-        <td class="small muted">{{ j.kind }}</td>
-        <td>{% if j.status == "ok" %}<span class="badge ok">ok</span>{% elif j.status == "error" %}<span class="badge err">{{ t("jobs.error") }}</span>{% else %}<span class="badge info">{{ t("jobs.running") }}</span>{% endif %}</td>
-        <td class="small">{{ j.created | ago }}</td>
-        <td class="small mono">{{ ((j.finished - j.created) | round(1)) ~ " s" if j.finished else "—" }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  </div>
+  {% include "jobs/_table.html" %}
   {% else %}{{ empty("activity", t("jobs.empty_title"), t("jobs.empty_text")) }}{% endif %}
 </div>
 {% endblock %}

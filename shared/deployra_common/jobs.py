@@ -44,6 +44,16 @@ class Job:
     def done(self) -> bool:
         return self.status in ("ok", "error")
 
+    @property
+    def last_line(self) -> str:
+        """Ostatnia niepusta linia logu — do listy zadań."""
+        with self._lock:
+            return next((line for line in reversed(self.lines) if line.strip()), "")
+
+    @property
+    def elapsed(self) -> float:
+        return (self.finished or time.time()) - self.created
+
     def _bind(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
         self._cond = asyncio.Condition()

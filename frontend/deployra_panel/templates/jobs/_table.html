@@ -1,0 +1,23 @@
+{% set running = jobs | rejectattr("done") | list %}
+<div id="jobs-table" {% if running %}hx-get="/jobs/table" hx-trigger="every 3s [!document.hidden]" hx-swap="outerHTML"{% endif %}>
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>{{ t("jobs.col_job") }}</th><th>{{ t("jobs.col_kind") }}</th><th>{{ t("common.state") }}</th><th>{{ t("jobs.col_start") }}</th><th>{{ t("jobs.col_time") }}</th></tr></thead>
+    <tbody>
+    {% for j in jobs %}{% set last = j.last_line %}
+      <tr>
+        <td style="max-width: 0; width: 55%">
+          <a class="name" href="/jobs/{{ j.id }}">{{ j.title }}</a>
+          {% if j.error %}<div class="small trunc" style="color: #fda4af" title="{{ j.error }}">{{ j.error[:200] }}</div>
+          {% elif last %}<div class="small muted mono trunc" title="{{ last }}">{{ last }}</div>{% endif %}
+        </td>
+        <td class="small muted">{{ j.kind }}</td>
+        <td>{% if j.status == "ok" %}<span class="badge ok">ok</span>{% elif j.status == "error" %}<span class="badge err">{{ t("jobs.error") }}</span>{% else %}<span class="badge info"><span class="spin" style="width: 10px; height: 10px"></span> {{ t("jobs.running") }}</span>{% endif %}</td>
+        <td class="small nowrap">{{ j.created | ago }}</td>
+        <td class="small mono nowrap">{{ j.elapsed | elapsed }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>

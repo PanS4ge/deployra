@@ -55,6 +55,11 @@ def jobs(request: Request, panel: Panel = Depends(get_panel)):
     return render(request, "jobs/list.html", title=t("nav.jobs"), jobs=panel.jobs.list())
 
 
+@router.get("/jobs/table")
+def jobs_table(request: Request, panel: Panel = Depends(get_panel)):
+    return render(request, "jobs/_table.html", jobs=panel.jobs.list())
+
+
 @router.get("/jobs/{job_id}")
 def job_page(request: Request, job: Job = Depends(_job)):
     return render(request, "jobs/view.html", title=job.title, job=job)
