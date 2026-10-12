@@ -10,6 +10,7 @@ Wybierasz go według tego, **co stoi na danym serwerze**.
 | `vps.compose.yml` | VPS z publicznym IP — **najczęstszy wybór** | bramkę Deployra-WG + nginx + panel (dołącza dwa pliki niżej) |
 | `gateway.compose.yml` | VPS z publicznym IP, gdy panel stoi gdzie indziej | tylko bramkę: hub WireGuard, nginx dla ruchu publicznego, certyfikaty |
 | `panel.compose.yml` | dowolny serwer (np. w domu), gdy bramka jest na innym VPS | tylko panel Deployry |
+| `panel-node.compose.yml` | jeden serwer (np. w domu) na panel **i** aplikacje, gdy bramka stoi sama na VPS-ie | panel + węzeł; panel sam paruje węzeł |
 | `node.compose.yml` | każdy serwer z Dockerem, na którym mają działać aplikacje (domowy serwer, drugi VPS) | Deployra Backend — węzeł |
 | `proxmox.compose.yml` | host Proxmox VE z Dockerem | węzeł, który widzi Docker hosta **i** każdy CT z Dockerem |
 | `install-native.sh` | host Proxmox VE **bez** Dockera | to samo co wyżej, jako usługa systemd |
@@ -19,6 +20,13 @@ Typowy układ: `vps.compose.yml` na VPS, `node.compose.yml` (albo `proxmox.compo
 ```
  VPS:   vps.compose.yml  = gateway.compose.yml + panel.compose.yml
  Dom:   node.compose.yml  /  proxmox.compose.yml  /  install-native.sh
+```
+
+Panel w domu obok aplikacji, bramka sama na VPS-ie:
+
+```
+ VPS:   gateway.compose.yml
+ Dom:   panel-node.compose.yml  = panel.compose.yml + node.compose.yml (parowane automatycznie)
 ```
 
 ## Aktualizator (usługi `*-updater`)

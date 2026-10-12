@@ -45,6 +45,8 @@ class Config:
     docker_network: str = field(default_factory=lambda: _env("DEPLOYRA_DOCKER_NETWORK", "deployra"))
     static_image: str = field(default_factory=lambda: _env("DEPLOYRA_STATIC_IMAGE", "nginx:stable-alpine"))
     max_upload_mb: int = field(default_factory=lambda: int(_env("DEPLOYRA_MAX_UPLOAD_MB", "512")))
+    pair_file: str = field(default_factory=lambda: _env("DEPLOYRA_PAIR_FILE"))  # kod parowania dla panelu obok (all-in-one)
+    sftp_bind: str = field(default_factory=lambda: _env("DEPLOYRA_SFTP_BIND"))  # domyślnie jak API
     max_transfer_mb: int = field(default_factory=lambda: int(_env("DEPLOYRA_MAX_TRANSFER_MB", "51200")))  # paczka przenosin aplikacji
     fake_docker: bool = field(default_factory=lambda: _flag("DEPLOYRA_FAKE_DOCKER", False))  # tryb deweloperski
     proxmox: bool = field(default_factory=lambda: _flag("DEPLOYRA_PROXMOX", Path("/etc/pve/lxc").is_dir()))

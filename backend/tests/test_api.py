@@ -94,3 +94,26 @@ def test_remove_app_releases_port(api, ctx):
     assert api.wait_job(job["id"])["job"]["status"] == "ok"
     assert "api" not in ctx.state.get("ports") and "api" not in ctx.state.get("apps")
     assert ctx.docker.api.containers_ == {}
+
+
+def test_pairing_code_file_for_local_panel(tmp_path, monkeypatch):
+    """panel-node.compose.yml: kod parowania leży we wspólnym wolumenie tylko do sparowania."""
+    from deployra_backend import enroll
+    from deployra_backend.config import Config
+    from deployra_backend.context import Context
+    from deployra_backend.fake_docker import FakeDocker
+
+    code_file = tmp_path / "pair" / "code"
+    monkeypatch.setenv("DEPLOYRA_DATA", str(tmp_path / "data"))
+    monkeypatch.setenv("DEPLOYRA_SRV", str(tmp_path / "srv"))
+    monkeypatch.setenv("DEPLOYRA_PAIR_FILE", str(code_file))
+    ctx = Context(Config(), docker_factory=lambda: FakeDocker())
+    with TestClient(create_app(ctx, start_services=False)) as client:
+        code = enroll.ensure_pairing_code(ctx)
+        assert code_file.read_text() == code
+        _, pub = pairing.new_keypair()
+        assert client.post("/pair", json=pairing.seal(code, {"kind": "pair-node", "x25519": pub, "nonce": "n"})).status_code == 200
+        assert not code_file.exists()
+        assert enroll.ensure_pairing_code(ctx) is None and not code_file.exists()
+        new_code = enroll.reset_pairing(ctx)
+        assert code_file.read_text() == new_code

@@ -126,6 +126,34 @@ docker logs deployra-backend 2>&1 | grep "Kod parowania"
 
 W panelu: **Węzły → Dodaj węzeł → Bezpośrednio**: adres `http://127.0.0.1:2750`, kod z logów, adres dla proxy `127.0.0.1`.
 
+## Wariant: panel i aplikacje w domu, na VPS-ie tylko bramka
+
+Zamiast kroków 3–6 możesz postawić na VPS-ie samą bramkę, a panel z węzłem na jednej maszynie w domu.
+VPS potrzebuje wtedy tylko ~250 MB RAM, a panel, aplikacje i ich dane są u ciebie.
+
+1. **VPS**: Docker, firewall i repozytorium jak w krokach 2–3, a potem:
+
+   ```bash
+   docker compose -f deploy/gateway.compose.yml up -d --build
+   ```
+   ```bash
+   docker logs deployra-wg 2>&1 | grep "Kod synchronizacji"
+   ```
+
+2. **Domowy serwer**: Docker i repozytorium (z `DEPLOYRA_IMAGES=deployra` w `deploy/.env`), potem:
+
+   ```bash
+   DEPLOYRA_NAME=dom docker compose -f deploy/panel-node.compose.yml up -d --build
+   ```
+
+3. Wejdź na `http://<adres-domowego-serwera>:8080`, załóż konto administratora, a w **Tunel → Połącz z Deployra-WG** wpisz
+   `vps.example.com:51821` i kod z kroku 1 (bez zaznaczania „ten sam serwer”). Węzeł **dom** pojawi się w **Węzłach** sam — panel
+   paruje go automatycznie.
+4. Panel pod domeną: **Proxy → Nowy host** `deploy.example.com` → węzeł **dom**, port `8080`, HTTPS.
+
+Ruch z internetu idzie: domena → bramka na VPS-ie → tunel WireGuard → aplikacje w domu. Domowy serwer nie potrzebuje publicznego IP
+ani otwartych portów. Porty aplikacji są osiągalne tylko przez tunel (i z samej maszyny), SFTP (`2222`) — z sieci lokalnej.
+
 ## 7. Pierwsza aplikacja
 
 **Aplikacje → Nowa aplikacja**:

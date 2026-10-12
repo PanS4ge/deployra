@@ -17,6 +17,7 @@ from .i18n import t
 from .security import LoginLimiter, Sealer, Sessions
 
 NODE_API_PORT = 2750
+LOCAL_UPSTREAM = "local"  # proxy_address węzła obok panelu: adres ustalany na bieżąco (tunel panelu albo 127.0.0.1)
 
 
 class Panel:
@@ -88,6 +89,9 @@ class Panel:
         """Adres, pod którym bramka (nginx) widzi porty węzła."""
         if node["transport"] == "tunnel":
             return node.get("tunnel_ip")
+        if node.get("proxy_address") == LOCAL_UPSTREAM:  # węzeł obok panelu — bramka widzi go przez tunel panelu
+            gateway = self.gateway() or {}
+            return str(gateway.get("panel_address") or "127.0.0.1").split("/")[0]
         return node.get("proxy_address") or None
 
     async def aclose(self) -> None:

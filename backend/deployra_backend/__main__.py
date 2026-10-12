@@ -60,6 +60,10 @@ def main() -> None:
         else:
             logger.warning(tr("node.log.tunnel_down"))
     bind = bind or "0.0.0.0"
+    if not wg_conf and config.restrict_pool and bind in ("127.0.0.1", "::1", "localhost"):
+        # węzeł obok bramki (all-in-one): bramka łączy się po 127.0.0.1, z zewnątrz pula tylko przez tunel —
+        # porty publikowane przez Dockera omijają ufw, więc bez tej reguły aplikacje byłyby widoczne z internetu
+        firewall.restrict_pool(config.port_pool, config.wg_iface)
 
     code = enroll.ensure_pairing_code(ctx)
     if code:

@@ -63,7 +63,8 @@ i zaznacz „Panel działa na tym samym serwerze co bramka”. Panel wystawisz p
 
 Porty na firewallu VPS: `80/tcp`, `443/tcp`, `51820/udp`, `51821/tcp` (bootstrap — wystarczy na czas dołączania węzłów).
 
-Panel może też stać gdzie indziej (`deploy/panel.compose.yml`): wtedy sam zestawi tunel do bramki.
+Panel może też stać gdzie indziej (`deploy/panel.compose.yml`): wtedy sam zestawi tunel do bramki. Panel razem z aplikacjami na jednej
+maszynie (np. w domu), a na VPS-ie sama bramka: `deploy/panel-node.compose.yml` — panel sparuje węzeł obok siebie automatycznie.
 
 ### 2. Węzeł (np. domowy serwer)
 

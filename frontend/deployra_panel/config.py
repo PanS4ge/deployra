@@ -34,6 +34,10 @@ class Config:
     update_dir: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_UPDATE_DIR", "/run/deployra-update")))
     update_checks: bool = field(default_factory=lambda: _flag("DEPLOYRA_UPDATE_CHECKS", True))  # pętla sprawdzania wydań
     plugins_dir_env: str = field(default_factory=lambda: _env("DEPLOYRA_PLUGINS_DIR"))
+    # węzeł na tej samej maszynie (deploy/panel-node.compose.yml): panel paruje go sam kodem ze wspólnego wolumenu
+    local_node: str = field(default_factory=lambda: _env("DEPLOYRA_LOCAL_NODE"))
+    local_node_name: str = field(default_factory=lambda: _env("DEPLOYRA_LOCAL_NODE_NAME", "dom"))
+    local_node_code: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_LOCAL_NODE_CODE", "/run/deployra-pair/code")))
 
     @property
     def plugins_dir(self) -> Path:

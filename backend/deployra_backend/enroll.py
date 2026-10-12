@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import base64
+import os
 import secrets
 import time
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -88,13 +90,35 @@ def ensure_pairing_code(ctx: Any) -> str | None:
     if not code:
         code = pairing.new_code()
         state.update(pairing_code=code)
+    publish_code(ctx, code)
     return code
 
 
 def reset_pairing(ctx: Any) -> str:
     code = pairing.new_code()
     ctx.state.update(api_secret=None, pairing_code=code, join=None)
+    publish_code(ctx, code)
     return code
+
+
+def publish_code(ctx: Any, code: str | None) -> None:
+    """Węzeł obok panelu (all-in-one): kod parowania trafia do wspólnego wolumenu, panel paruje się sam.
+
+    Plik istnieje tylko do sparowania — potem znika, a kod i tak przestaje działać.
+    """
+    path = getattr(ctx.config, "pair_file", "")
+    if not path:
+        return
+    target = Path(path)
+    try:
+        if code:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(code, encoding="utf-8")
+            os.chmod(target, 0o600)
+        else:
+            target.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning(f"{path}: {exc}")
 
 
 class PairingGate:
@@ -134,6 +158,7 @@ def pair(ctx: Any, gate: PairingGate, body: dict) -> dict:
     private, public = pairing.new_keypair()
     secret = pairing.derive_secret(private, request["x25519"], psk, PAIR_CONTEXT)
     state.update(api_secret=base64.b64encode(secret).decode(), pairing_code=None, join=None)
+    publish_code(ctx, None)
     logger.success("Sparowano z panelem Deployry")
     return pairing.seal(
         psk,

@@ -65,7 +65,8 @@ and tick “The panel runs on the same server as the gateway”. Expose the pane
 
 VPS firewall ports: `80/tcp`, `443/tcp`, `51820/udp`, `51821/tcp` (bootstrap — only needed while nodes join).
 
-The panel can also live elsewhere (`deploy/panel.compose.yml`): it then sets up its own tunnel to the gateway.
+The panel can also live elsewhere (`deploy/panel.compose.yml`): it then sets up its own tunnel to the gateway. Panel and apps on one machine (e.g. at home)
+with only the gateway on the VPS: `deploy/panel-node.compose.yml` — the panel pairs the node next to it automatically.
 
 ### 2. Node (e.g. a home server)
 

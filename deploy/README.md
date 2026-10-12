@@ -10,6 +10,7 @@ Pick it based on **what runs on a given server**.
 | `vps.compose.yml` | a VPS with a public IP — **the most common choice** | gateway Deployra-WG + nginx + panel (includes the two files below) |
 | `gateway.compose.yml` | a VPS with a public IP, when the panel lives elsewhere | just the gateway: WireGuard hub, nginx for public traffic, certificates |
 | `panel.compose.yml` | any server (e.g. at home), when the gateway is on another VPS | just the Deployra panel |
+| `panel-node.compose.yml` | one server (e.g. at home) for the panel **and** apps, with the gateway alone on a VPS | panel + node; the panel pairs the node by itself |
 | `node.compose.yml` | every server with Docker that should run apps (home server, a second VPS) | Deployra Backend — a node |
 | `proxmox.compose.yml` | a Proxmox VE host with Docker | a node that sees the host's Docker **and** every CT running Docker |
 | `install-native.sh` | a Proxmox VE host **without** Docker | the same as above, as a systemd service |
@@ -19,6 +20,13 @@ Typical setup: `vps.compose.yml` on the VPS, `node.compose.yml` (or `proxmox.com
 ```
  VPS:    vps.compose.yml  = gateway.compose.yml + panel.compose.yml
  Home:   node.compose.yml  /  proxmox.compose.yml  /  install-native.sh
+```
+
+Panel at home next to the apps, gateway alone on the VPS:
+
+```
+ VPS:    gateway.compose.yml
+ Home:   panel-node.compose.yml  = panel.compose.yml + node.compose.yml (paired automatically)
 ```
 
 ## Updater (`*-updater` services)

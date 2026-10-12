@@ -47,6 +47,10 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
         await run_in_threadpool(notify.migrate_legacy_webhook, panel)
         panel.plugins.start(app)
         tasks = []
+        if panel.config.local_node:
+            from .services import local_node
+
+            tasks.append(asyncio.create_task(local_node.loop(panel)))
         if panel.config.monitoring:
             tasks.append(asyncio.create_task(uptime.loop(panel)))
             tasks.append(asyncio.create_task(resources.loop(panel)))

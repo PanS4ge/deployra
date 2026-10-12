@@ -1,0 +1,43 @@
+# ─── Panel + węzeł na jednej maszynie (bramka osobno, na VPS-ie) ──────────────────────────────
+# Np. domowy serwer: panel i aplikacje w jednym miejscu, a VPS trzyma tylko bramkę (gateway.compose.yml).
+# Panel sam paruje węzeł z tej maszyny — kod parowania przechodzi przez wspólny wolumen, nic nie przepisujesz.
+# Ruch z internetu: domena → bramka na VPS-ie → tunel WireGuard panelu → aplikacje na tej maszynie.
+#
+#   docker compose -f deploy/panel-node.compose.yml up -d            # gotowe obrazy z GHCR
+#   docker compose -f deploy/panel-node.compose.yml up -d --build    # ze źródeł: DEPLOYRA_IMAGES=deployra w deploy/.env
+#
+# Panel: http://<adres-tej-maszyny>:8080 w sieci lokalnej (DEPLOYRA_BIND=127.0.0.1 = tylko z samej maszyny).
+# Potem w panelu: Tunel → Połącz z Deployra-WG (adres VPS:51821 + kod z `docker logs deployra-wg` na VPS-ie).
+name: deployra-panel
+
+services:
+  deployra:
+    extends: { file: panel.compose.yml, service: deployra }
+    environment:
+      DEPLOYRA_BIND: ${DEPLOYRA_BIND:-0.0.0.0}
+      DEPLOYRA_LOCAL_NODE: http://127.0.0.1:2750
+      DEPLOYRA_LOCAL_NODE_NAME: ${DEPLOYRA_NAME:-dom}
+    volumes:
+      - local-pair:/run/deployra-pair:ro
+
+  panel-updater:
+    extends: { file: panel.compose.yml, service: panel-updater }
+
+  deployra-backend:
+    extends: { file: node.compose.yml, service: deployra-backend }
+    environment:
+      DEPLOYRA_NAME: ${DEPLOYRA_NAME:-dom}
+      DEPLOYRA_API_BIND: 127.0.0.1               # API węzła tylko dla panelu obok; porty aplikacji tylko przez tunel
+      DEPLOYRA_SFTP_BIND: ${DEPLOYRA_SFTP_BIND:-0.0.0.0}   # SFTP (port 2222) z sieci lokalnej
+      DEPLOYRA_PAIR_FILE: /run/deployra-pair/code
+    volumes:
+      - local-pair:/run/deployra-pair
+
+  updater:
+    extends: { file: node.compose.yml, service: updater }
+
+volumes:
+  panel-data:
+  panel-updates:
+  node-updates:
+  local-pair:
