@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import secrets
+import shlex
 import tempfile
 from typing import Any
 
@@ -77,6 +78,11 @@ def spec_from_form(form: Any, slug: str, existing: AppSpec | None = None) -> tup
     source: dict[str, Any] = {"kind": kind}
     if kind == "image":
         source["image"] = get("image")
+        command = str(form.get("command") or "").strip()
+        if "command" in form:
+            source["command"] = shlex.split(command) if command else None
+        elif existing and existing.source.kind == "image":
+            source["command"] = existing.source.command
     elif kind == "compose":
         source["compose"] = str(form.get("compose") or "").replace("\r\n", "\n")
         source["expose_service"] = get("expose_service") or None
@@ -220,6 +226,56 @@ def app_page(request: Request, job: str = "", app: dict = Depends(_app), panel: 
         monitor=monitor, monitor_stats=uptime.stats_for(panel, [("app", app["id"])]).get(("app", app["id"])),
         settings=panel.db.settings(), other_nodes=others, auto_capable=migrate.auto_capable(spec),
     )  # fmt: skip
+
+
+# --- przejęcie kontenera spoza Deployry -----------------------------------------------------------
+
+
+@router.get("/nodes/{node_id}/containers/{cid}/adopt")
+async def adopt_page(request: Request, cid: str, node_id: int, panel: Panel = Depends(get_panel),
+                     user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):  # fmt: skip
+    node = panel.node(node_id)
+    if not node or node["status"] != "paired":
+        raise HTTPException(404, t("msg.pick_paired_node"))
+    plan = await panel.node_client(node).get(f"/api/containers/{cid}/adopt-plan")
+    settings = panel.db.settings()
+    slug = slugify(plan["name"])
+    return render(request, "apps/adopt.html", title=t("adopt.title", name=plan["name"]), node=node, cid=cid, plan=plan, slug=slug,
+                  base_domain=settings.get("base_domain", ""), has_cf=bool(settings.get("cloudflare_token")),
+                  has_gateway=bool(panel.gateway()))  # fmt: skip
+
+
+@router.post("/nodes/{node_id}/containers/{cid}/adopt")
+async def adopt(request: Request, cid: str, node_id: int, panel: Panel = Depends(get_panel),
+                user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):  # fmt: skip
+    node = panel.node(node_id)
+    if not node or node["status"] != "paired":
+        return toast(t("msg.pick_paired_node"), "err", status=400)
+    form = await request.form()
+    plan = await panel.node_client(node).get(f"/api/containers/{cid}/adopt-plan")  # specyfikacja z węzła, nie z formularza
+    if plan["problems"]:
+        return toast(plan["problems"][0], "err", status=400)
+    name = str(form.get("name") or plan["name"]).strip()[:60]
+    slug = slugify(str(form.get("slug") or name))
+    port = next((p for p in plan["ports"] if str(p["container"]) == str(form.get("port"))), (plan["ports"] or [None])[0])
+    if not port:
+        return toast(t("adopt.no_port"), "err", status=400)
+    try:
+        spec = AppSpec(
+            slug=slug, source={"kind": "image", "image": plan["image"], "command": plan["command"]}, container_port=port["container"],
+            host_port=port.get("host"), env=plan["env"], volumes=[VolumeMount(**v) for v in plan["volumes"]],
+            memory_mb=plan["memory_mb"], cpus=plan["cpus"],
+            domains=[d.lower() for d in _lines(str(form.get("domains") or "").replace(",", "\n"))],
+        )  # fmt: skip
+        options = {"https": bool(form.get("https")), "force_ssl": bool(form.get("force_ssl")), "dns": bool(form.get("dns"))}
+        app_id = deploy.create_app_row(panel, name or slug, node["id"], spec, options)
+    except (ValidationError, ValueError) as exc:
+        return toast(_errors(exc), "err", status=400)
+    title = t("adopt.job", name=plan["name"], slug=slug)
+    job = panel.jobs.start("deploy", title, lambda job: deploy.run(panel, job, app_id, adopt_container=cid))
+    panel.db.update("apps", app_id, last_job=job.id)
+    panel.notify(t("adopt.notify", user=user["email"], name=plan["name"], slug=slug))
+    return redirect(request, f"/apps/{app_id}?job={job.id}")
 
 
 @router.get("/apps/{app_id}/resources")

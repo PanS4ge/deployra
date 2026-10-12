@@ -86,6 +86,16 @@
     "url_scheme": "adres musi zaczynać się od http:// lub https://"
   },
   "node": {
+    "adopt": {
+      "already": "Ten kontener już jest aplikacją Deployry",
+      "bad_spec": "Specyfikacja nie pasuje do przejmowanej aplikacji",
+      "compose": "Kontener należy do stacka compose „{project}” — przejmij cały stack w Węzeł → Stacki",
+      "done": "Przejęte. Stary kontener został jako {backup} (zatrzymany) — usuń go, gdy wszystko działa",
+      "restore_failed": "Nie udało się przywrócić starego kontenera: {error}",
+      "restoring": "Nowy kontener nie wstał — przywracam {name}",
+      "stopping": "Zatrzymuję {name} i odkładam go jako {backup}",
+      "system": "To kontener Deployry — nie ma czego przejmować"
+    },
     "already_paired": "węzeł jest już sparowany — zresetuj parowanie na węźle",
     "app": {
       "busy": "ta aplikacja jest właśnie wdrażana",
@@ -132,6 +142,7 @@
       "path_escape": "ścieżka {path} wychodzi poza repozytorium"
     },
     "job": {
+      "adopt": "Przejęcie kontenera jako {name}",
       "deploy": "Wdrożenie {name}",
       "export": "Pakowanie {name} do przeniesienia",
       "import": "Rozpakowanie {name}",

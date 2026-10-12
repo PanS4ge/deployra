@@ -17,6 +17,18 @@
     "users_hint": "Istniejący użytkownicy są pokazani bez haseł — zostaw sam login, żeby zachować hasło. Hasła trzymam jako hash apr1.",
     "users_placeholder": "admin:tajne-haslo"
   },
+  "adopt": {
+    "as_app": "Jako aplikacja",
+    "button": "Przejmij jako aplikację",
+    "carried": "Co przejdzie",
+    "host_port": "port hosta {port} zostaje",
+    "job": "Przejęcie {name} → {slug}",
+    "networks": "Kontener jest też w sieciach: {networks}. Po przejęciu będzie w sieci deployra — sprawdź, czy nie łączy się z innymi kontenerami po nazwie.",
+    "no_port": "Kontener nie wystawia portu TCP — przejmij go jako aplikację z obrazu z ręcznie podanym portem",
+    "notify": "{user} przejmuje kontener {name} jako aplikację {slug}",
+    "safety": "{name} zostanie zatrzymany i odłożony jako kopia (…-pre-deployra), a Deployra postawi go na nowo z tym samym obrazem, zmiennymi, wolumenami i portem. Jeśli nowy nie wstanie, stary wraca sam.",
+    "title": "Przejęcie {name}"
+  },
   "alerts": {
     "active": "Aktywne alerty: {count}",
     "auto_move": "Przenoś aplikacje z włączonym przenoszeniem na luźniejszy węzeł",

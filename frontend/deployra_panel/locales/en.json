@@ -17,6 +17,18 @@
     "users_hint": "Existing users are shown without passwords — keep just the login to keep the password. Passwords are stored as apr1 hashes.",
     "users_placeholder": "admin:secret-password"
   },
+  "adopt": {
+    "as_app": "As an app",
+    "button": "Adopt as an app",
+    "carried": "What carries over",
+    "host_port": "host port {port} stays",
+    "job": "Adopting {name} → {slug}",
+    "networks": "The container is also on networks: {networks}. After adoption it is on the deployra network — check it doesn't reach other containers by name.",
+    "no_port": "The container exposes no TCP port — create an image app with the port set by hand",
+    "notify": "{user} is adopting container {name} as app {slug}",
+    "safety": "{name} is stopped and kept as a copy (…-pre-deployra), and Deployra recreates it with the same image, variables, volumes and port. If the new one doesn't start, the old one comes back by itself.",
+    "title": "Adopting {name}"
+  },
   "alerts": {
     "active": "Active alerts: {count}",
     "auto_move": "Move apps that allow it to a less loaded node",

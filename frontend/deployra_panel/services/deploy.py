@@ -62,7 +62,8 @@ async def _push(panel: Any, job: Job) -> None:
         raise JobFailed(t("msg.gateway_rejected"))
 
 
-async def run(panel: Any, job: Job, app_id: int) -> dict:
+async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = None) -> dict:
+    """Wdrożenie aplikacji; z `adopt_container` węzeł zamiast stawiać od zera przejmuje istniejący kontener."""
     app = panel.db.get("apps", app_id)
     if not app:
         raise JobFailed(t("msg.no_app"))
@@ -75,13 +76,17 @@ async def run(panel: Any, job: Job, app_id: int) -> dict:
     try:
         client = panel.node_client(node)
         job.log(t("deploy.start", slug=spec.slug, kind=spec.source.kind, node=node["name"]))
-        if first:  # ochrona przed przepełnieniem — ponowne wdrożenie już nie pyta (świadoma decyzja)
+        if first and not adopt_container:  # ochrona przed przepełnieniem — ponowne wdrożenie już nie pyta (świadoma decyzja)
             from . import resources
 
             problem = await resources.capacity_problem(panel, node, spec.memory_mb)
             if problem:
                 raise JobFailed(problem + " " + t("res.retry_hint"))
-        remote = await relay.start_and_follow(client, "/api/apps/deploy", spec.model_dump(mode="json"), job, "  ")
+        if adopt_container:
+            body = {"container": adopt_container, "spec": spec.model_dump(mode="json")}
+            remote = await relay.start_and_follow(client, f"/api/apps/{spec.slug}/adopt", body, job, "  ")
+        else:
+            remote = await relay.start_and_follow(client, "/api/apps/deploy", spec.model_dump(mode="json"), job, "  ")
         result = remote.get("result") or {}
         host_port, upstream_host = result.get("host_port"), result.get("upstream_host")
         panel.db.update("apps", app_id, host_port=host_port)

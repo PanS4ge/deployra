@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shlex
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -124,7 +125,8 @@ def tojson_attr(value: Any) -> Markup:
     return Markup(json.dumps(value, ensure_ascii=False).replace("&", "&amp;").replace("'", "&#39;").replace('"', "&quot;"))
 
 
-templates.env.filters.update(pct=pct, bytes=human_bytes, ago=ago, dt=dt, duration=duration, jsonattr=tojson_attr, flag=flag)
+templates.env.filters.update(pct=pct, bytes=human_bytes, ago=ago, dt=dt, duration=duration, jsonattr=tojson_attr, flag=flag,
+                             shjoin=lambda args: shlex.join(args or []))
 
 
 def update_offer(panel: Any) -> dict | None:

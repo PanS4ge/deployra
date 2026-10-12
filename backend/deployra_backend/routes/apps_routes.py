@@ -18,7 +18,7 @@ from deployra_common.server import receive_verified_upload
 from ..context import Context, get_ctx
 from deployra_common.runtimes import KEEP_DIRS
 
-from ..services import apps, compose, sftp_users, static_sites, transfer
+from ..services import adopt, apps, compose, sftp_users, static_sites, transfer
 from . import job_response, signed, signed_upload
 
 router = APIRouter(prefix="/api", dependencies=[Depends(signed)])
@@ -121,6 +121,31 @@ async def upload_site(slug: str, request: Request, ctx: Context = Depends(get_ct
         except Exception as exc:  # zipfile.BadZipFile itd.
             raise HTTPException(400, tr("node.unpack_failed", error=exc)) from None
     return {"files": count}
+
+
+# --- przejęcie kontenera spoza Deployry ------------------------------------------------------
+
+
+class AdoptRequest(BaseModel):
+    container: str
+    spec: AppSpec
+
+
+@router.get("/containers/{cid}/adopt-plan")
+def adopt_plan(cid: str, ctx: Context = Depends(get_ctx)) -> dict:
+    return adopt.plan(ctx.docker, cid)
+
+
+@router.post("/apps/{slug}/adopt")
+async def adopt_container(slug: str, body: AdoptRequest, ctx: Context = Depends(get_ctx)) -> dict:
+    check_slug(slug)
+    if body.spec.slug != slug or body.spec.endpoint != "local":
+        raise HTTPException(400, tr("node.adopt.bad_spec"))
+    problems = adopt.plan(ctx.docker, body.container)["problems"]
+    if problems:
+        raise HTTPException(400, problems[0])
+    title = tr("node.job.adopt", name=slug)
+    return job_response(ctx.jobs.start("deploy", title, lambda job: adopt.adopt(ctx, job, body.container, body.spec)))
 
 
 # --- przenoszenie między węzłami ---------------------------------------------------------

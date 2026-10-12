@@ -3,6 +3,7 @@
 <div class="form-grid" x-show="kind === 'image'">
   <div class="field"><label>{{ t("containers.image") }}</label><input class="input mono" name="image" value="{{ src.image if src and src.image else '' }}" placeholder="ghcr.io/user/app:latest" :required="kind === 'image'"></div>
   <div class="field"><label>{{ t("apps.listen_port") }}</label><input class="input" name="container_port" type="number" min="1" max="65535" value="{{ spec.container_port if spec and spec.container_port else '' }}" placeholder="80" :disabled="kind !== 'image'" :required="kind === 'image'"></div>
+  <div class="field full"><label>{{ t("apps.start_command") }} <span class="muted small">({{ t("apps.optional") }})</span></label><input class="input mono" name="command" value="{{ src.command | shjoin if src and src.command else '' }}" placeholder="CMD" :disabled="kind !== 'image'"></div>
 </div>
 <div class="stack" x-show="kind === 'compose'">
   <div class="field"><label>docker-compose.yml</label><textarea class="textarea tall" name="compose" spellcheck="false" placeholder="services:&#10;  web:&#10;    image: nginx:alpine">{{ src.compose if src and src.compose else '' }}</textarea></div>

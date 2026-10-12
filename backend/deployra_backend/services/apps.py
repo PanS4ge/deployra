@@ -53,7 +53,7 @@ def _container_spec(ctx: Any, spec: AppSpec, image: str, host_port: int | None) 
     return ContainerSpec(
         name=container_name(spec.slug),
         image=image,
-        command=extra.get("command"),
+        command=extra.get("command") or (spec.source.command if spec.source.kind == "image" else None),
         working_dir=extra.get("working_dir"),
         env=extra.get("env", spec.env),
         ports=[PortMap(container=spec.container_port, host=host_port)] if host_port and spec.container_port else [],

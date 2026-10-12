@@ -86,6 +86,16 @@
     "url_scheme": "the address must start with http:// or https://"
   },
   "node": {
+    "adopt": {
+      "already": "This container already is a Deployra app",
+      "bad_spec": "The spec doesn't match the adopted app",
+      "compose": "The container belongs to the compose stack \"{project}\" — adopt the whole stack in Node → Stacks",
+      "done": "Adopted. The old container stays as {backup} (stopped) — remove it once everything works",
+      "restore_failed": "Could not restore the old container: {error}",
+      "restoring": "The new container didn't start — restoring {name}",
+      "stopping": "Stopping {name} and keeping it as {backup}",
+      "system": "This is a Deployra container — nothing to adopt"
+    },
     "already_paired": "the node is already paired — reset pairing on the node",
     "app": {
       "busy": "this app is being deployed right now",
@@ -132,6 +142,7 @@
       "path_escape": "path {path} escapes the repository"
     },
     "job": {
+      "adopt": "Adopting a container as {name}",
       "deploy": "Deploying {name}",
       "export": "Packing {name} for the move",
       "import": "Unpacking {name}",

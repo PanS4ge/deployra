@@ -208,6 +208,7 @@ class AppSource(BaseModel):
     dockerfile: str = "Dockerfile"
     build_context: str = "."
     git_static_dir: str | None = None  # Git bez Dockerfile: katalog z plikami strony
+    command: list[str] | None = Field(default=None, max_length=64)  # obraz: polecenie zamiast CMD obrazu (np. przejęty kontener)
     runtime: str | None = None  # aplikacja z plików: id środowiska z `runtimes.RUNTIMES`
     start_command: str | None = Field(default=None, max_length=2000)  # zamiast domyślnego polecenia środowiska
     install_command: str | None = Field(default=None, max_length=2000)

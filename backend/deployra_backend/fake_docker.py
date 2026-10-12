@@ -120,7 +120,9 @@ class FakeAPI:
                     "Id": c["id"], "Names": ["/" + c["name"]], "Image": c["image"], "ImageID": "sha256:" + "a" * 64,
                     "State": c["state"], "Status": "Up 3 hours" if c["state"] == "running" else "Exited (1) 2 days ago",
                     "Created": c["created"],
-                    "Ports": [{"IP": "0.0.0.0", "PrivatePort": int(k.split("/")[0]), "PublicPort": v, "Type": "tcp"} for k, v in c["ports"].items()],
+                    # jak w Dockerze: zatrzymany kontener nie trzyma portu hosta
+                    "Ports": [{"IP": "0.0.0.0", "PrivatePort": int(k.split("/")[0]), "PublicPort": v, "Type": "tcp"}
+                              for k, v in c["ports"].items()] if c["state"] == "running" else [],
                     "Labels": c["labels"], "Mounts": [],
                     "NetworkSettings": {"Networks": {"deployra": {"NetworkID": "net1"}}},
                 }
@@ -182,15 +184,27 @@ class FakeAPI:
         return {
             "Id": c["id"], "Name": "/" + c["name"], "Created": "2026-10-10T08:00:00Z",
             "Config": {"Image": c["image"], "Labels": c["labels"], "Env": [f"{k}={v}" for k, v in (c["env"] or {}).items()] or ["PATH=/usr/bin"],
-                       "Cmd": ["nginx", "-g", "daemon off;"], "Entrypoint": None},
+                       "Cmd": c.get("command") or ["nginx", "-g", "daemon off;"], "Entrypoint": None,
+                       "ExposedPorts": {k: {} for k in c["ports"]}},
             "RestartCount": c.get("restarts", 0),
             "State": {"Status": c["state"], "Running": running, "Restarting": False, "StartedAt": "2026-10-10T08:00:00Z",
                       "OOMKilled": c.get("oom", False), "FinishedAt": "2026-10-10T09:00:00Z" if c.get("oom") else "0001-01-01T00:00:00Z"},
-            "HostConfig": {"RestartPolicy": {"Name": "unless-stopped"}, "Memory": _bytes(c["host_config"].get("mem_limit"))},
+            "HostConfig": {"RestartPolicy": c["host_config"].get("restart_policy") or {"Name": "unless-stopped"},
+                           "Memory": _bytes(c["host_config"].get("mem_limit")),
+                           "PortBindings": {k: [{"HostIp": "", "HostPort": str(v)}] for k, v in c["ports"].items()}},
             "NetworkSettings": {"Networks": {"deployra": {"IPAddress": "172.30.0.5"}},
                                 "Ports": {k: [{"HostIp": "0.0.0.0", "HostPort": str(v)}] for k, v in c["ports"].items()}},
-            "Mounts": [{"Name": "dane", "Source": "/var/lib/docker/volumes/dane/_data", "Destination": "/data", "RW": True}],
+            "Mounts": [{"Type": "volume", "Name": "dane", "Source": "/var/lib/docker/volumes/dane/_data", "Destination": "/data", "RW": True}],
         }  # fmt: skip
+
+    def rename(self, cid: str, name: str) -> None:
+        self._find(cid)["name"] = name
+
+    def update_container(self, cid: str, restart_policy: dict | None = None, **_: Any) -> dict:
+        container = self._find(cid)
+        if restart_policy is not None:
+            container["host_config"] = {**container["host_config"], "restart_policy": restart_policy}
+        return {"Warnings": []}
 
     def remove_container(self, cid: str, force: bool = False, v: bool = False) -> None:
         self.containers_.pop(self._find(cid)["id"])
