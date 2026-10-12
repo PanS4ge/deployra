@@ -140,12 +140,20 @@ def flag(code: Any) -> str:
     return "".join(chr(0x1F1E6 + ord(c) - 65) for c in code) if len(code) == 2 and code.isascii() and code.isalpha() else ""
 
 
+def envval(value: Any) -> str:
+    """Wartość zmiennej do pola KLUCZ=wartość: wieloliniowa, ze spacjami na brzegach albo w cudzysłowie → JSON."""
+    text = str(value)
+    if "\n" in text or "\r" in text or text != text.strip() or text.startswith('"'):
+        return json.dumps(text, ensure_ascii=False)
+    return text
+
+
 def tojson_attr(value: Any) -> Markup:
     return Markup(json.dumps(value, ensure_ascii=False).replace("&", "&amp;").replace("'", "&#39;").replace('"', "&quot;"))
 
 
 templates.env.filters.update(pct=pct, bytes=human_bytes, ago=ago, dt=dt, duration=duration, jsonattr=tojson_attr, flag=flag,
-                             shjoin=lambda args: shlex.join(args or []), dts=dts, elapsed=elapsed)
+                             shjoin=lambda args: shlex.join(args or []), dts=dts, elapsed=elapsed, envval=envval)
 
 
 def update_offer(panel: Any) -> dict | None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import secrets
@@ -54,7 +55,13 @@ def _env(text: str) -> dict[str, str]:
         key, sep, value = line.partition("=")
         if not sep:
             raise ValueError(t("msg.bad_env", line=line))
-        out[key.strip()] = value.strip()
+        value = value.strip()
+        if len(value) > 1 and value[0] == value[-1] == '"':  # "…" jak w .env — tak pokazujemy wartości wieloliniowe
+            try:
+                value = str(json.loads(value))
+            except ValueError:
+                pass
+        out[key.strip()] = value
     return out
 
 
@@ -108,6 +115,7 @@ def spec_from_form(form: Any, slug: str, existing: AppSpec | None = None) -> tup
         memory_mb=int(get("memory_mb")) if get("memory_mb") else None,
         cpus=float(get("cpus")) if get("cpus") else None,
         domains=domains,
+        host_port=existing.host_port if existing else None,  # stały port hosta (np. przejęty kontener) — nie ma go w formularzu
     )
     if spec.source.kind == "runtime" and not spec.container_port:  # proces w tle nie ma czego wystawiać pod domeną
         spec.domains = []
@@ -417,15 +425,16 @@ async def edit(request: Request, app: dict = Depends(_app), panel: Panel = Depen
     try:
         spec, options = spec_from_form(form, app["slug"], old_spec)
         options["auto_move"] = bool(old_options.get("auto_move")) and migrate.auto_capable(spec)
+        if not panel.db.setting("cloudflare_token"):  # pole DNS jest wtedy wyłączone i nie przychodzi z formularza
+            options["dns"] = bool(old_options.get("dns"))
         if spec.endpoint != old_spec.endpoint:
             raise ValueError(t("msg.endpoint_change"))
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc), "err", status=400)
     panel.db.update("apps", app["id"], name=str(form.get("name") or app["name"])[:60], spec=deploy.store(panel, spec, options),
                     domains=spec.domains)  # fmt: skip
-    same_container = spec.model_dump(exclude={"domains"}) == old_spec.model_dump(exclude={"domains"})
-    exposure = spec.domains != old_spec.domains or {k: options.get(k) for k in ("https", "force_ssl", "dns")} != {
-        k: old_options.get(k) for k in ("https", "force_ssl", "dns")}  # fmt: skip
+    same_container = _container_part(spec) == _container_part(old_spec)
+    exposure = spec.domains != old_spec.domains or any(bool(options.get(k)) != bool(old_options.get(k)) for k in ("https", "force_ssl", "dns"))
     deployed = same_container and exposure and app.get("host_port")
     if deployed and not deploy.static_kind(spec):  # tylko domeny / HTTPS / DNS → bramka i DNS, kontener działa dalej
         job = panel.jobs.start("deploy", t("deploy.domains_job", slug=app["slug"]), lambda job: deploy.expose_only(panel, job, app["id"]))
@@ -434,7 +443,14 @@ async def edit(request: Request, app: dict = Depends(_app), panel: Panel = Depen
     if form.get("deploy") or deployed:  # strona statyczna: domeny są w nginx węzła, wdrożenie to tylko przeładowanie
         job = start_deploy(panel, panel.db.get("apps", app["id"]))
         return redirect(request, f"/apps/{app['id']}?job={job.id}", t("msg.saved_deploying"))
-    return redirect(request, f"/apps/{app['id']}", t("msg.saved_redeploy"))
+    return redirect(request, f"/apps/{app['id']}", t("msg.saved_plain" if same_container else "msg.saved_redeploy"))
+
+
+def _container_part(spec: AppSpec) -> dict:
+    """Wszystko, co trafia do kontenera (bez domen); puste polecenie [] i brak polecenia to to samo."""
+    data = spec.model_dump(exclude={"domains"})
+    data["source"]["command"] = data["source"].get("command") or None
+    return data
 
 
 @router.post("/apps/{app_id}/webhook/rotate")

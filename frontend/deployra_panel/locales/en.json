@@ -684,7 +684,8 @@
     "webhook_deploy": "Webhook: push {commit} → deploying {slug}",
     "webhook_rotated": "A new webhook secret was generated — update it in the repository",
     "welcome": "Deployra is set up — welcome aboard 🚀",
-    "saved_domains": "Saved — switching the domains without restarting the container"
+    "saved_domains": "Saved — switching the domains without restarting the container",
+    "saved_plain": "Saved"
   },
   "nav": {
     "apps": "Apps",

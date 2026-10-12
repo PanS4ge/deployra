@@ -6,7 +6,8 @@
   <div class="field full"><label>{{ t("apps.start_command") }} <span class="muted small">({{ t("apps.optional") }})</span></label><input class="input mono" name="command" value="{{ src.command | shjoin if src and src.command else '' }}" placeholder="CMD" :disabled="kind !== 'image'"></div>
 </div>
 <div class="stack" x-show="kind === 'compose'">
-  <div class="field"><label>docker-compose.yml</label><textarea class="textarea tall" name="compose" spellcheck="false" placeholder="services:&#10;  web:&#10;    image: nginx:alpine">{{ src.compose if src and src.compose else '' }}</textarea></div>
+  <div class="field"><label>docker-compose.yml</label><textarea class="textarea tall" name="compose" spellcheck="false" placeholder="services:&#10;  web:&#10;    image: nginx:alpine">
+{{ src.compose if src and src.compose else '' }}</textarea></div>
   <div class="form-grid">
     <div class="field"><label>{{ t("apps.expose_service") }}</label><input class="input mono" name="expose_service" value="{{ src.expose_service if src and src.expose_service else '' }}" placeholder="{{ t('apps.first_in_file') }}"></div>
     <div class="field"><label>{{ t("apps.service_port") }}</label><input class="input" name="container_port" type="number" min="1" max="65535" value="{{ spec.container_port if spec and spec.container_port else '' }}" placeholder="80" :disabled="kind !== 'compose'" :required="kind === 'compose'"></div>

@@ -684,7 +684,8 @@
     "webhook_deploy": "Webhook: push {commit} → wdrażam {slug}",
     "webhook_rotated": "Wygenerowano nowy sekret webhooka — zaktualizuj go w repozytorium",
     "welcome": "Deployra skonfigurowana — witaj na pokładzie 🚀",
-    "saved_domains": "Zapisano — przestawiam domeny bez restartu kontenera"
+    "saved_domains": "Zapisano — przestawiam domeny bez restartu kontenera",
+    "saved_plain": "Zapisano"
   },
   "nav": {
     "apps": "Aplikacje",
