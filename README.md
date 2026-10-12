@@ -143,6 +143,12 @@ The gateway counts requests per IP from the same nginx logs as the visit statist
 
 Raw IPs are kept for 7 days (`DEPLOYRA_IP_RETENTION_DAYS`) — an IP address is personal data.
 
+## Logs
+
+**Logs** searches container logs on all nodes at once — no Elasticsearch and no extra RAM (read from Docker on demand).
+Syntax: `error timeout` (all words), `"phrase"`, `/regex/`, `-word`, `app:`, `container:`, `node:`, `level:error|warn`;
+range 15 min – 7 days, a hits-over-time chart, clicking a container narrows the results.
+
 ## Apps from files
 
 **Apps → New → From files** lists ready runtimes. Pick one, upload a ZIP (or skip it and get starter files), choose the node and domain.

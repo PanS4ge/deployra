@@ -141,6 +141,12 @@ Bramka liczy zapytania per adres IP z tych samych logów nginx co statystyki odw
 
 Surowe adresy IP trzymamy 7 dni (`DEPLOYRA_IP_RETENTION_DAYS`) — adres IP to dana osobowa.
 
+## Logi
+
+**Logi** przeszukują logi kontenerów na wszystkich węzłach naraz — bez Elasticsearcha i bez dodatkowego RAM-u (czytane z Dockera
+na żądanie). Składnia: `błąd timeout` (wszystkie słowa), `"fraza"`, `/regex/`, `-słowo`, `app:`, `container:`, `node:`, `level:error|warn`;
+zakres 15 min – 7 dni, wykres trafień w czasie, kliknięcie kontenera zawęża wyniki.
+
 ## Aplikacje z plików
 
 **Aplikacje → Nowa → Z plików** pokazuje gotowe środowiska. Wybierasz jedno, wgrywasz ZIP (albo nie — dostaniesz pliki startowe),

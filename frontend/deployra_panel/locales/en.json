@@ -494,6 +494,16 @@
     "offline": "No connection to the panel",
     "session_ended": "session ended"
   },
+  "logs": {
+    "bad_level": "Level: {levels}",
+    "bad_regex": "Invalid regular expression: {error}",
+    "hits": "Hits: {count}",
+    "none": "Nothing matches in this period",
+    "phrase": "phrase",
+    "scanned": "containers: {containers} · nodes: {nodes}",
+    "search": "Search",
+    "word": "word"
+  },
   "move": {
     "auto": "Move automatically when the node runs out of RAM",
     "auto_off": "Automatic moving disabled",
@@ -677,6 +687,7 @@
     "import": "Import from NPM",
     "jobs": "Jobs",
     "logout": "Sign out",
+    "logs": "Logs",
     "menu": "Menu",
     "nodes": "Nodes",
     "notifications": "Notifications",

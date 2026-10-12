@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<form class="card" id="log-form" hx-get="/logs/search" hx-target="#log-results" hx-swap="innerHTML" hx-indicator="#log-form">
+  <div class="card-body stack" style="gap: 8px">
+    <div class="row" style="gap: 8px; flex-wrap: wrap">
+      <input class="input mono" name="q" value="{{ q }}" placeholder='error app:sklep -healthcheck' style="flex: 1; min-width: 240px" autocomplete="off" autofocus>
+      <select class="select" name="range" style="width: auto" onchange="htmx.trigger('#log-form', 'submit')">
+        {% for r in ranges %}<option value="{{ r }}" {{ "selected" if r == span }}>{{ r }}</option>{% endfor %}
+      </select>
+      <button class="btn primary"><span class="spin"></span><i class="bi bi-search"></i> {{ t("logs.search") }}</button>
+    </div>
+    <div class="row small muted mono" style="gap: 10px; flex-wrap: wrap">
+      <span>"{{ t('logs.phrase') }}"</span><span>/regex/</span><span>-{{ t("logs.word") }}</span><span>app:</span><span>container:</span><span>node:</span><span>level:error|warn</span>
+    </div>
+  </div>
+</form>
+<div class="card" id="log-results" hx-get="/logs/search?q={{ q | urlencode }}&range={{ span }}" hx-trigger="load" hx-swap="innerHTML">
+  <div class="card-body muted small">{{ t("common.loading") }}</div>
+</div>
+<script>
+  function logFilter(term) {
+    const input = document.querySelector('#log-form [name=q]');
+    if (!input.value.includes(term)) input.value = (input.value + ' ' + term).trim();
+    htmx.trigger('#log-form', 'submit');
+  }
+</script>
+{% endblock %}

@@ -494,6 +494,16 @@
     "offline": "Brak połączenia z panelem",
     "session_ended": "sesja zakończona"
   },
+  "logs": {
+    "bad_level": "Poziom: {levels}",
+    "bad_regex": "Błędne wyrażenie regularne: {error}",
+    "hits": "Trafienia: {count}",
+    "none": "Nic nie pasuje w tym okresie",
+    "phrase": "fraza",
+    "scanned": "kontenery: {containers} · węzły: {nodes}",
+    "search": "Szukaj",
+    "word": "słowo"
+  },
   "move": {
     "auto": "Przenoś automatycznie, gdy węzłowi kończy się RAM",
     "auto_off": "Automatyczne przenoszenie wyłączone",
@@ -677,6 +687,7 @@
     "import": "Import z NPM",
     "jobs": "Zadania",
     "logout": "Wyloguj",
+    "logs": "Logi",
     "menu": "Menu",
     "nodes": "Węzły",
     "notifications": "Powiadomienia",

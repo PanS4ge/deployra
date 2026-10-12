@@ -20,6 +20,28 @@ from ..services import docker_svc
 from . import job_response, signed
 
 router = APIRouter(prefix="/api", dependencies=[Depends(signed)])
+
+
+class LogQuery(BaseModel):
+    must: list[str] = []
+    exclude: list[str] = []
+    since: float
+    until: float
+    containers: list[str] = []
+    apps: list[str] = []
+    limit: int = 200
+
+
+@router.post("/logs/search")
+def logs_search(body: LogQuery, ep: str = "local", ctx: Context = Depends(get_ctx)) -> dict:
+    """Mini-ELK: przeszukanie logów kontenerów (wzorce, wykluczenia, okres) — na żądanie, bez indeksu."""
+    from ..services import logsearch
+
+    must, exclude = logsearch.compile_all(body.must), logsearch.compile_all(body.exclude)
+    if body.until <= body.since:
+        raise HTTPException(400, tr("node.logs.bad_range"))
+    return logsearch.search(ctx.docker_for(ep), must, exclude, body.since, body.until, set(body.containers) or None,
+                            set(body.apps) or None, limit=max(1, min(body.limit, 1000)))  # fmt: skip
 ws_router = APIRouter(prefix="/api")
 
 SHELLS = {

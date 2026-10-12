@@ -28,18 +28,25 @@ except ImportError:  # pragma: no cover
 
 
 class _LogStream:
-    def __init__(self, name: str, tail: int, follow: bool) -> None:
-        self.name, self.tail, self.follow = name, tail, follow
+    def __init__(self, name: str, tail: int, follow: bool, timestamps: bool = False, lines: list[str] | None = None) -> None:
+        self.name, self.tail, self.follow, self.timestamps, self.lines = name, tail, follow, timestamps, lines
         self._closed = threading.Event()
 
+    def _stamp(self, line: str, ago: float = 0) -> str:
+        if not self.timestamps:
+            return line
+        return time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z ", time.gmtime(time.time() - ago)) + line
+
     def __iter__(self):
-        lines = [f"[{self.name}] start serwera…", f"[{self.name}] nasłuchuję na :80", f"[{self.name}] GET / 200 1.2ms"]
-        for line in lines[-self.tail :] if self.tail else lines:
-            yield (line + "\n").encode()
+        lines = self.lines or [f"[{self.name}] start serwera…", f"[{self.name}] nasłuchuję na :80", f"[{self.name}] GET / 200 1.2ms",
+                               f"[{self.name}] ERROR połączenie z bazą odrzucone"]  # fmt: skip
+        lines = lines[-self.tail :] if self.tail else lines
+        for index, line in enumerate(lines):
+            yield (self._stamp(line, (len(lines) - index) * 60) + "\n").encode()
         while self.follow and not self._closed.wait(1.5):
             path = random.choice(["/", "/api/status", "/favicon.ico", "/login", "/assets/app.js"])
             code = random.choice([200, 200, 200, 304, 404])
-            yield f"[{self.name}] GET {path} {code} {random.uniform(0.3, 40):.1f}ms\n".encode()
+            yield (self._stamp(f"[{self.name}] GET {path} {code} {random.uniform(0.3, 40):.1f}ms") + "\n").encode()
 
     def close(self) -> None:
         self._closed.set()
@@ -84,6 +91,7 @@ class FakeAPI:
         self.volumes_ = [{"Name": "dane", "Driver": "local", "Mountpoint": "/var/lib/docker/volumes/dane/_data", "CreatedAt": "2026-09-01T10:00:00Z"}]
         self.pulled: list[str] = []
         self.built: list[str] = []
+        self.log_lines: dict[str, list[str]] = {}  # testy: własne linie logów kontenera
         self.oneoff_runs: list[dict] = []
         self.on_oneoff: Any = None  # testy: podgląd/emulacja jednorazowych kontenerów (instalacja, tar wolumenów)
         self.crash_images: set[str] = set()
@@ -212,7 +220,7 @@ class FakeAPI:
     def logs(self, cid: str, tail: Any = None, stream: bool = False, follow: bool = False, timestamps: bool = False, **_: Any):
         c = self._find(cid)
         if stream:
-            return _LogStream(c["name"], int(tail or 0), follow and c["state"] == "running")
+            return _LogStream(c["name"], int(tail or 0), bool(follow) and c["state"] == "running", timestamps, self.log_lines.get(c["name"]))
         return b"blad: brak konfiguracji\n" if c["image"] in self.crash_images else f"[{c['name']}] działa\n".encode()
 
     def stats(self, cid: str, stream: bool = False, one_shot: bool | None = None, decode: Any = None) -> dict:

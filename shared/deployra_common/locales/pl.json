@@ -177,6 +177,11 @@
       "update_requested": "Zlecono aktualizację węzła do {version} ({mode})",
       "waiting_pair": "Węzeł czeka na sparowanie z panelem Deployry."
     },
+    "logs": {
+      "bad_query": "Wzorzec może mieć najwyżej {max} znaków",
+      "bad_range": "Nieprawidłowy zakres czasu",
+      "bad_regex": "Błędne wyrażenie regularne: {error}"
+    },
     "network_protected": "tej sieci nie można usunąć",
     "no_free_port": "brak wolnego portu w puli",
     "not_found": "nie znaleziono: {what}",

@@ -103,6 +103,12 @@ def dt(value: Any) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M") if ts else "—"
 
 
+def dts(value: Any) -> str:
+    """Czas z sekundami (logi)."""
+    ts = _to_ts(value)
+    return datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().strftime("%d.%m %H:%M:%S") if ts else "—"
+
+
 def gravatar(email: str, size: int = 64, default: str = "identicon") -> str:
     digest = hashlib.sha256(email.strip().lower().encode()).hexdigest()
     return f"https://www.gravatar.com/avatar/{digest}?s={size}&d={default}"
@@ -126,7 +132,7 @@ def tojson_attr(value: Any) -> Markup:
 
 
 templates.env.filters.update(pct=pct, bytes=human_bytes, ago=ago, dt=dt, duration=duration, jsonattr=tojson_attr, flag=flag,
-                             shjoin=lambda args: shlex.join(args or []))
+                             shjoin=lambda args: shlex.join(args or []), dts=dts)
 
 
 def update_offer(panel: Any) -> dict | None:

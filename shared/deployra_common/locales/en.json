@@ -177,6 +177,11 @@
       "update_requested": "Node update to {version} requested ({mode})",
       "waiting_pair": "The node is waiting to be paired with the Deployra panel."
     },
+    "logs": {
+      "bad_query": "A pattern can have at most {max} characters",
+      "bad_range": "Invalid time range",
+      "bad_regex": "Invalid regular expression: {error}"
+    },
     "network_protected": "this network can't be removed",
     "no_free_port": "no free port in the pool",
     "not_found": "not found: {what}",
