@@ -369,7 +369,10 @@
     "lxc_not_routed": "⚠ IP kontenera LXC {ip} nie jest w podsieciach LAN węzła — dodaj jego podsieć w ustawieniach węzła, żeby bramka do niego trafiła",
     "node_error_removing": "⚠ Węzeł: {error} — usuwam z panelu mimo to",
     "removed": "Usunięto aplikację {slug}",
-    "start": "▶ Wdrażam {slug} ({kind}) na węźle {node}"
+    "start": "▶ Wdrażam {slug} ({kind}) na węźle {node}",
+    "domains_job": "Domeny {slug}",
+    "domains_only": "Zmiana domen {slug}: tylko bramka, DNS i certyfikat — kontener działa dalej",
+    "unexposing": "🌐 Aplikacja bez domeny — usuwam host proxy"
   },
   "dns": {
     "api_token": "Token API",
@@ -680,7 +683,8 @@
     "volume_removed": "Usunięto wolumen {name}",
     "webhook_deploy": "Webhook: push {commit} → wdrażam {slug}",
     "webhook_rotated": "Wygenerowano nowy sekret webhooka — zaktualizuj go w repozytorium",
-    "welcome": "Deployra skonfigurowana — witaj na pokładzie 🚀"
+    "welcome": "Deployra skonfigurowana — witaj na pokładzie 🚀",
+    "saved_domains": "Zapisano — przestawiam domeny bez restartu kontenera"
   },
   "nav": {
     "apps": "Aplikacje",

@@ -94,44 +94,92 @@ async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = N
         if upstream_host and node["transport"] == "tunnel" and not _routed(upstream_host, node.get("lan_subnets") or []):
             job.log(t("deploy.lxc_not_routed", ip=upstream_host))
 
-        if app["domains"] and host_port:
-            job.log(t("deploy.exposing", domains=", ".join(app["domains"])))
-            site = _upsert_site(panel, app, node, host_port, options, upstream_host)
-            await _push(panel, job)
-
-            if options.get("dns"):
-                try:
-                    for line in await dns.ensure_records(panel, site):
-                        job.log(f"  DNS: {line}")
-                except (dns.DnsError, httpx.HTTPError) as exc:
-                    job.log(t("deploy.dns_failed", error=exc))
-
-            if options.get("https"):
-                cert = certs.find_covering(panel, app["domains"])
-                if cert:
-                    job.log(t("deploy.cert_reuse", id=cert["id"], domains=", ".join(cert["domains"])))
-                else:
-                    cert_id = certs.create(panel, app["domains"])
-                    await certs.issue(panel, job, cert_id)
-                    cert = panel.db.get("certificates", cert_id)
-                panel.db.update("sites", site["id"], cert_id=cert["id"], ssl_forced=int(bool(options.get("force_ssl", True))))
-                panel.db.update("apps", app_id, cert_id=cert["id"])
-                await _push(panel, job)
-
-            await _check(panel, job, node, host_port, app["domains"][0], upstream_host)
+        await _expose(panel, job, app, node, host_port, options, upstream_host)
         panel.db.update("apps", app_id, status="running", last_deploy_at=now())
         job.log(t("deploy.done"))
         panel.plugins.emit("app.deployed", app=panel.db.get("apps", app_id), job=job.id)
         return {"host_port": host_port}
     except (JobFailed, RemoteError, httpx.HTTPError, LookupError) as exc:
-        message = getattr(exc, "detail", None) or str(exc) or type(exc).__name__
-        panel.db.update("apps", app_id, status="error", last_error=message)
-        panel.plugins.emit("app.failed", app=panel.db.get("apps", app_id), job=job.id, error=message)
-        from . import alerts
-        from .notify import Message
+        await _failed(panel, job, app, exc)
 
-        await alerts.event(panel, "deploy_failed", Message(t("alerts.title.deploy_failed", name=app["name"]), message[:1500], "err"))
-        raise JobFailed(message) from exc
+
+async def _failed(panel: Any, job: Job, app: dict, exc: Exception) -> None:
+    message = getattr(exc, "detail", None) or str(exc) or type(exc).__name__
+    panel.db.update("apps", app["id"], status="error", last_error=message)
+    panel.plugins.emit("app.failed", app=panel.db.get("apps", app["id"]), job=job.id, error=message)
+    from . import alerts
+    from .notify import Message
+
+    await alerts.event(panel, "deploy_failed", Message(t("alerts.title.deploy_failed", name=app["name"]), message[:1500], "err"))
+    raise JobFailed(message) from exc
+
+
+def static_kind(spec: AppSpec) -> bool:
+    """Strony statyczne mają domeny w konfiguracji nginx na węźle — zmiana domen idzie przez węzeł (samo przeładowanie)."""
+    return spec.source.kind == "static" or (spec.source.kind == "git" and bool(spec.source.git_static_dir))
+
+
+async def expose_only(panel: Any, job: Job, app_id: int) -> dict:
+    """Zmiana samych domen / HTTPS / DNS: bramka, DNS i certyfikat — kontener na węźle zostaje nietknięty."""
+    app = panel.db.get("apps", app_id)
+    if not app:
+        raise JobFailed(t("msg.no_app"))
+    _, options = load(panel, app)
+    node = panel.node(app["node_id"])
+    if not node:
+        raise JobFailed(t("msg.app_node_missing"))
+    site = panel.db.get("sites", app["site_id"]) if app.get("site_id") else None
+    target = (site or {}).get("target") or {}
+    upstream_host = target.get("host") if target.get("type") == "address" else None
+    job.log(t("deploy.domains_only", slug=app["slug"]))
+    try:
+        await _expose(panel, job, app, node, app.get("host_port"), options, upstream_host)
+    except (JobFailed, RemoteError, httpx.HTTPError, LookupError) as exc:
+        await _failed(panel, job, app, exc)
+    job.log(t("deploy.done"))
+    return {"host_port": app.get("host_port")}
+
+
+async def _expose(panel: Any, job: Job, app: dict, node: dict, host_port: int | None, options: dict,
+                  upstream_host: str | None = None) -> None:  # fmt: skip
+    """Host proxy na bramce, DNS, certyfikat i test HTTP dla domen aplikacji."""
+    if not app["domains"] or not host_port:
+        if app.get("site_id"):  # domeny usunięte → host proxy i jego rekordy DNS też
+            job.log(t("deploy.unexposing"))
+            await dns.remove_records(panel, app["site_id"])
+            panel.db.update("apps", app["id"], site_id=None)
+            panel.db.delete("sites", app["site_id"])
+            await _push(panel, job)
+        return
+    job.log(t("deploy.exposing", domains=", ".join(app["domains"])))
+    site = _upsert_site(panel, app, node, host_port, options, upstream_host)
+    if not options.get("https") and site.get("cert_id"):
+        panel.db.update("sites", site["id"], cert_id=None, ssl_forced=0)
+        panel.db.update("apps", app["id"], cert_id=None)
+    await _push(panel, job)
+
+    try:
+        if options.get("dns"):
+            for line in await dns.ensure_records(panel, site):
+                job.log(f"  DNS: {line}")
+        else:
+            await dns.remove_records(panel, site["id"])
+    except (dns.DnsError, httpx.HTTPError) as exc:
+        job.log(t("deploy.dns_failed", error=exc))
+
+    if options.get("https"):
+        cert = certs.find_covering(panel, app["domains"])
+        if cert:
+            job.log(t("deploy.cert_reuse", id=cert["id"], domains=", ".join(cert["domains"])))
+        else:
+            cert_id = certs.create(panel, app["domains"])
+            await certs.issue(panel, job, cert_id)
+            cert = panel.db.get("certificates", cert_id)
+        panel.db.update("sites", site["id"], cert_id=cert["id"], ssl_forced=int(bool(options.get("force_ssl", True))))
+        panel.db.update("apps", app["id"], cert_id=cert["id"])
+        await _push(panel, job)
+
+    await _check(panel, job, node, host_port, app["domains"][0], upstream_host)
 
 
 def _routed(ip: str, subnets: list[str]) -> bool:

@@ -423,7 +423,15 @@ async def edit(request: Request, app: dict = Depends(_app), panel: Panel = Depen
         return toast(_errors(exc), "err", status=400)
     panel.db.update("apps", app["id"], name=str(form.get("name") or app["name"])[:60], spec=deploy.store(panel, spec, options),
                     domains=spec.domains)  # fmt: skip
-    if form.get("deploy"):
+    same_container = spec.model_dump(exclude={"domains"}) == old_spec.model_dump(exclude={"domains"})
+    exposure = spec.domains != old_spec.domains or {k: options.get(k) for k in ("https", "force_ssl", "dns")} != {
+        k: old_options.get(k) for k in ("https", "force_ssl", "dns")}  # fmt: skip
+    deployed = same_container and exposure and app.get("host_port")
+    if deployed and not deploy.static_kind(spec):  # tylko domeny / HTTPS / DNS → bramka i DNS, kontener działa dalej
+        job = panel.jobs.start("deploy", t("deploy.domains_job", slug=app["slug"]), lambda job: deploy.expose_only(panel, job, app["id"]))
+        panel.db.update("apps", app["id"], last_job=job.id)
+        return redirect(request, f"/apps/{app['id']}?job={job.id}", t("msg.saved_domains"))
+    if form.get("deploy") or deployed:  # strona statyczna: domeny są w nginx węzła, wdrożenie to tylko przeładowanie
         job = start_deploy(panel, panel.db.get("apps", app["id"]))
         return redirect(request, f"/apps/{app['id']}?job={job.id}", t("msg.saved_deploying"))
     return redirect(request, f"/apps/{app['id']}", t("msg.saved_redeploy"))

@@ -104,13 +104,21 @@ async def ensure_records(panel: Any, site: dict) -> list[str]:
             if not panel.db.fetchone("SELECT id FROM dns_records WHERE site_id = ? AND domain = ?", [site["id"], domain]):
                 panel.db.insert("dns_records", site_id=site["id"], domain=domain, zone_id=zone_id, record_id=record_id, created_at=now())
             done.append(f"{domain} → {ip}")
-        return done
     finally:
         await cf.aclose()
+    # rekordy domen, których host już nie ma (np. po zmianie domeny aplikacji)
+    stale = [r for r in panel.db.fetchall("SELECT * FROM dns_records WHERE site_id = ?", [site["id"]]) if r["domain"] not in site["domains"]]
+    await _delete(panel, stale)
+    return done + [f"✖ {r['domain']}" for r in stale]
 
 
 async def remove_records(panel: Any, site_id: int) -> None:
-    rows = panel.db.fetchall("SELECT * FROM dns_records WHERE site_id = ?", [site_id])
+    await _delete(panel, panel.db.fetchall("SELECT * FROM dns_records WHERE site_id = ?", [site_id]))
+
+
+async def _delete(panel: Any, rows: list[dict]) -> None:
+    if not rows:
+        return
     cf = client(panel)
     try:
         for row in rows:
