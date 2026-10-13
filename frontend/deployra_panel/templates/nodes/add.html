@@ -4,11 +4,11 @@
 <div class="grid grid-2" x-data="{ mode: '{{ 'tunnel' if gateway else 'direct' }}' }">
   <div class="stack">
     <div class="choice" :class="mode === 'tunnel' && 'on'" @click="mode = 'tunnel'">
-      <i class="bi bi-diagram-3"></i>
+      <i class="bi bi-terminal-dash"></i>
       <div><b>{{ t("nodes.mode_tunnel") }}</b><span>{{ t("nodes.mode_tunnel_hint") }}</span></div>
     </div>
     <div class="choice" :class="mode === 'direct' && 'on'" @click="mode = 'direct'">
-      <i class="bi bi-globe"></i>
+      <i class="bi bi-link-45deg"></i>
       <div><b>{{ t("nodes.mode_direct") }}</b><span>{{ t("nodes.mode_direct_hint") }}</span></div>
     </div>
   </div>
@@ -19,23 +19,28 @@
     <div class="card-body"><div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div>{{ t("nodes.connect_gateway_first") }}</div></div></div>
     {% else %}
     <form class="card-body stack" method="post" action="/nodes/invite" hx-push-url="false">
-      <div class="callout"><i class="bi bi-diagram-3"></i><div class="small">{{ t("nodes.gateway_target", target=target) }}</div></div>
+      <div class="callout"><i class="bi bi-terminal"></i><div class="small">{{ t("nodes.gateway_target", target=target) }}</div></div>
       <div class="field">
-        <label>{{ t("common.name") }}</label><input class="input" name="name" placeholder="{{ t('nodes.name_placeholder') }}" required maxlength="60">
+        <label>{{ t("common.name") }}</label><input class="input" name="name" placeholder="{{ t('nodes.name_placeholder') }}" required maxlength="60" autofocus>
         <div class="hint">{{ t("nodes.name_hint") }}</div>
       </div>
-      <div class="field">
-        <label>{{ t("nodes.lan_subnets_optional") }}</label>
-        <textarea class="textarea" name="lan_subnets" style="min-height: 70px" placeholder="192.168.1.0/24"></textarea>
-        <div class="hint">{{ t("nodes.lan_subnets_hint") }}</div>
-      </div>
-      <div class="field">
-        <label>{{ t("nodes.token_ttl") }}</label>
-        <select class="select" name="ttl"><option value="60">{{ t("nodes.ttl_hour") }}</option><option value="1440">{{ t("nodes.ttl_day") }}</option><option value="10080">{{ t("analytics.days", count=7) }}</option></select>
-      </div>
-      <div class="row between">
+      <details style="cursor: pointer; margin: 4px 0">
+        <summary class="small muted" style="user-select: none"><i class="bi bi-sliders"></i> {{ t("nodes.advanced_options") }}</summary>
+        <div class="stack" style="margin-top: 10px; padding: 10px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border)">
+          <div class="field">
+            <label>{{ t("nodes.lan_subnets_optional") }}</label>
+            <textarea class="textarea" name="lan_subnets" style="min-height: 50px" placeholder="192.168.1.0/24"></textarea>
+            <div class="hint">{{ t("nodes.lan_subnets_hint") }}</div>
+          </div>
+          <div class="field">
+            <label>{{ t("nodes.token_ttl") }}</label>
+            <select class="select" name="ttl"><option value="60">{{ t("nodes.ttl_hour") }}</option><option value="1440">{{ t("nodes.ttl_day") }}</option><option value="10080">{{ t("analytics.days", count=7) }}</option></select>
+          </div>
+        </div>
+      </details>
+      <div class="row between" style="align-items: center; margin-top: 8px">
         <div class="small dim" style="flex: 1; min-width: 180px">{{ t("nodes.next_step") }}</div>
-        <button class="btn primary"><span class="spin"></span><i class="bi bi-key"></i> {{ t("nodes.generate_token") }}</button>
+        <button class="btn primary"><span class="spin"></span><i class="bi bi-terminal"></i> {{ t("nodes.generate_token") }}</button>
       </div>
     </form>
     {% endif %}
