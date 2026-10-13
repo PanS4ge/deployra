@@ -161,4 +161,11 @@ def v8(dialect: str) -> list[str]:
     return ["ALTER TABLE sites ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"]
 
 
-MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8)]
+def v9(dialect: str) -> list[str]:
+    """Wyciszanie alertów: data zignorowania alertu."""
+    t = _types(dialect)
+    r = t["real"]
+    return [f"ALTER TABLE alerts ADD COLUMN ignored_at {r}"]
+
+
+MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8), (9, v9)]

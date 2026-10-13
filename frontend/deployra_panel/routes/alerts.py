@@ -94,8 +94,15 @@ async def save_rules(request: Request, panel: Panel = Depends(get_panel), user: 
     return toast(t("alerts.saved"))
 
 
+@router.post("/alerts/{alert_id}/ignore")
+def ignore_alert(request: Request, alert_id: int, panel: Panel = Depends(get_panel), user: dict = SETTINGS):
+    alerts.ignore(panel, alert_id)
+    back = urlsplit(request.headers.get("HX-Current-URL") or "").path
+    return redirect(request, back if back.startswith("/") else "/settings/alerts", t("alerts.ignored_toast"))
+
+
 @router.post("/alerts/{alert_id}/close")
 def close_alert(request: Request, alert_id: int, panel: Panel = Depends(get_panel), user: dict = SETTINGS):
-    panel.db.execute("UPDATE alerts SET status = 'resolved', resolved_at = ? WHERE id = ? AND status = 'firing'", [time.time(), alert_id])
+    panel.db.execute("UPDATE alerts SET status = 'resolved', resolved_at = ? WHERE id = ? AND status IN ('firing', 'ignored')", [time.time(), alert_id])
     back = urlsplit(request.headers.get("HX-Current-URL") or "").path  # tylko ścieżka — bez przekierowań na zewnątrz
     return redirect(request, back if back.startswith("/") else "/settings/alerts")

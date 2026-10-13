@@ -105,10 +105,25 @@
       <tbody>
       {% for a in history %}
         <tr>
-          <td style="width: 110px">{% if a.status == "firing" %}<span class="badge err">{{ t("alerts.firing") }}</span>{% else %}<span class="badge">{{ t("alerts.resolved") }}</span>{% endif %}</td>
+          <td style="width: 110px">
+            {% if a.status == "firing" %}
+            <span class="badge err">{{ t("alerts.firing") }}</span>
+            {% elif a.status == "ignored" %}
+            <span class="badge warn">{{ t("alerts.ignored") }}</span>
+            {% else %}
+            <span class="badge">{{ t("alerts.resolved") }}</span>
+            {% endif %}
+          </td>
           <td><span class="name">{{ t("alerts.title." ~ a.rule, name=a.target_name) }}</span><div class="small muted">{{ a.message }}</div></td>
           <td class="nowrap small muted">{{ a.started_at | ago }}{% if a.resolved_at %} · {{ (a.resolved_at - a.started_at) | duration }}{% endif %}</td>
-          <td class="right">{% if a.status == "firing" %}<button class="btn sm ghost" hx-post="/alerts/{{ a.id }}/close" hx-swap="none">{{ t("alerts.close") }}</button>{% endif %}</td>
+          <td class="right">
+            {% if a.status == "firing" %}
+            <button class="btn sm ghost" hx-post="/alerts/{{ a.id }}/ignore" hx-swap="none"><i class="bi bi-bell-slash"></i> {{ t("alerts.ignore") }}</button>
+            <button class="btn sm ghost" hx-post="/alerts/{{ a.id }}/close" hx-swap="none">{{ t("alerts.close") }}</button>
+            {% elif a.status == "ignored" %}
+            <button class="btn sm ghost" hx-post="/alerts/{{ a.id }}/close" hx-swap="none">{{ t("alerts.close") }}</button>
+            {% endif %}
+          </td>
         </tr>
       {% endfor %}
       </tbody>

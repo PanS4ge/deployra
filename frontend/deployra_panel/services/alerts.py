@@ -112,20 +112,34 @@ async def event(panel: Any, rule_id: str, message: Message) -> bool:
 
 
 def _active(panel: Any) -> dict[tuple[str, str, int], dict[str, Any]]:
-    rows = panel.db.fetchall("SELECT * FROM alerts WHERE status = 'firing'")
+    rows = panel.db.fetchall("SELECT * FROM alerts WHERE status IN ('firing', 'ignored')")
     return {(r["rule"], r["target_kind"], r["target_id"]): r for r in rows}
 
 
 async def fire(panel: Any, rule_id: str, kind: str, target_id: int, name: str, value: float | None, text: str, data: dict | None = None) -> int:
+    ignored = panel.db.fetchone(
+        "SELECT id FROM alerts WHERE rule = ? AND target_kind = ? AND target_id = ? AND status = 'ignored'",
+        [rule_id, kind, target_id],
+    )
+    if ignored:
+        return ignored["id"]
     alert_id = panel.db.insert("alerts", rule=rule_id, target_kind=kind, target_id=target_id, target_name=name, status="firing",
-                               message=text[:500], value=value, started_at=time.time())  # fmt: skip
+                                message=text[:500], value=value, started_at=time.time())  # fmt: skip
     await event(panel, rule_id, Message(t(f"alerts.title.{rule_id}", name=name), text, RULES[rule_id].level, data=data or {}))
     return alert_id
 
 
 async def resolve(panel: Any, alert: dict[str, Any], text: str) -> None:
     panel.db.update("alerts", alert["id"], status="resolved", resolved_at=time.time())
-    await event(panel, alert["rule"], Message(t("alerts.resolved_title", name=alert["target_name"]), text, "ok"))
+    if alert.get("status") != "ignored":
+        await event(panel, alert["rule"], Message(t("alerts.resolved_title", name=alert["target_name"]), text, "ok"))
+
+
+def ignore(panel: Any, alert_id: int) -> bool:
+    """Oznacza alert jako zignorowany."""
+    now_ts = time.time()
+    count = panel.db.execute("UPDATE alerts SET status = 'ignored', ignored_at = ? WHERE id = ? AND status = 'firing'", [now_ts, alert_id])
+    return count > 0
 
 
 async def monitor_change(panel: Any, monitor: dict[str, Any], status: str, detail: str) -> None:
@@ -145,7 +159,7 @@ def cleanup(panel: Any) -> None:
 
 
 def recent(panel: Any, limit: int = 30) -> list[dict[str, Any]]:
-    return panel.db.fetchall("SELECT * FROM alerts ORDER BY CASE WHEN status = 'firing' THEN 0 ELSE 1 END, started_at DESC LIMIT ?", [limit])
+    return panel.db.fetchall("SELECT * FROM alerts ORDER BY CASE WHEN status = 'firing' THEN 0 WHEN status = 'ignored' THEN 1 ELSE 2 END, started_at DESC LIMIT ?", [limit])
 
 
 def firing(panel: Any) -> list[dict[str, Any]]:

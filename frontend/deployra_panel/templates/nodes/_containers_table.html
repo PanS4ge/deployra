@@ -26,10 +26,17 @@
         <div class="actions">
           {% if has(user, P.ALLOW_MODIFY_DOCKERS) %}
             {% if c.state == "running" %}
-            <button class="btn icon sm ghost" title="{{ t('containers.stop') }}" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/stop{{ epa }}" hx-swap="none"><i class="bi bi-stop-fill"></i></button>
-            <button class="btn icon sm ghost" title="Restart" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/restart{{ epa }}" hx-swap="none"><i class="bi bi-arrow-clockwise"></i></button>
+            <button class="btn icon sm ghost" title="{{ t('containers.stop') }}" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/stop{{ epa }}" hx-swap="none"><span class="spin"></span><i class="bi bi-stop-fill"></i></button>
+            <button class="btn icon sm ghost" title="{{ t('containers.restart') }}" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/restart{{ epa }}" hx-swap="none"><span class="spin"></span><i class="bi bi-arrow-clockwise"></i></button>
+            <button class="btn icon sm ghost" title="{{ t('containers.pause') }}" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/pause{{ epa }}" hx-swap="none"><span class="spin"></span><i class="bi bi-pause-fill"></i></button>
+            <button class="btn icon sm ghost danger" title="{{ t('containers.kill') }}" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/kill{{ epa }}" hx-swap="none" hx-confirm="{{ t('containers.kill_confirm', name=c.name) }}"><span class="spin"></span><i class="bi bi-slash-circle"></i></button>
+            {% elif c.state == "paused" %}
+            <button class="btn icon sm ghost" title="{{ t('containers.unpause') }}" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/unpause{{ epa }}" hx-swap="none"><span class="spin"></span><i class="bi bi-play-circle"></i></button>
+            <button class="btn icon sm ghost" title="{{ t('containers.stop') }}" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/stop{{ epa }}" hx-swap="none"><span class="spin"></span><i class="bi bi-stop-fill"></i></button>
+            <button class="btn icon sm ghost danger" title="{{ t('containers.kill') }}" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/kill{{ epa }}" hx-swap="none" hx-confirm="{{ t('containers.kill_confirm', name=c.name) }}"><span class="spin"></span><i class="bi bi-slash-circle"></i></button>
             {% else %}
-            <button class="btn icon sm ghost" title="{{ t('containers.start') }}" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/start{{ epa }}" hx-swap="none"><i class="bi bi-play-fill"></i></button>
+            <button class="btn icon sm ghost" title="{{ t('containers.start') }}" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/start{{ epa }}" hx-swap="none"><span class="spin"></span><i class="bi bi-play-fill"></i></button>
+            <button class="btn icon sm ghost danger" title="{{ t('containers.kill') }}" hx-post="/nodes/{{ node.id }}/containers/{{ c.id }}/action/kill{{ epa }}" hx-swap="none" hx-confirm="{{ t('containers.kill_confirm', name=c.name) }}"><span class="spin"></span><i class="bi bi-slash-circle"></i></button>
             {% endif %}
           {% endif %}
           {% if ep == "local" and not c.app and not c.stack and not c.system and has(user, P.ALLOW_DEPLOYMENT) %}

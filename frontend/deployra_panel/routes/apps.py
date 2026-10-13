@@ -476,3 +476,36 @@ def rotate_webhook(request: Request, app: dict = Depends(_app), panel: Panel = D
                    user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
     panel.db.update("apps", app["id"], webhook_secret=panel.sealer.seal(secrets.token_urlsafe(24)))
     return redirect(request, f"/apps/{app['id']}", t("msg.webhook_rotated"))
+
+
+@router.post("/apps/{app_id}/action/{action}")
+async def app_container_action(request: Request, action: str, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                               user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):
+    if action not in ("start", "stop", "restart", "kill", "pause", "unpause"):
+        return toast(t("msg.bad_data"), "err", status=400)
+    node = panel.node(app["node_id"])
+    if not node or node["status"] != "paired":
+        return toast(t("msg.node_not_responding"), "err", status=400)
+    spec, _ = deploy.load(panel, app)
+    ep = spec.endpoint or "local"
+    client = panel.node_client(node)
+
+    from .docker import _p
+    from ..services.uptime import app_containers
+
+    try:
+        items = await client.get(_p("/api/containers", ep))
+        mine = app_containers(items, app)
+        target_ids = [c["id"] for c in mine] if mine else [f"app-{app['slug']}"]
+        for cid in target_ids:
+            await client.post(_p(f"/api/containers/{cid}/action/{action}", ep))
+    except Exception as exc:
+        return toast(getattr(exc, "detail", None) or str(exc), "err", status=502)
+
+    known = ("start", "stop", "restart", "kill", "pause", "unpause")
+    if action == "start":
+        panel.db.update("apps", app["id"], status="running")
+    elif action in ("stop", "kill"):
+        panel.db.update("apps", app["id"], status="stopped")
+
+    return toast(t("msg.container_" + action) if action in known else action, extra={"app-changed": True, "containers-changed": True})

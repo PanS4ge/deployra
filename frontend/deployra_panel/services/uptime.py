@@ -228,17 +228,53 @@ class Checker:
             from .proxy_health import probe_url
 
             probe = probe_url(self.panel, site, {n["id"]: n for n in self.panel.db.all("nodes")}) if site and site.get("target") else None
-            if not probe:
+            if probe:
+                url, domain = probe[0], probe[1] or domain
+            elif domain:
+                url = f"https://{domain}"
+            else:
                 return await self._check_containers(node, app)
-            url, domain = probe[0], probe[1] or domain
-        gateway = self.panel.gateway_client()
-        if gateway:
-            result = await gateway.post("/api/check", json={"url": url, "host": domain})
-            if result.get("status") is None:
-                return False, None, result.get("error") or t("uptime.msg.no_response")
-            return bool(result.get("ok")), result.get("ms"), f"HTTP {result['status']}"
-        response = await self._http.get(url, headers={"Host": domain} if domain else None)
-        return response.status_code < 500, elapsed(), f"HTTP {response.status_code}"
+
+        # 1. Próba HTTP (bramka lub bezpośrednio)
+        http_ok = False
+        http_ms: float | None = None
+        http_msg: str | None = None
+        try:
+            gateway = self.panel.gateway_client()
+            if gateway:
+                result = await gateway.post("/api/check", json={"url": url, "host": domain})
+                if result.get("status") is None:
+                    http_ok = False
+                    http_msg = result.get("error") or t("uptime.msg.no_response")
+                elif not result.get("ok") or (result.get("status") and result.get("status") >= 500):
+                    http_ok = False
+                    http_msg = f"HTTP {result.get('status')}"
+                else:
+                    http_ok = True
+                    http_ms = result.get("ms")
+                    http_msg = f"HTTP {result['status']}"
+            else:
+                response = await self._http.get(url, headers={"Host": domain} if domain else None)
+                if response.status_code < 500:
+                    http_ok = True
+                    http_ms = elapsed()
+                    http_msg = f"HTTP {response.status_code}"
+                else:
+                    http_ok = False
+                    http_msg = f"HTTP {response.status_code}"
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.TimeoutException, httpx.HTTPError, asyncio.TimeoutError, RemoteError, LookupError, Exception) as exc:
+            http_ok = False
+            http_msg = (getattr(exc, "detail", None) or str(exc) or type(exc).__name__)[:300]
+
+        if http_ok:
+            return True, http_ms, http_msg or "HTTP 200"
+
+        # 2. Fallback do weryfikacji kontenera: jeśli kontener działa i jest zdrowy, uznajemy aplikację za ONLINE
+        c_ok, _, c_msg = await self._check_containers(node, app)
+        if c_ok:
+            return True, None, t("uptime.msg.container_fallback")
+
+        return False, None, http_msg or c_msg
 
     async def _check_containers(self, node: dict, app: dict) -> tuple[bool | None, float | None, str]:
         from .deploy import load

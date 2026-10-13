@@ -121,6 +121,17 @@
   <div class="card">
     <div class="card-head"><h3><i class="bi bi-tools"></i> {{ t("apps.actions") }}</h3></div>
     <div class="card-body stack">
+      {% if has(user, P.ALLOW_MODIFY_DOCKERS) %}
+      <div class="row between"><span class="small dim">{{ t("apps.container_controls") }}</span>
+        <span class="row" style="gap: 6px; flex-wrap: wrap">
+          <button class="btn sm ghost" title="{{ t('containers.start') }}" hx-post="/apps/{{ app.id }}/action/start" hx-swap="none"><span class="spin"></span><i class="bi bi-play-fill"></i> {{ t("containers.start") }}</button>
+          <button class="btn sm ghost" title="{{ t('containers.stop') }}" hx-post="/apps/{{ app.id }}/action/stop" hx-swap="none"><span class="spin"></span><i class="bi bi-stop-fill"></i> {{ t("containers.stop") }}</button>
+          <button class="btn sm ghost" title="{{ t('containers.restart') }}" hx-post="/apps/{{ app.id }}/action/restart" hx-swap="none"><span class="spin"></span><i class="bi bi-arrow-clockwise"></i> {{ t("containers.restart") }}</button>
+          <button class="btn sm ghost" title="{{ t('containers.pause') }}" hx-post="/apps/{{ app.id }}/action/pause" hx-swap="none"><span class="spin"></span><i class="bi bi-pause-fill"></i> {{ t("containers.pause") }}</button>
+          <button class="btn sm ghost" title="{{ t('containers.unpause') }}" hx-post="/apps/{{ app.id }}/action/unpause" hx-swap="none"><span class="spin"></span><i class="bi bi-play-circle"></i> {{ t("containers.unpause") }}</button>
+          <button class="btn sm danger ghost" title="{{ t('containers.kill') }}" hx-post="/apps/{{ app.id }}/action/kill" hx-swap="none" hx-confirm="{{ t('apps.kill_confirm', name=app.name) }}"><span class="spin"></span><i class="bi bi-slash-circle"></i> {{ t("containers.kill") }}</button>
+        </span></div>
+      {% endif %}
       {% if spec.source.kind in ("image", "git") and has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
       <div class="row between"><span class="small dim">{{ t("apps.rollback_hint") }}</span>
         <button class="btn sm" hx-post="/apps/{{ app.id }}/rollback" hx-swap="none" hx-confirm="{{ t('apps.rollback_confirm') }}"><i class="bi bi-skip-backward"></i> Rollback</button></div>

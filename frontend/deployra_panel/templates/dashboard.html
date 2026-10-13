@@ -7,7 +7,13 @@
   <div class="card-head"><h3><i class="bi bi-bell-fill" style="color: var(--err)"></i> {{ t("alerts.active", count=firing | length) }}</h3><span class="spacer"></span><a class="btn sm ghost" href="/settings/alerts">{{ t("settings.tab_alerts") }}</a></div>
   <div class="card-body stack" style="gap: 8px">
     {% for a in firing[:5] %}
-    <div class="row between small"><span><b>{{ t("alerts.title." ~ a.rule, name=a.target_name) }}</b> <span class="muted">{{ a.message }}</span></span><span class="muted nowrap">{{ a.started_at | ago }}</span></div>
+    <div class="row between small">
+      <span><b>{{ t("alerts.title." ~ a.rule, name=a.target_name) }}</b> <span class="muted">{{ a.message }}</span></span>
+      <span class="row" style="gap: 6px">
+        <span class="muted nowrap">{{ a.started_at | ago }}</span>
+        <button class="btn xs ghost" hx-post="/alerts/{{ a.id }}/ignore" hx-swap="none" title="{{ t('alerts.ignore') }}"><i class="bi bi-bell-slash"></i></button>
+      </span>
+    </div>
     {% endfor %}
   </div>
 </div>
