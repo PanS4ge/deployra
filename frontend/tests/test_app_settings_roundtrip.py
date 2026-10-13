@@ -92,7 +92,7 @@ def test_settings_form_roundtrip(admin, nodes, slug):
     form = EditForm(page.text).data
     assert "container_port" not in form or len(form["container_port"]) == 1, form  # pola innych rodzajów wyłączone
 
-    response = admin.post(f"/apps/{app_id}/edit", data={**form, "deploy": ""})
+    response = admin.post(f"/apps/{app_id}/edit", data=form)
     assert response.status_code == 204 and "job=" not in response.headers["HX-Redirect"], response.headers
     saved, saved_options = deploy.load(panel, panel.db.get("apps", app_id))
     assert saved.model_dump() == spec.model_dump()
@@ -102,7 +102,7 @@ def test_settings_form_roundtrip(admin, nodes, slug):
     if slug == "przejety":
         form["domains"] = ["nowa.example.com"]
         form.pop("https"), form.pop("force_ssl")  # bez bramki w testach nie ma certyfikatu
-        job = wait_job(panel, job_of(admin.post(f"/apps/{app_id}/edit", data={**form, "deploy": "1"})))
+        job = wait_job(panel, job_of(admin.post(f"/apps/{app_id}/edit", data=form)))
         assert job.status == "ok" and "/api/apps/deploy" not in nodes[1].jobs(), (job.error, job.lines[-5:])
         saved, _ = deploy.load(panel, panel.db.get("apps", app_id))
         assert saved.host_port == 8084 and saved.domains == ["nowa.example.com"]

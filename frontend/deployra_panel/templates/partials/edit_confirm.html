@@ -1,0 +1,14 @@
+<div class="callout warn" style="margin-top: 12px">
+  <i class="bi bi-arrow-repeat"></i>
+  <div class="stack" style="flex: 1; gap: 10px">
+    <div>
+      <b>{{ t("apps.change.title") if running else t("apps.change.title_new") }}</b>
+      <div class="small dim">{{ t("apps.change.what", fields=changes | join(", ")) }}</div>
+    </div>
+    <div class="row" style="gap: 8px; justify-content: flex-end; flex-wrap: wrap">
+      <button type="button" class="btn sm ghost" onclick="this.closest('#edit-confirm').replaceChildren()">{{ t("common.cancel") }}</button>
+      <button class="btn sm" name="decision" value="save">{{ t("apps.change.save_only") }}</button>
+      <button class="btn sm primary" name="decision" value="deploy" autofocus><span class="spin"></span><i class="bi bi-rocket-takeoff"></i> {{ t("apps.change.redeploy") if running else t("apps.change.deploy") }}</button>
+    </div>
+  </div>
+</div>

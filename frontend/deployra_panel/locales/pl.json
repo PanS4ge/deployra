@@ -218,7 +218,39 @@
     "webhook_hint": "GitHub: Settings → Webhooks → <code>application/json</code>, zdarzenie „push”. Gitea/Forgejo działa tak samo. Wdrażana jest gałąź <code>{branch}</code>.",
     "worker_no_domain": "Proces w tle — bez domeny i proxy.",
     "zip_hint": "Stara wersja jest podmieniana atomowo. Jeśli wszystko siedzi w jednym folderze (np. <code>dist/</code>), Deployra go spłaszczy.",
-    "zip_hint_runtime": "Katalogi <code>data/</code> i <code>.deployra/</code> zostają przy podmianie plików. Po wgraniu aplikacja wdraża się ponownie."
+    "zip_hint_runtime": "Katalogi <code>data/</code> i <code>.deployra/</code> zostają przy podmianie plików. Po wgraniu aplikacja wdraża się ponownie.",
+    "change": {
+      "title": "Postawić kontener od nowa?",
+      "title_new": "Wdrożyć aplikację?",
+      "what": "Zmiany: {fields}. Aplikacja zniknie na kilka sekund.",
+      "redeploy": "Postaw ponownie",
+      "deploy": "Wdróż",
+      "save_only": "Tylko zapisz",
+      "f": {
+        "image": "obraz",
+        "command": "polecenie startowe",
+        "start_command": "polecenie startowe",
+        "install_command": "instalacja zależności",
+        "runtime": "środowisko",
+        "compose": "docker-compose.yml",
+        "expose_service": "wystawiana usługa",
+        "git_url": "repozytorium",
+        "git_branch": "gałąź",
+        "git_token": "token repozytorium",
+        "git_ssh_key": "klucz SSH",
+        "dockerfile": "Dockerfile",
+        "build_context": "kontekst buildu",
+        "git_static_dir": "katalog strony",
+        "endpoint": "endpoint",
+        "container_port": "port aplikacji",
+        "host_port": "port hosta",
+        "env": "zmienne środowiskowe",
+        "volumes": "wolumeny",
+        "memory_mb": "limit RAM",
+        "cpus": "limit CPU",
+        "slug": "identyfikator"
+      }
+    }
   },
   "auth": {
     "login": "Zaloguj",

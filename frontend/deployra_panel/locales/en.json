@@ -218,7 +218,39 @@
     "webhook_hint": "GitHub: Settings → Webhooks → <code>application/json</code>, the “push” event. Gitea/Forgejo work the same way. Branch <code>{branch}</code> is deployed.",
     "worker_no_domain": "Background process — no domain or proxy.",
     "zip_hint": "The old version is swapped atomically. If everything sits in one folder (e.g. <code>dist/</code>), Deployra flattens it.",
-    "zip_hint_runtime": "The <code>data/</code> and <code>.deployra/</code> directories survive file replacement. The app redeploys after an upload."
+    "zip_hint_runtime": "The <code>data/</code> and <code>.deployra/</code> directories survive file replacement. The app redeploys after an upload.",
+    "change": {
+      "title": "Recreate the container?",
+      "title_new": "Deploy the app?",
+      "what": "Changes: {fields}. The app will be down for a few seconds.",
+      "redeploy": "Recreate now",
+      "deploy": "Deploy",
+      "save_only": "Save only",
+      "f": {
+        "image": "image",
+        "command": "start command",
+        "start_command": "start command",
+        "install_command": "dependency install",
+        "runtime": "runtime",
+        "compose": "docker-compose.yml",
+        "expose_service": "exposed service",
+        "git_url": "repository",
+        "git_branch": "branch",
+        "git_token": "repository token",
+        "git_ssh_key": "SSH key",
+        "dockerfile": "Dockerfile",
+        "build_context": "build context",
+        "git_static_dir": "site directory",
+        "endpoint": "endpoint",
+        "container_port": "app port",
+        "host_port": "host port",
+        "env": "environment variables",
+        "volumes": "volumes",
+        "memory_mb": "RAM limit",
+        "cpus": "CPU limit",
+        "slug": "slug"
+      }
+    }
   },
   "auth": {
     "login": "Sign in",

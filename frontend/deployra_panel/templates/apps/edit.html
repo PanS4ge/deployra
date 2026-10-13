@@ -44,8 +44,8 @@
   </div>
   <div class="row" style="justify-content: flex-end">
     <a class="btn ghost" href="/apps/{{ app.id }}">{{ t("common.cancel") }}</a>
-    <button class="btn" name="deploy" value="">{{ t("common.save") }}</button>
-    <button class="btn primary" name="deploy" value="1"><span class="spin"></span><i class="bi bi-rocket-takeoff"></i> {{ t("stacks.save_deploy") }}</button>
+    <button class="btn primary"><span class="spin"></span><i class="bi bi-check2"></i> {{ t("common.save") }}</button>
   </div>
+  <div id="edit-confirm"></div>{# pytanie „postawić od nowa?” — pod przyciskiem, żeby Enter w polu dalej znaczył „Zapisz” #}
 </form>
 {% endblock %}

@@ -431,19 +431,30 @@ async def edit(request: Request, app: dict = Depends(_app), panel: Panel = Depen
             raise ValueError(t("msg.endpoint_change"))
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc), "err", status=400)
+    changes = _changes(old_spec, spec)
+    decision = str(form.get("decision") or "")
+    if changes and decision not in ("deploy", "save"):
+        # zmiana w kontenerze → najpierw pytamy: postawić od nowa teraz czy tylko zapisać (nic jeszcze nie zapisujemy)
+        response = render(request, "partials/edit_confirm.html", changes=changes, running=bool(app.get("host_port")))
+        response.headers.update({"HX-Retarget": "#edit-confirm", "HX-Reswap": "innerHTML"})
+        return response
     panel.db.update("apps", app["id"], name=str(form.get("name") or app["name"])[:60], spec=deploy.store(panel, spec, options),
                     domains=spec.domains)  # fmt: skip
-    same_container = _container_part(spec) == _container_part(old_spec)
+    if changes:
+        if decision == "deploy":
+            job = start_deploy(panel, panel.db.get("apps", app["id"]))
+            return redirect(request, f"/apps/{app['id']}?job={job.id}", t("msg.saved_deploying"))
+        return redirect(request, f"/apps/{app['id']}", t("msg.saved_redeploy"))
     exposure = spec.domains != old_spec.domains or any(bool(options.get(k)) != bool(old_options.get(k)) for k in ("https", "force_ssl", "dns"))
-    deployed = same_container and exposure and app.get("host_port")
-    if deployed and not deploy.static_kind(spec):  # tylko domeny / HTTPS / DNS → bramka i DNS, kontener działa dalej
+    if exposure and app.get("host_port"):
+        if deploy.static_kind(spec):  # strona statyczna: domeny są w nginx węzła, wdrożenie to tylko przeładowanie
+            job = start_deploy(panel, panel.db.get("apps", app["id"]))
+            return redirect(request, f"/apps/{app['id']}?job={job.id}", t("msg.saved_deploying"))
+        # tylko domeny / HTTPS / DNS → bramka i DNS, kontener działa dalej
         job = panel.jobs.start("deploy", t("deploy.domains_job", slug=app["slug"]), lambda job: deploy.expose_only(panel, job, app["id"]))
         panel.db.update("apps", app["id"], last_job=job.id)
         return redirect(request, f"/apps/{app['id']}?job={job.id}", t("msg.saved_domains"))
-    if form.get("deploy") or deployed:  # strona statyczna: domeny są w nginx węzła, wdrożenie to tylko przeładowanie
-        job = start_deploy(panel, panel.db.get("apps", app["id"]))
-        return redirect(request, f"/apps/{app['id']}?job={job.id}", t("msg.saved_deploying"))
-    return redirect(request, f"/apps/{app['id']}", t("msg.saved_plain" if same_container else "msg.saved_redeploy"))
+    return redirect(request, f"/apps/{app['id']}", t("msg.saved_plain"))
 
 
 def _container_part(spec: AppSpec) -> dict:
@@ -451,6 +462,13 @@ def _container_part(spec: AppSpec) -> dict:
     data = spec.model_dump(exclude={"domains"})
     data["source"]["command"] = data["source"].get("command") or None
     return data
+
+
+def _changes(old: AppSpec, new: AppSpec) -> list[str]:
+    """Co zmieniło się w kontenerze — nazwy pól do pytania „postawić od nowa?” (puste = tylko domeny / nic)."""
+    a, b = _container_part(old), _container_part(new)
+    keys = [k for k in a["source"] if a["source"][k] != b["source"].get(k)] + [k for k in a if k != "source" and a[k] != b.get(k)]
+    return list(dict.fromkeys(t(f"apps.change.f.{k}") for k in keys if k != "kind"))
 
 
 @router.post("/apps/{app_id}/webhook/rotate")
