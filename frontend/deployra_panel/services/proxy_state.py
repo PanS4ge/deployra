@@ -127,3 +127,58 @@ def push_message(result: dict) -> tuple[str, str]:
     if status == "no-gateway":
         return result["message"], "warn"
     return t("proxy.msg.rejected", error=result.get("message")), "err"
+
+
+# --- passthrough: host, którego ruch idzie dalej przez tunel (bramka → wg / węzeł → cel) --------------
+
+_EXTERNAL_CACHE: dict[str, Any] = {"at": 0.0, "routes": {}}
+
+
+async def _external_routes(panel: Any) -> dict[str, list[str]]:
+    """Podsieci zewnętrznych WireGuardów bramki (np. wg1 → 10.8.0.0/24); pamiętane minutę."""
+    import asyncio
+    import time
+
+    if time.time() - _EXTERNAL_CACHE["at"] < 60:
+        return _EXTERNAL_CACHE["routes"]
+    routes: dict[str, list[str]] = {}
+    client = panel.gateway_client()
+    if client:
+        try:
+            data = await asyncio.wait_for(client.get("/api/external-wg"), 3)
+            routes = {x.get("label") or x["name"]: x["routes"] for x in data.get("tunnels") or []}  # „przez Cezary” zamiast „przez wg1”
+        except Exception:  # noqa: BLE001 — stara bramka albo brak połączenia: zostaje ogólna etykieta
+            routes = {}
+    _EXTERNAL_CACHE.update(at=time.time(), routes=routes)
+    return routes
+
+
+async def passthrough(panel: Any, sites: list[dict], nodes: dict[int, dict]) -> dict[int, str]:
+    """site_id → przez co idzie ruch (nazwa tunelu albo węzła), dla hostów kierowanych na adres za tunelem."""
+    import ipaddress
+
+    out: dict[int, str] = {}
+    candidates = [s for s in sites if (s.get("target") or {}).get("type") == "address"]
+    if not candidates:
+        return out
+    external = await _external_routes(panel)
+    gateway = panel.gateway() or {}
+    for site in candidates:
+        target = site["target"]
+        if target.get("via_node") and nodes.get(int(target["via_node"])):
+            out[site["id"]] = nodes[int(target["via_node"])]["name"]
+            continue
+        try:
+            address = ipaddress.ip_address(str(target.get("host") or "").strip("[]"))
+        except ValueError:
+            continue  # nazwa hosta — nie zgadujemy
+        inside = lambda nets: any(address in ipaddress.ip_network(n, strict=False) for n in nets or [])  # noqa: E731
+        label = next((name for name, nets in external.items() if inside(nets)), None)
+        label = label or next((n["name"] for n in nodes.values() if inside(n.get("lan_subnets"))), None)
+        if not label and gateway.get("subnet") and inside([gateway["subnet"]]):
+            label = "WireGuard"
+        if not label and address.is_private and not address.is_loopback:
+            label = t("proxy.via_tunnel")
+        if label:
+            out[site["id"]] = label
+    return out

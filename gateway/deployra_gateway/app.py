@@ -94,6 +94,7 @@ class TunnelToken(BaseModel):
 class ExternalTunnel(BaseModel):
     config: str = Field(min_length=20, max_length=10_000)  # plik .conf klienta, np. z wg-easy
     routes: list[str] | None = Field(default=None, max_length=32)  # podsieci przez tunel; puste = z adresu klienta
+    label: str | None = Field(default=None, max_length=40)  # nazwa serwera po drugiej stronie (np. „Cezary”)
 
 
 class UpdateRequest(BaseModel):
@@ -321,7 +322,7 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
 
     @router.put("/external-wg/{name}")
     def external_put(name: str, body: ExternalTunnel, ctx: Context = Depends(get_ctx)) -> dict:
-        entry = ctx.external.put(name, body.config, body.routes)
+        entry = ctx.external.put(name, body.config, body.routes, body.label)
         return {"name": name, "routes": entry["routes"], "ignored": entry["ignored"], "error": entry["error"]}
 
     @router.delete("/external-wg/{name}")

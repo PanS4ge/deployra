@@ -399,6 +399,8 @@ svg.spark { display: block; flex: none; }
   .update-ver { font-size: 1.3rem; }
 }
 
+.table.hide-down tr:has(.health-down) { display: none; }
+
 /* ---------- Przewodniki (np. dodawanie węzła) ---------- */
 ol.guide { margin: 0; padding: 0; list-style: none; counter-reset: guide; display: grid; gap: 8px; }
 ol.guide li { counter-increment: guide; position: relative; padding-left: 32px; min-height: 22px; line-height: 1.6; color: var(--text-dim); }

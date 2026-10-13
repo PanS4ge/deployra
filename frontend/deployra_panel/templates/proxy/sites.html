@@ -3,11 +3,27 @@
 {% block actions %}{% if has(user, P.ALLOW_PROXY) %}<a class="btn primary" href="/proxy/hosts/new?kind={{ kind }}"><i class="bi bi-plus-lg"></i> {{ t("common.add") }}</a>{% endif %}{% endblock %}
 {% block content %}
 {% include "proxy/_tabs.html" %}
-<div class="card" x-data="{ q: '' }">
-  <div class="card-head"><input class="input" style="max-width: 320px" placeholder="{{ t('proxy.search') }}" x-model="q"></div>
+<div class="card" x-data="{ q: '', hideDown: (() => { try { return localStorage.getItem('dpl-hide-down') === '1' } catch (e) { return false } })() }"
+     x-effect="try { localStorage.setItem('dpl-hide-down', hideDown ? '1' : '0') } catch (e) {}">
+  <div class="card-head" style="flex-wrap: wrap">
+    <input class="input" style="max-width: 320px" placeholder="{{ t('proxy.search') }}" x-model="q">
+    {% if kind == "proxy" and not archived %}
+    <label class="check small"><input type="checkbox" x-model="hideDown"><span class="sw"></span><span>{{ t("proxy.hide_down") }}</span></label>
+    {% endif %}
+    <span class="spacer"></span>
+    {% if kind == "proxy" and not archived and has(user, P.ALLOW_PROXY) %}
+    <div class="row" style="gap: 6px">
+      <span class="small muted">{{ t("proxy.down_label") }}</span>
+      <button class="btn sm" hx-post="/proxy/unresponsive/archive" hx-swap="none" hx-confirm="{{ t('proxy.archive_down_confirm') }}"><i class="bi bi-archive"></i> {{ t("proxy.archive") }}</button>
+      <button class="btn sm danger" hx-post="/proxy/unresponsive/delete" hx-swap="none" hx-confirm="{{ t('proxy.delete_down_confirm') }}" data-danger><i class="bi bi-trash"></i> {{ t("common.delete") }}</button>
+    </div>
+    {% endif %}
+    {% if archived %}<a class="btn sm ghost" href="/proxy/{{ tab }}"><i class="bi bi-arrow-left"></i> {{ t("proxy.back_active") }}</a>
+    {% elif archived_count %}<a class="btn sm ghost" href="/proxy/{{ tab }}?archived=1"><i class="bi bi-archive"></i> {{ t("proxy.archive_view", count=archived_count) }}</a>{% endif %}
+  </div>
   {% if sites %}
   <div class="table-wrap">
-  <table class="table">
+  <table class="table" :class="hideDown && 'hide-down'">
     <thead><tr><th>{{ t("apps.step_domain") }}</th><th>{{ t("proxy.target") if kind == "proxy" else (t("proxy.redirect") if kind == "redirect" else "") }}</th><th>Status</th>{% if kind == "proxy" %}<th>{{ t("proxy.health") }}</th>{% endif %}<th>{{ t("proxy.visitors_30d") }}</th><th>SSL</th><th></th></tr></thead>
     <tbody>
     {% for s in sites %}{% set tg = s.target or {} %}
@@ -17,6 +33,7 @@
           {% if s.domains | length > 3 %}<span class="small muted">+{{ s.domains | length - 3 }}</span>{% endif %}
           <div class="row" style="gap: 4px">
             {% if s.app_id and apps.get(s.app_id) %}<span class="badge violet"><i class="bi bi-rocket-takeoff"></i> {{ apps[s.app_id].slug }}</span>{% endif %}
+            {% if hops.get(s.id) %}<span class="badge info" title="{{ t('proxy.passthrough_hint') }}"><i class="bi bi-arrow-left-right"></i> {{ t("proxy.via", name=hops[s.id]) }}</span>{% endif %}
             {% if s.source == "npm" %}<span class="badge info">{{ t("proxy.from_npm") }}</span>{% endif %}
             {% if s.ingress == "cloudflare" %}<span class="badge warn"><i class="bi bi-cloud"></i> Cloudflare Tunnel</span>{% endif %}
           </div>
@@ -38,7 +55,12 @@
         </td>
         <td class="actions">
           {% if has(user, P.ALLOW_PROXY) %}
+          {% if archived %}
+          <button class="btn icon sm ghost" title="{{ t('proxy.restore') }}" hx-post="/proxy/hosts/{{ s.id }}/archive?restore=1" hx-swap="none"><i class="bi bi-box-arrow-up"></i></button>
+          {% else %}
           <button class="btn icon sm ghost" title="{{ t('common.disable') if s.enabled else t('common.enable') }}" hx-post="/proxy/hosts/{{ s.id }}/toggle" hx-swap="none"><i class="bi bi-{{ 'pause' if s.enabled else 'play' }}"></i></button>
+          <button class="btn icon sm ghost" title="{{ t('proxy.archive') }}" hx-post="/proxy/hosts/{{ s.id }}/archive" hx-swap="none"><i class="bi bi-archive"></i></button>
+          {% endif %}
           <a class="btn icon sm ghost" title="{{ t('common.edit') }}" href="/proxy/hosts/{{ s.id }}"><i class="bi bi-pencil"></i></a>
           {% if not s.app_id %}<button class="btn icon sm ghost" title="{{ t('common.delete') }}" hx-post="/proxy/hosts/{{ s.id }}/delete" hx-swap="none" hx-confirm="{{ t('proxy.delete_confirm', name=s.domains[0]) }}" data-danger><i class="bi bi-trash"></i></button>{% endif %}
           {% endif %}

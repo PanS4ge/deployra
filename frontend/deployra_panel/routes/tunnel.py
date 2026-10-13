@@ -59,7 +59,7 @@ async def external_status(request: Request, panel: Panel = Depends(get_panel)):
 
 
 @router.post("/tunnel/external")
-async def external_save(request: Request, name: str = Form(...), config: str = Form(...), routes: str = Form(""),
+async def external_save(request: Request, name: str = Form(...), config: str = Form(...), routes: str = Form(""), label: str = Form(""),
                         panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_TUNNEL))):  # fmt: skip
     client = panel.gateway_client()
     if not client:
@@ -67,7 +67,7 @@ async def external_save(request: Request, name: str = Form(...), config: str = F
     nets = [r for r in re.split(r"[,\s]+", routes) if r]
     name = name.strip()
     try:
-        result = await client.put(f"/api/external-wg/{quote(name, safe='')}", json={"config": config, "routes": nets or None})
+        result = await client.put(f"/api/external-wg/{quote(name, safe='')}", json={"config": config, "routes": nets or None, "label": label.strip() or None})
     except RemoteError as exc:
         return toast(t("extwg.old_gateway") if exc.status == 404 else exc.detail, "err", status=400)
     except httpx.HTTPError:

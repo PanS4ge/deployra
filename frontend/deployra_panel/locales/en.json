@@ -985,7 +985,23 @@
     "tab_redirects": "Redirects",
     "tab_streams": "Streams",
     "target": "Target",
-    "visitors_30d": "Visitors (30 days)"
+    "visitors_30d": "Visitors (30 days)",
+    "hide_down": "Hide unresponsive",
+    "down_label": "Unresponsive:",
+    "archive": "Archive",
+    "restore": "Restore from archive",
+    "archive_down_confirm": "Archive every host whose target doesn't respond? They'll be disabled and hidden — you can restore them from the archive.",
+    "delete_down_confirm": "Delete every host whose target doesn't respond? App hosts stay (they go away together with the app).",
+    "back_active": "Active",
+    "archive_view": "Archive ({count})",
+    "passthrough_hint": "Traffic goes from the gateway on through a tunnel to another server",
+    "via": "via {name}",
+    "via_tunnel": "tunnel",
+    "none_down": "Every host responds",
+    "archived_n": "Archived hosts: {count}.",
+    "deleted_n": "Deleted hosts: {count}.",
+    "archived_one": "Archived {name}.",
+    "restored": "Restored {name}."
   },
   "res": {
     "app_usage": "Resource usage",
@@ -1189,7 +1205,12 @@
     "pending": "pending",
     "running": "running",
     "stopped": "stopped",
-    "valid": "valid"
+    "valid": "valid",
+    "exited": "stopped",
+    "created": "created",
+    "restarting": "restarting",
+    "paused": "paused",
+    "dead": "dead"
   },
   "streams": {
     "delete_confirm": "Delete stream :{port}?",
@@ -1490,7 +1511,8 @@
     "ignored": "Skipped from the file: {fields}.",
     "removed": "Disconnected {name}",
     "remove_confirm": "Disconnect {name}? Hosts pointing at addresses behind this tunnel will stop working.",
-    "notify": "{user} connected the gateway to the external WireGuard {name} ({routes})"
+    "notify": "{user} connected the gateway to the external WireGuard {name} ({routes})",
+    "label": "Server name"
   },
   "dnsrec": {
     "title": "DNS",

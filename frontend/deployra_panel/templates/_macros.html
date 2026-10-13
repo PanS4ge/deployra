@@ -6,7 +6,7 @@
 {% macro status_badge(status) -%}
   {%- set cls = {"running": "ok", "deploying": "info", "error": "err", "stopped": "warn", "pending": "info", "paired": "ok",
                  "joined": "info", "ok": "ok", "issuing": "info", "valid": "ok", "expiring": "warn", "expired": "err", "missing": "warn",
-                 "new": ""}.get(status) -%}
+                 "new": "", "exited": "warn", "created": "", "restarting": "warn", "paused": "warn", "dead": "err"}.get(status) -%}
   <span class="badge {{ cls or '' }}">{{ t("status." ~ status) if cls is not none else (status or "—") }}</span>
 {%- endmacro %}
 

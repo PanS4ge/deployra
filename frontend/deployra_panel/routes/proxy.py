@@ -92,17 +92,44 @@ async def health(request: Request, ids: str = "", panel: Panel = Depends(get_pan
     return render(request, "partials/health_oob.html", results=await proxy_health.check(panel, rows))
 
 
+@router.post("/proxy/unresponsive/{action}")
+async def unresponsive(request: Request, action: str, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_PROXY))):
+    """Archiwizuje albo usuwa hosty proxy, których cel nie odpowiada (wynik ostatniego sprawdzenia bramki)."""
+    from ..services import proxy_health
+
+    if action not in ("archive", "delete"):
+        raise HTTPException(404, t("msg.no_section"))
+    rows = panel.db.fetchall("SELECT * FROM sites WHERE kind = 'proxy' AND enabled = 1 AND archived = 0")
+    results = await proxy_health.check(panel, rows)
+    down = [s for s in rows if s["id"] in results and results[s["id"]].get("status") is None]
+    if action == "delete":
+        down = [s for s in down if not s.get("app_id")]  # host aplikacji usuwa się razem z aplikacją
+    for site in down:
+        if action == "archive":
+            panel.db.update("sites", site["id"], archived=1, enabled=0)
+        else:
+            await dns.remove_records(panel, site["id"])
+            panel.db.delete("sites", site["id"])
+    if not down:
+        return toast(t("proxy.none_down"), "info")
+    message, level = proxy_state.push_message(await proxy_state.push(panel))
+    done = t("proxy.archived_n" if action == "archive" else "proxy.deleted_n", count=len(down))
+    return redirect(request, "/proxy/hosts", f"{done} {message}", level if level != "ok" else ("ok" if action == "archive" else "warn"))
+
+
 @router.get("/proxy/{kind_slug}")
-def sites(request: Request, kind_slug: str, panel: Panel = Depends(get_panel)):
+async def sites(request: Request, kind_slug: str, archived: bool = False, panel: Panel = Depends(get_panel)):
     kind = KIND_SLUG.get(kind_slug)
     if not kind:
         raise HTTPException(404, t("msg.no_section"))
-    rows = panel.db.fetchall("SELECT * FROM sites WHERE kind = ? ORDER BY id", [kind])
+    rows = panel.db.fetchall("SELECT * FROM sites WHERE kind = ? AND archived = ? ORDER BY id", [kind, int(archived)])
+    archived_count = panel.db.scalar("SELECT COUNT(*) FROM sites WHERE kind = ? AND archived = 1", [kind])
     nodes = {n["id"]: n for n in panel.db.all("nodes")}
     certs = {c["id"]: c for c in panel.db.all("certificates")}
     apps = {a["id"]: a for a in panel.db.all("apps")}
+    hops = await proxy_state.passthrough(panel, rows, nodes) if kind == "proxy" else {}
     return render(request, "proxy/sites.html", title=t(KIND_TITLE[kind]), tab=kind_slug, kind=kind, sites=rows, nodes=nodes,
-                  certs=certs, apps=apps)  # fmt: skip
+                  certs=certs, apps=apps, hops=hops, archived=archived, archived_count=archived_count)  # fmt: skip
 
 
 # --- formularz hosta ---------------------------------------------------------------------------
@@ -237,6 +264,19 @@ async def toggle_site(request: Request, site_id: int, panel: Panel = Depends(get
     _, result = await save_and_push(panel, "sites", site_id, {"enabled": 0 if site["enabled"] else 1})
     message, level = proxy_state.push_message(result)
     return redirect(request, request.headers.get("hx-current-url") or "/proxy/hosts", message, level)
+
+
+@router.post("/proxy/hosts/{site_id}/archive")
+async def archive_site(request: Request, site_id: int, restore: bool = False, panel: Panel = Depends(get_panel),
+                       user: dict = Depends(require(Permission.ALLOW_PROXY))):  # fmt: skip
+    """Archiwum: host wyłączony i schowany z listy; przywrócenie włącza go z powrotem."""
+    site = panel.db.get("sites", site_id)
+    if not site:
+        raise HTTPException(404, t("msg.no_host"))
+    _, result = await save_and_push(panel, "sites", site_id, {"archived": 0, "enabled": 1} if restore else {"archived": 1, "enabled": 0})
+    message, level = proxy_state.push_message(result)
+    done = t("proxy.restored" if restore else "proxy.archived_one", name=site["domains"][0] if site["domains"] else site_id)
+    return redirect(request, request.headers.get("hx-current-url") or "/proxy/hosts", f"{done} {message}", level)
 
 
 @router.post("/proxy/hosts/{site_id}/delete")

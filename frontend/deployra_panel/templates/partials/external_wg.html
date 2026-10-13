@@ -10,7 +10,7 @@
         <td>
           <div class="row" style="gap: 8px">
             <span class="dot {{ 'ok' if x.online else ('warn' if x.up else 'err') }}"></span>
-            <span class="name mono">{{ x.name }}</span>
+            <span class="name">{{ x.label or x.name }}</span>{% if x.label %}<span class="mono small muted">{{ x.name }}</span>{% endif %}
           </div>
         </td>
         <td class="mono small">{{ x.addresses | join(", ") }}</td>

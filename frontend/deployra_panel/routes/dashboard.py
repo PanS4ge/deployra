@@ -31,7 +31,7 @@ async def dashboard(request: Request, panel: Panel = Depends(get_panel)):
         "apps_error": sum(1 for a in apps if a["status"] == "error"),
         "nodes": len(nodes),
         "nodes_paired": sum(1 for n in nodes if n["status"] == "paired"),
-        "sites": db.scalar("SELECT COUNT(*) FROM sites"),
+        "sites": db.scalar("SELECT COUNT(*) FROM sites WHERE archived = 0"),
         "certs": len(certs),
         "certs_warn": sum(1 for c in certs if c["status"] in ("expiring", "expired", "error", "missing")),
     }

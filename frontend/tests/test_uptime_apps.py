@@ -53,3 +53,16 @@ def test_app_without_domain_is_checked_by_container_state(admin, monkeypatch):
     # z domeną: jak dotąd test HTTP przez bramkę
     ok, ms, _ = asyncio.run(checker.check(_app(panel, "web", ["web.example.com"])))
     assert ok is True and ms == 12 and gateway.calls[-1]["host"] == "web.example.com"
+
+
+def test_hand_registered_apps_find_their_containers():
+    items = [
+        {"name": "noretkick-bot", "state": "running", "ports": [{"container": 8080, "host": 30200}]},
+        {"name": "robal_bot", "state": "running", "ports": []},
+        {"name": "inny", "state": "running", "ports": [{"container": 80, "host": 8080}]},
+    ]
+    by_port = uptime.app_containers(items, {"slug": "noretkick", "name": "NoretKick Web & Bot", "host_port": 30200})
+    assert [c["name"] for c in by_port] == ["noretkick-bot"]
+    by_name = uptime.app_containers(items, {"slug": "robal", "name": "Robal Bot", "host_port": None})
+    assert [c["name"] for c in by_name] == ["robal_bot"]
+    assert uptime.app_containers(items, {"slug": "brak", "name": "Brak", "host_port": None}) == []

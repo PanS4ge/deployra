@@ -69,6 +69,7 @@
     <summary class="small" style="cursor: pointer"><i class="bi bi-plus-lg"></i> {{ t("extwg.add") }}</summary>
     <form class="stack" style="margin-top: 12px" hx-post="/tunnel/external" hx-swap="none">
       <div class="form-grid">
+        <div class="field"><label>{{ t("extwg.label") }}</label><input class="input" name="label" placeholder="Cezary" maxlength="40"></div>
         <div class="field"><label>{{ t("extwg.iface") }}</label><input class="input mono" name="name" value="wg1" pattern="wg[a-z0-9_\-]{1,13}" required></div>
         <div class="field"><label>{{ t("extwg.routes") }}</label><input class="input mono" name="routes" placeholder="{{ t('extwg.routes_placeholder') }}"></div>
         <div class="field full"><label>{{ t("extwg.config") }}</label>

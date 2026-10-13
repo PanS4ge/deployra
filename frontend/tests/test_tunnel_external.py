@@ -32,9 +32,9 @@ def test_external_wireguard_card(admin, monkeypatch):
     page = admin.get("/tunnel/external").text
     assert "wg1" in page and "10.8.0.0/24" in page and "cezary.example.com:30178" in page and "dot ok" in page
 
-    response = admin.post("/tunnel/external", data={"name": "wg1", "config": "[Interface]\n…", "routes": "10.8.0.0/24, 192.168.5.0/24"})
+    response = admin.post("/tunnel/external", data={"name": "wg1", "label": "Cezary", "config": "[Interface]\n…", "routes": "10.8.0.0/24, 192.168.5.0/24"})
     assert response.status_code == 204 and "DNS, POSTUP" in unquote(response.headers["set-cookie"])
-    assert gateway.calls[-1] == ("PUT", "/api/external-wg/wg1", {"config": "[Interface]\n…", "routes": ["10.8.0.0/24", "192.168.5.0/24"]})
+    assert gateway.calls[-1] == ("PUT", "/api/external-wg/wg1", {"config": "[Interface]\n…", "routes": ["10.8.0.0/24", "192.168.5.0/24"], "label": "Cezary"})
     bad = admin.post("/tunnel/external", data={"name": "zla nazwa", "config": "x"})
     assert bad.status_code == 400 and gateway.calls[-1][1] == "/api/external-wg/zla%20nazwa"
 

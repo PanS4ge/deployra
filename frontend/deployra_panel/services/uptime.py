@@ -10,6 +10,7 @@ wybranych w Ustawienia → Alerty (panel, webhook, Discord, Telegram, e-mail…)
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from typing import Any
 
@@ -133,6 +134,25 @@ def all_stats(panel: Any) -> list[dict]:
 # --- sprawdzanie ----------------------------------------------------------------------------
 
 
+def _norm(text: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(text or "").lower())
+
+
+def app_containers(items: list[dict], app: dict) -> list[dict]:
+    """Kontenery aplikacji: etykieta Deployry / app-<slug> / projekt compose, a dla dopisanych ręcznie —
+    opublikowany port aplikacji albo nazwa kontenera równa nazwie aplikacji (bez myślników, np. robal_bot ↔ Robal Bot)."""
+    slug = app["slug"]
+    exact = [c for c in items if c.get("app") == slug or c["name"] == f"app-{slug}" or c.get("stack") == slug]
+    if exact:
+        return exact
+    port = app.get("host_port")
+    by_port = [c for c in items if port and any(p.get("host") == port for p in c.get("ports") or [])]
+    if by_port:
+        return by_port
+    keys = {k for k in (_norm(slug), _norm(app.get("name"))) if k}
+    return [c for c in items if _norm(re.sub(r"[-_]\d+$", "", c["name"])) in keys]
+
+
 class Checker:
     def __init__(self, panel: Any) -> None:
         self.panel = panel
@@ -197,12 +217,20 @@ class Checker:
         node = self.panel.node(app["node_id"])
         if node and not app.get("domains"):  # bez domeny HTTP nic nie powie (bot, baza, port tylko w LAN) — liczy się stan kontenerów
             return await self._check_containers(node, app)
-        if not node or not app.get("host_port"):
+        if not node:
             return False, None, t("uptime.msg.not_deployed")
         site = self.panel.db.get("sites", app["site_id"]) if app.get("site_id") else None
-        host = ((site or {}).get("target") or {}).get("host") or self.panel.node_upstream_host(node)
         domain = (app.get("domains") or [None])[0]
-        url = f"http://{host}:{app['host_port']}/"
+        if app.get("host_port"):
+            host = ((site or {}).get("target") or {}).get("host") or self.panel.node_upstream_host(node)
+            url = f"http://{host}:{app['host_port']}/"
+        else:  # aplikacja dopisana bez portu (np. przejęta ręcznie) — sprawdzamy cel jej hosta proxy, a bez niego kontenery
+            from .proxy_health import probe_url
+
+            probe = probe_url(self.panel, site, {n["id"]: n for n in self.panel.db.all("nodes")}) if site and site.get("target") else None
+            if not probe:
+                return await self._check_containers(node, app)
+            url, domain = probe[0], probe[1] or domain
         gateway = self.panel.gateway_client()
         if gateway:
             result = await gateway.post("/api/check", json={"url": url, "host": domain})
@@ -220,7 +248,7 @@ class Checker:
         except (ValueError, KeyError):
             endpoint = "local"
         items = await self._containers_of(node, endpoint)
-        mine = [c for c in items if c.get("app") == app["slug"] or c["name"] == f"app-{app['slug']}"]
+        mine = app_containers(items, app)
         if not mine and app["kind"] == "static":  # strony statyczne serwuje wspólny nginx węzła
             mine = [c for c in items if c.get("system") == "static"]
         if not mine:

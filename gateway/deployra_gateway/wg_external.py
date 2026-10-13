@@ -132,7 +132,7 @@ class ExternalTunnels:
             out.append(str(net))
         return list(dict.fromkeys(out))
 
-    def put(self, name: str, conf_text: str, routes: list[str] | None = None) -> dict[str, Any]:
+    def put(self, name: str, conf_text: str, routes: list[str] | None = None, label: str | None = None) -> dict[str, Any]:
         """Zapisuje (albo podmienia) tunel i od razu go podnosi. Zwraca wpis stanu z ewentualnym błędem."""
         if not NAME.match(name or "") or name == self.config.wg_iface:
             raise ValueError(tr("gw.ext.bad_name", iface=self.config.wg_iface))
@@ -141,7 +141,8 @@ class ExternalTunnels:
         self._interface(parsed)
         self._peer(name, parsed, ["10.255.255.255/32"])
         chosen = self._check_routes(name, routes if routes else default_routes(parsed))
-        entry = {**parsed, "routes": chosen, "created": int(time.time()), "error": None}
+        label = " ".join(str(label or "").split())[:40] or None  # nazwa serwera po drugiej stronie, np. „Cezary”
+        entry = {**parsed, "routes": chosen, "label": label, "created": int(time.time()), "error": None}
         self.state.mutate("external_wg", lambda tunnels: {**(tunnels or {}), name: entry})
         self.apply(name)
         return self._all()[name]
@@ -207,6 +208,7 @@ class ExternalTunnels:
             handshake = info.get("latest_handshake") or 0
             out.append({
                 "name": name,
+                "label": entry.get("label"),
                 "addresses": entry["addresses"],
                 "routes": entry["routes"],
                 "endpoint": entry["peer"]["endpoint"],

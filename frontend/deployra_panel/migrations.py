@@ -156,4 +156,9 @@ def v7(dialect: str) -> list[str]:
     ]
 
 
-MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7)]
+def v8(dialect: str) -> list[str]:
+    """Archiwum hostów proxy: wyłączone i schowane z listy, do przywrócenia jednym kliknięciem."""
+    return ["ALTER TABLE sites ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"]
+
+
+MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8)]
