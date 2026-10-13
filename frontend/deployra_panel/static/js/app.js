@@ -112,4 +112,30 @@
       () => toast(I18N.copy_failed, "err"),
     );
   });
+
+  // ---------- Tabele na telefonie ----------
+  // Na wąskim ekranie wiersze tabel układają się w karty; każda komórka dostaje podpis z nagłówka kolumny.
+  const labelTables = () => {
+    document.querySelectorAll("table.table:not(.keep)").forEach((table) => {
+      const heads = [...table.querySelectorAll(":scope > thead th")].map((th) => th.textContent.trim());
+      if (!heads.length) return;
+      table.querySelectorAll(":scope > tbody > tr").forEach((tr) => {
+        let col = 0;
+        for (const td of tr.children) {
+          if (col > 0 && !td.hasAttribute("data-label")) td.setAttribute("data-label", heads[col] || "");
+          col += td.colSpan || 1;
+        }
+      });
+    });
+  };
+  // zakładki przewijane w bok: aktywna ma być widoczna od razu
+  const showActiveTab = () => {
+    document.querySelectorAll(".tabs").forEach((tabs) => {
+      const active = tabs.querySelector("a.active");
+      if (active && tabs.scrollWidth > tabs.clientWidth) tabs.scrollLeft = active.offsetLeft - tabs.offsetLeft - 16;
+    });
+  };
+  const mobile = () => { labelTables(); showActiveTab(); };
+  document.addEventListener("DOMContentLoaded", mobile);
+  document.addEventListener("htmx:afterSettle", mobile);
 })();

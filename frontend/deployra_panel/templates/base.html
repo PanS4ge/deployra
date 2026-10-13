@@ -19,7 +19,8 @@
 <body hx-boost="true" x-data="{ nav: false }">
 {% block body %}
 <div class="shell">
-  <aside class="sidebar" :class="nav && 'open'" @click.outside="nav = false">
+  <div class="nav-backdrop" x-show="nav" x-cloak @click="nav = false"></div>
+  <aside class="sidebar" :class="nav && 'open'" @click.outside="nav = false" @click="if ($event.target.closest('a')) nav = false">
     <a class="brand" href="{{ '/servers' if user and user.scoped else '/' }}">
       {% include "_logo.html" %}
       <span><b>Deployra</b></span>
@@ -58,7 +59,7 @@
         {% block crumbs %}{% endblock %}
         <h1>{% block heading %}{{ title }}{% endblock %}</h1>
       </div>
-      {% block actions %}{% endblock %}
+      <div class="topbar-actions">{% block actions %}{% endblock %}</div>
       {% if not (user and user.scoped) %}
       <div style="position: relative" x-data="{ open: false }">
         <button class="btn ghost icon" @click="open = !open" hx-get="/notifications" hx-target="#notif-list" hx-swap="innerHTML" hx-trigger="click once" aria-label="{{ t('nav.notifications') }}">

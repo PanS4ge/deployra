@@ -1429,7 +1429,8 @@
       "not_deployed": "aplikacja nie jest wdrożona",
       "responds": "odpowiada",
       "timeout": "przekroczony czas sprawdzenia",
-      "unknown_kind": "nieznany rodzaj monitora"
+      "unknown_kind": "nieznany rodzaj monitora",
+      "containers_up": "kontenery działają: {count}"
     },
     "name_placeholder": "Mój blog",
     "not_checked": "jeszcze nie sprawdzono",

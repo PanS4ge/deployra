@@ -293,7 +293,8 @@ table.table { width: 100%; border-collapse: collapse; }
 .kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 8px; background: rgba(139, 150, 255, 0.08); border: 1px solid var(--border); font-family: var(--mono); font-size: 0.8rem; }
 .copy { cursor: pointer; max-width: 100%; overflow: hidden; }
-.stat .pill, .kv .pill { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.stat .pill, .kv .pill { display: inline-flex; max-width: 100%; vertical-align: middle; }
+.pill-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .copy:hover { border-color: var(--border-strong); }
 .callout { padding: 14px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: rgba(139, 92, 246, 0.08); display: flex; gap: 12px; align-items: flex-start; }
 .callout i { font-size: 1.15rem; color: var(--violet-2); margin-top: 1px; }
@@ -357,12 +358,12 @@ table.table { width: 100%; border-collapse: collapse; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 /* ---------- Uptime ---------- */
-.beats { display: flex; gap: 3px; align-items: center; min-height: 22px; }
-.beats span { width: 6px; height: 20px; border-radius: 3px; background: rgba(139, 150, 255, 0.15); flex: none; }
+.beats { display: flex; gap: 3px; align-items: center; min-height: 22px; min-width: 0; overflow: hidden; }
+.beats span { width: 6px; min-width: 2px; height: 20px; border-radius: 3px; background: rgba(139, 150, 255, 0.15); flex: 0 1 6px; }
 .beats span.up { background: linear-gradient(180deg, #34d399, #059669); }
 .beats span.down { background: linear-gradient(180deg, #fb7185, #e11d48); box-shadow: 0 0 8px -1px rgba(251, 113, 133, 0.8); }
 .beats span:hover { transform: scaleY(1.15); }
-.beats span.muted { width: auto; height: auto; background: none; white-space: nowrap; }
+.beats span.muted { width: auto; height: auto; background: none; white-space: nowrap; flex: none; }
 
 /* ---------- Wykresy (SVG z serwera) ---------- */
 svg.chart { width: 100%; height: 240px; display: block; overflow: visible; }
@@ -396,4 +397,71 @@ svg.spark { display: block; flex: none; }
 @media (max-width: 700px) {
   .update-banner .actions { width: 100%; }
   .update-ver { font-size: 1.3rem; }
+}
+
+/* ---------- Telefon ---------- */
+.topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.topbar-actions:not(:has(*)) { display: none; }
+.form-grid > *, .grid > * { min-width: 0; }
+.hint { overflow-wrap: anywhere; }
+.nav-backdrop { display: none; }
+
+@media (max-width: 920px) {
+  .nav-backdrop { display: block; position: fixed; inset: 0; z-index: 45; background: rgba(2, 3, 10, 0.6); backdrop-filter: blur(2px); }
+}
+
+@media (max-width: 700px) {
+  /* nagłówek: tytuł w pierwszym wierszu, przyciski strony w drugim */
+  .topbar { flex-wrap: wrap; row-gap: 10px; }
+  .topbar .title { order: 1; }
+  .topbar .menu-btn { order: 0; }
+  .topbar > div:not(.title):not(.topbar-actions) { order: 2; }
+  .topbar-actions { order: 3; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; width: calc(100% + 32px); }
+  .topbar-actions > * { flex: none; }
+  .topbar-actions .btn { padding: 6px 12px; font-size: 0.88rem; }
+  .topbar-actions:not(:has(*)) { display: none; }
+  .topbar .title h1 { font-size: 1.05rem; }
+  .content { gap: 14px; }
+  .card-head { flex-wrap: wrap; padding: 14px 16px; }
+  .card-body { padding: 14px 16px; }
+  .card-head .input, .card-head .select, .card-head form { max-width: 100% !important; }
+  .card-head form { flex: 1 1 100%; }
+  .card-head form .select, .card-head form .input { flex: 1; min-width: 0; }
+  .stat { padding: 14px 16px; min-width: 0; }
+  .stat .value { overflow-wrap: anywhere; }
+  .kv { grid-template-columns: 1fr; gap: 2px 0; }
+  .kv dd { margin-bottom: 8px; }
+  .dropdown { position: fixed; left: 12px; right: 12px; top: 64px; min-width: 0; max-width: none; max-height: calc(100vh - 90px); overflow: auto; }
+  .toasts { left: 12px; right: 12px; bottom: 12px; width: auto; }
+  .modal-backdrop { place-items: end center; padding: 0; }
+  .modal { width: 100%; max-height: 88vh; border-radius: var(--radius) var(--radius) 0 0; }
+  /* iOS powiększa stronę przy polach < 16px */
+  .input, .select, .textarea { font-size: 16px; }
+  .btn.sm { padding: 7px 11px; }
+  .tabs a { padding: 10px 11px; }
+
+  /* tabele → karty: pierwsza kolumna to tytuł, reszta z podpisem z nagłówka (data-label ustawia app.js) */
+  .table-wrap:has(> table.table:not(.keep)) { overflow-x: visible; }
+  table.table:not(.keep), table.table:not(.keep) > tbody { display: block; width: 100%; }
+  table.table:not(.keep) > thead { display: none; }
+  table.table:not(.keep) > tbody > tr, table.table:not(.keep) > tr {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  table.table:not(.keep) > tbody:last-child > tr:last-child { border-bottom: 0; }
+  table.table:not(.keep) td { display: block; padding: 0; border: 0; min-width: 0 !important; max-width: none !important; overflow-wrap: anywhere; text-align: left; }
+  table.table:not(.keep) td[data-label]:not([data-label=""])::before {
+    content: attr(data-label); display: block; margin-bottom: 2px;
+    color: var(--muted); font-size: 0.68rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  table.table:not(.keep) td:first-child, table.table:not(.keep) td[colspan], table.table:not(.keep) td.wide { grid-column: 1 / -1; }
+  table.table:not(.keep) td:first-child { font-size: 1rem; }
+  table.table:not(.keep) td.actions, table.table:not(.keep) td:last-child:not([data-label]), table.table:not(.keep) td:last-child[data-label=""] {
+    grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px;
+  }
+  table.table:not(.keep) td:empty { display: none; }
+  table.table:not(.keep) td.nowrap { white-space: normal; }
+  table.table:not(.keep) td[style*="width"] { width: auto !important; }
+  code { overflow-wrap: anywhere; }
+  table.table:not(.keep) svg.spark { flex: 0 1 auto; min-width: 0; width: 100%; max-width: 132px; height: auto; }
 }

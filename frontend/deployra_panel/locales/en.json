@@ -1429,7 +1429,8 @@
       "not_deployed": "the app isn't deployed",
       "responds": "responds",
       "timeout": "check timed out",
-      "unknown_kind": "unknown monitor kind"
+      "unknown_kind": "unknown monitor kind",
+      "containers_up": "containers running: {count}"
     },
     "name_placeholder": "My blog",
     "not_checked": "not checked yet",

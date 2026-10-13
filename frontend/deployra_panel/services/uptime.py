@@ -195,11 +195,8 @@ class Checker:
         if app["status"] in ("deploying", "new"):
             return None, None, t("uptime.msg.deploying")
         node = self.panel.node(app["node_id"])
-        if node and app["kind"] == "runtime" and not app.get("host_port"):  # proces w tle — liczy się, że kontener działa
-            for c in await self._containers_of(node, "local"):
-                if c["name"] == f"app-{app['slug']}":
-                    return c["state"] == "running", None, c.get("status") or c["state"]
-            return False, None, t("uptime.msg.container_missing")
+        if node and not app.get("domains"):  # bez domeny HTTP nic nie powie (bot, baza, port tylko w LAN) — liczy się stan kontenerów
+            return await self._check_containers(node, app)
         if not node or not app.get("host_port"):
             return False, None, t("uptime.msg.not_deployed")
         site = self.panel.db.get("sites", app["site_id"]) if app.get("site_id") else None
@@ -214,6 +211,25 @@ class Checker:
             return bool(result.get("ok")), result.get("ms"), f"HTTP {result['status']}"
         response = await self._http.get(url, headers={"Host": domain} if domain else None)
         return response.status_code < 500, elapsed(), f"HTTP {response.status_code}"
+
+    async def _check_containers(self, node: dict, app: dict) -> tuple[bool | None, float | None, str]:
+        from .deploy import load
+
+        try:
+            endpoint = load(self.panel, app)[0].endpoint
+        except (ValueError, KeyError):
+            endpoint = "local"
+        items = await self._containers_of(node, endpoint)
+        mine = [c for c in items if c.get("app") == app["slug"] or c["name"] == f"app-{app['slug']}"]
+        if not mine and app["kind"] == "static":  # strony statyczne serwuje wspólny nginx węzła
+            mine = [c for c in items if c.get("system") == "static"]
+        if not mine:
+            return False, None, t("uptime.msg.container_missing")
+        for c in mine:
+            if c["state"] != "running" or "unhealthy" in (c.get("status") or ""):
+                return False, None, f"{c['name']}: {c.get('status') or c['state']}"
+        message = (mine[0].get("status") or mine[0]["state"]) if len(mine) == 1 else t("uptime.msg.containers_up", count=len(mine))
+        return True, None, message
 
 
 def record(panel: Any, monitor: dict, ok: bool, latency: float | None, message: str) -> str | None:

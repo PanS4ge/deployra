@@ -44,7 +44,7 @@
 {%- endmacro %}
 
 {% macro copy_pill(value, mono=True) -%}
-  <span class="pill copy" data-copy="{{ value }}" title="{{ t('common.click_to_copy') }}">{{ value }} <i class="bi bi-clipboard"></i></span>
+  <span class="pill copy" data-copy="{{ value }}" title="{{ t('common.click_to_copy') }}"><span class="pill-text">{{ value }}</span> <i class="bi bi-clipboard"></i></span>
 {%- endmacro %}
 
 {% macro uptime_badge(value) -%}
