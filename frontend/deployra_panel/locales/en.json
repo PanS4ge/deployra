@@ -738,7 +738,8 @@
     "traffic_page": "Traffic & security",
     "tunnel": "Network",
     "uptime": "Uptime",
-    "users": "Users"
+    "users": "Users",
+    "dns": "DNS"
   },
   "networks": {
     "delete_confirm": "Delete network {name}?",
@@ -1471,5 +1472,38 @@
     "removed": "Disconnected {name}",
     "remove_confirm": "Disconnect {name}? Hosts pointing at addresses behind this tunnel will stop working.",
     "notify": "{user} connected the gateway to the external WireGuard {name} ({routes})"
+  },
+  "dnsrec": {
+    "title": "DNS",
+    "no_token": "The panel reads and changes DNS records through Cloudflare — add a token in",
+    "settings_link": "Settings → DNS & Cloudflare",
+    "cf_down": "Cloudflare isn't responding",
+    "no_zones": "The Cloudflare token can't see any zone",
+    "zone": "Zone",
+    "search": "Search: name, value, app, container…",
+    "type": "Type",
+    "name": "Name",
+    "content": "Value",
+    "linked": "Linked to",
+    "priority": "Priority",
+    "proxied": "Cloudflare proxy",
+    "auto": "auto",
+    "add": "Add record",
+    "name_placeholder": "@ or a name, e.g. app",
+    "gateway": "gateway",
+    "gateway_hint": "address of the gateway that takes public traffic",
+    "proxy_host": "proxy host",
+    "managed_hint": "record created by Deployra",
+    "none": "No records",
+    "created": "Added record {name}",
+    "updated": "Saved record {name}",
+    "deleted": "Deleted record {name}",
+    "delete_confirm": "Delete the {type} record {name}?",
+    "notify_created": "{user} added DNS record {type} {name} → {content}",
+    "notify_updated": "{user} changed DNS record {type} {name} → {content}",
+    "notify_deleted": "{user} deleted DNS record {name}",
+    "bad_type": "unsupported record type",
+    "need_content": "enter the record value",
+    "bad_ip": "{value} isn't an IP address matching the record type"
   }
 }

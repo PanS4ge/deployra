@@ -29,6 +29,9 @@ class Cloudflare:
         await self._client.aclose()
 
     async def _call(self, method: str, path: str, **kwargs: Any) -> Any:
+        return (await self._raw(method, path, **kwargs)).get("result")
+
+    async def _raw(self, method: str, path: str, **kwargs: Any) -> dict:
         response = await self._client.request(method, path, **kwargs)
         try:
             data = response.json()
@@ -37,7 +40,7 @@ class Cloudflare:
         if not data.get("success"):
             errors = "; ".join(e.get("message", "?") for e in data.get("errors", [])) or response.reason_phrase
             raise DnsError(f"Cloudflare: {errors}")
-        return data.get("result")
+        return data
 
     async def verify(self) -> bool:
         result = await self._call("GET", "/user/tokens/verify")
@@ -65,6 +68,21 @@ class Cloudflare:
 
     async def delete(self, zone_id: str, record_id: str) -> None:
         await self._call("DELETE", f"/zones/{zone_id}/dns_records/{record_id}")
+
+    async def records(self, zone_id: str, limit_pages: int = 20) -> list[dict]:
+        out: list[dict] = []
+        for page in range(1, limit_pages + 1):
+            data = await self._raw("GET", f"/zones/{zone_id}/dns_records", params={"per_page": 500, "page": page})
+            out += data.get("result") or []
+            if page >= int((data.get("result_info") or {}).get("total_pages") or 1):
+                break
+        return out
+
+    async def create_record(self, zone_id: str, payload: dict) -> dict:
+        return await self._call("POST", f"/zones/{zone_id}/dns_records", json=payload)
+
+    async def update_record(self, zone_id: str, record_id: str, payload: dict) -> dict:
+        return await self._call("PATCH", f"/zones/{zone_id}/dns_records/{record_id}", json=payload)
 
 
 def client(panel: Any) -> Cloudflare | None:

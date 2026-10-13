@@ -1,0 +1,62 @@
+{% if error %}
+<div class="card-body"><div class="callout err"><i class="bi bi-cloud-slash"></i><div class="small">{{ error }}</div></div></div>
+{% elif not rows %}
+<div class="card-body muted small">{{ t("dnsrec.none") }}</div>
+{% else %}
+<div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>{{ t("dnsrec.type") }}</th><th>{{ t("dnsrec.name") }}</th><th>{{ t("dnsrec.content") }}</th><th title="{{ t('dnsrec.proxied') }}">Proxy</th><th>TTL</th><th>{{ t("dnsrec.linked") }}</th><th></th></tr></thead>
+    {% for r in rows %}{% set l = r.link %}
+    {% set short = "@" if r.name == zone_name else r.name[: -(zone_name | length) - 1] if r.name.endswith("." ~ zone_name) else r.name %}
+    {% set haystack = [r.name, r.content, l.app.slug if l.app else "", l.node.name if l.node else "", l.container or "", l.target] | join(" ") | lower %}
+    <tbody x-data="{ edit: false }" x-show="!q || {{ haystack | tojson | forceescape }}.includes(q.toLowerCase())">
+      <tr>
+        <td><span class="badge">{{ r.type }}</span></td>
+        <td class="mono"><span class="name">{{ short }}</span>{% if short != "@" and short != r.name %}<span class="muted small">.{{ zone_name }}</span>{% endif %}</td>
+        <td class="mono small" style="max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" title="{{ r.content }}">
+          {% if r.type == "MX" %}<span class="muted">{{ r.priority }}</span> {% endif %}{{ r.content }}
+          {% if gateway_ip and r.content == gateway_ip %}<span class="badge ok" title="{{ t('dnsrec.gateway_hint') }}">{{ t("dnsrec.gateway") }}</span>{% endif %}
+        </td>
+        <td>{% if r.type in proxiable %}<i class="bi {{ 'bi-cloud-fill' if r.proxied else 'bi-cloud' }}" style="color: {{ '#f6821f' if r.proxied else 'var(--muted, #888)' }}" title="{{ t('dnsrec.proxied') }}"></i>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="small nowrap">{{ ttl_text(r.ttl) }}</td>
+        <td class="small" style="min-width: 230px">
+          {% if l.site %}
+          <div class="row" style="gap: 6px; flex-wrap: wrap">
+            {% if l.app %}<a class="badge violet" href="/apps/{{ l.app.id }}"><i class="bi bi-rocket-takeoff"></i> {{ l.app.name }}</a>{% endif %}
+            {% if l.container and l.node %}<a class="mono" href="/nodes/{{ l.node.id }}/containers/{{ l.container }}"><i class="bi bi-box"></i> {{ l.container }}</a>{% endif %}
+            {% if l.node %}<span class="muted"><i class="bi bi-hdd-network"></i> {{ l.node.name }}</span>{% endif %}
+            {% if not l.app and l.target %}<span class="mono muted">{{ l.target }}</span>{% endif %}
+            <a class="muted" href="/proxy/hosts/{{ l.site.id }}" title="{{ t('dnsrec.proxy_host') }}"><i class="bi bi-signpost-split"></i></a>
+          </div>
+          {% else %}<span class="muted">—</span>{% endif %}
+          {% if l.managed %}<span class="badge info" title="{{ t('dnsrec.managed_hint') }}">Deployra</span>{% endif %}
+        </td>
+        <td class="actions nowrap">
+          {% if has(user, P.ALLOW_PROXY) %}
+          <button class="btn sm ghost icon" @click="edit = !edit" aria-label="{{ t('common.edit') }}"><i class="bi bi-pencil"></i></button>
+          <button class="btn sm ghost icon danger" hx-post="/dns/records/{{ r.id }}/delete" hx-swap="none" hx-vals="{{ {'zone': zone_id, 'name': r.name} | jsonattr }}"
+                  hx-confirm="{{ t('dnsrec.delete_confirm', type=r.type, name=r.name) }}" data-danger aria-label="{{ t('common.delete') }}"><i class="bi bi-trash"></i></button>
+          {% endif %}
+        </td>
+      </tr>
+      {% if has(user, P.ALLOW_PROXY) %}
+      <tr x-show="edit" x-cloak>
+        <td colspan="7">
+          <form class="row" style="gap: 8px; flex-wrap: wrap" hx-post="/dns/records/{{ r.id }}" hx-swap="none">
+            <input type="hidden" name="zone" value="{{ zone_id }}"><input type="hidden" name="zone_name" value="{{ zone_name }}">
+            <input type="hidden" name="type" value="{{ r.type }}"><input type="hidden" name="name" value="{{ r.name }}">
+            {% if r.type == "MX" %}<input class="input" style="width: 90px" name="priority" type="number" min="0" max="65535" value="{{ r.priority }}" aria-label="{{ t('dnsrec.priority') }}">{% endif %}
+            <input class="input mono" style="flex: 1; min-width: 220px" name="content" value="{{ r.content }}" required aria-label="{{ t('dnsrec.content') }}">
+            <select class="input" style="width: auto" name="ttl" aria-label="TTL">{% for s in ttls %}<option value="{{ s }}" {{ "selected" if s == r.ttl }}>{{ ttl_text(s) }}</option>{% endfor %}</select>
+            {% if r.type in proxiable %}<label class="check"><input type="checkbox" name="proxied" value="1" {{ "checked" if r.proxied }}><span class="sw"></span><span>Proxy</span></label>{% endif %}
+            <button class="btn sm primary"><span class="spin"></span><i class="bi bi-check2"></i> {{ t("common.save") }}</button>
+            <button type="button" class="btn sm ghost" @click="edit = false">{{ t("common.cancel") }}</button>
+          </form>
+        </td>
+      </tr>
+      {% endif %}
+    </tbody>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}

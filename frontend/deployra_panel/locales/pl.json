@@ -738,7 +738,8 @@
     "traffic_page": "Ruch i bezpieczeństwo",
     "tunnel": "Sieć",
     "uptime": "Uptime",
-    "users": "Użytkownicy"
+    "users": "Użytkownicy",
+    "dns": "DNS"
   },
   "networks": {
     "delete_confirm": "Usunąć sieć {name}?",
@@ -1471,5 +1472,38 @@
     "removed": "Odłączono {name}",
     "remove_confirm": "Odłączyć {name}? Hosty kierowane na adresy za tym tunelem przestaną działać.",
     "notify": "{user}: bramka połączona z zewnętrznym WireGuardem {name} ({routes})"
+  },
+  "dnsrec": {
+    "title": "DNS",
+    "no_token": "Rekordy DNS czyta i zmienia panel przez Cloudflare — dodaj token w",
+    "settings_link": "Ustawienia → DNS i Cloudflare",
+    "cf_down": "Cloudflare nie odpowiada",
+    "no_zones": "Token Cloudflare nie ma dostępu do żadnej strefy",
+    "zone": "Strefa",
+    "search": "Szukaj: nazwa, wartość, aplikacja, kontener…",
+    "type": "Typ",
+    "name": "Nazwa",
+    "content": "Wartość",
+    "linked": "Połączone z",
+    "priority": "Priorytet",
+    "proxied": "Proxy Cloudflare",
+    "auto": "auto",
+    "add": "Dodaj rekord",
+    "name_placeholder": "@ albo nazwa, np. app",
+    "gateway": "bramka",
+    "gateway_hint": "adres bramki z ruchem publicznym",
+    "proxy_host": "host proxy",
+    "managed_hint": "rekord założony przez Deployrę",
+    "none": "Brak rekordów",
+    "created": "Dodano rekord {name}",
+    "updated": "Zapisano rekord {name}",
+    "deleted": "Usunięto rekord {name}",
+    "delete_confirm": "Usunąć rekord {type} {name}?",
+    "notify_created": "{user}: dodano rekord DNS {type} {name} → {content}",
+    "notify_updated": "{user}: zmieniono rekord DNS {type} {name} → {content}",
+    "notify_deleted": "{user}: usunięto rekord DNS {name}",
+    "bad_type": "nieobsługiwany typ rekordu",
+    "need_content": "podaj wartość rekordu",
+    "bad_ip": "{value} to nie jest adres IP pasujący do typu rekordu"
   }
 }

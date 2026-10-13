@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+{% if not has_token %}
+<div class="callout"><i class="bi bi-cloud"></i><div>{{ t("dnsrec.no_token") }} <a href="/settings/dns">{{ t("dnsrec.settings_link") }}</a></div></div>
+{% elif error %}
+<div class="callout err"><i class="bi bi-cloud-slash"></i><div>{{ error }}</div></div>
+{% elif not zones %}
+<div class="callout warn"><i class="bi bi-cloud"></i><div>{{ t("dnsrec.no_zones") }}</div></div>
+{% else %}
+<div class="card" x-data="{ q: '' }">
+  <div class="card-head row" style="gap: 10px; flex-wrap: wrap">
+    <select class="input" style="max-width: 260px" onchange="location.href = '/dns?zone=' + this.value" aria-label="{{ t('dnsrec.zone') }}">
+      {% for z in zones %}<option value="{{ z.id }}" {{ "selected" if z.id == zone.id }}>{{ z.name }}</option>{% endfor %}
+    </select>
+    <input class="input" style="max-width: 320px" placeholder="{{ t('dnsrec.search') }}" x-model="q">
+  </div>
+  <div hx-get="/dns/records?zone={{ zone.id | urlencode }}&name={{ zone.name | urlencode }}" hx-trigger="load, dns-changed from:body" hx-swap="innerHTML">
+    <div class="card-body muted">…</div>
+  </div>
+  {% if has(user, P.ALLOW_PROXY) %}
+  <details class="card-body" style="border-top: 1px solid var(--border)" x-data="{ type: 'A' }">
+    <summary class="small" style="cursor: pointer"><i class="bi bi-plus-lg"></i> {{ t("dnsrec.add") }}</summary>
+    <form class="stack" style="margin-top: 12px" hx-post="/dns/records" hx-swap="none" hx-on::after-request="if (event.detail.successful) this.reset()">
+      <input type="hidden" name="zone" value="{{ zone.id }}">
+      <input type="hidden" name="zone_name" value="{{ zone.name }}">
+      <div class="form-grid">
+        <div class="field"><label>{{ t("dnsrec.type") }}</label>
+          <select class="input" name="type" x-model="type">{% for k in types %}<option>{{ k }}</option>{% endfor %}</select></div>
+        <div class="field"><label>{{ t("dnsrec.name") }}</label><input class="input mono" name="name" placeholder="{{ t('dnsrec.name_placeholder') }}" required></div>
+        <div class="field full"><label>{{ t("dnsrec.content") }}</label><input class="input mono" name="content" value="{{ gateway_ip or '' }}" required></div>
+        <div class="field"><label>TTL</label>
+          <select class="input" name="ttl">{% for s in ttls %}<option value="{{ s }}">{{ ttl_text(s) }}</option>{% endfor %}</select></div>
+        <div class="field" x-show="type === 'MX'" x-cloak><label>{{ t("dnsrec.priority") }}</label><input class="input" name="priority" type="number" min="0" max="65535" value="10"></div>
+      </div>
+      <div class="row between">
+        <label class="check" x-show="['A', 'AAAA', 'CNAME'].includes(type)"><input type="checkbox" name="proxied" value="1"><span class="sw"></span><span>{{ t("dnsrec.proxied") }}</span></label>
+        <button class="btn"><span class="spin"></span><i class="bi bi-plus-lg"></i> {{ t("common.add") }}</button>
+      </div>
+    </form>
+  </details>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
