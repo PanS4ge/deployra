@@ -203,3 +203,104 @@ def test_app_container_controls(admin, monkeypatch):
     assert r4.status_code == 200
     assert any("kill" in str(c) for c in node.calls)
     assert panel.db.get("apps", app_id)["status"] == "stopped"
+
+
+def test_stopped_app_does_not_alert_and_resolves_active_alert(admin, monkeypatch):
+    """Zatrzymana przez użytkownika aplikacja nie generuje alertów i rozwiązuje aktywny alert."""
+    panel = admin.app.state.panel
+    panel.db.insert("nodes", name="node_stopped", transport="direct", api_url="http://127.0.0.1:1", status="paired")
+
+    source = {"kind": "image", "image": "bot:latest"}
+    spec = AppSpec.model_validate({"slug": "mybot", "source": source, "container_port": 80, "domains": []})
+    app_id = deploy.create_app_row(panel, "mybot", 1, spec, {})
+    panel.db.update("apps", app_id, status="stopped")
+
+    monitor = uptime.monitor_for(panel, "app", app_id)
+    # Symulujemy stary aktywny alert w bazie
+    alert_id = panel.db.insert(
+        "alerts", rule="monitor_down", target_kind="monitor", target_id=monitor["id"],
+        target_name=monitor["name"], status="firing", message="nie działa", started_at=time.time()
+    )
+
+    checker = uptime.Checker(panel)
+    ok, latency, msg = asyncio.run(checker.check(monitor))
+
+    # Stan ok is None (pomijany / brak awarii)
+    assert ok is None
+    assert t("uptime.msg.stopped") in msg
+
+    # Monitor w stanie paused, a stary alert rozwiązany
+    assert panel.db.get("monitors", monitor["id"])["status"] == "paused"
+    assert panel.db.get("alerts", alert_id)["status"] == "resolved"
+
+
+def test_undeployed_app_does_not_alert_and_resolves_alert(admin, monkeypatch):
+    """Aplikacja bez przypisanego węzła (niewdrożona) nie raportuje awarii jako alert."""
+    panel = admin.app.state.panel
+    source = {"kind": "image", "image": "draft:latest"}
+    spec = AppSpec.model_validate({"slug": "draftapp", "source": source, "container_port": 80, "domains": []})
+    app_id = deploy.create_app_row(panel, "draftapp", 999, spec, {})
+    panel.db.update("apps", app_id, status="running")
+
+    monitor = uptime.monitor_for(panel, "app", app_id)
+    alert_id = panel.db.insert(
+        "alerts", rule="monitor_down", target_kind="monitor", target_id=monitor["id"],
+        target_name=monitor["name"], status="firing", message="aplikacja nie jest wdrożona", started_at=time.time()
+    )
+
+    checker = uptime.Checker(panel)
+    ok, latency, msg = asyncio.run(checker.check(monitor))
+
+    assert ok is None
+    assert t("uptime.msg.not_deployed") in msg
+    assert panel.db.get("monitors", monitor["id"])["status"] == "paused"
+    assert panel.db.get("alerts", alert_id)["status"] == "resolved"
+
+
+def test_cleanly_exited_container_treated_as_stopped_user_choice(admin, monkeypatch):
+    """Kontener zakończony kodem 0 (np. docker stop) traktowany jako wybór użytkownika (stopped/paused)."""
+    panel = admin.app.state.panel
+    panel.db.insert("nodes", name="node_clean", transport="direct", api_url="http://127.0.0.1:1", status="paired")
+
+    node = FakeNode([
+        {"id": "c_clean", "name": "app-cleanbot", "app": "cleanbot", "state": "exited", "status": "Exited (0) 10 minutes ago"}
+    ])
+    monkeypatch.setattr(panel, "node_client", lambda n: node)
+
+    source = {"kind": "image", "image": "cleanbot:latest"}
+    spec = AppSpec.model_validate({"slug": "cleanbot", "source": source, "container_port": 80, "domains": []})
+    app_id = deploy.create_app_row(panel, "cleanbot", 1, spec, {})
+    panel.db.update("apps", app_id, status="running")
+
+    monitor = uptime.monitor_for(panel, "app", app_id)
+    checker = uptime.Checker(panel)
+    ok, latency, msg = asyncio.run(checker.check(monitor))
+
+    assert ok is None
+    assert panel.db.get("apps", app_id)["status"] == "stopped"
+    assert panel.db.get("monitors", monitor["id"])["status"] == "paused"
+
+
+def test_resolve_inactive_app_alerts_cleans_dashboard(admin):
+    """Funkcja resolve_inactive_app_alerts automatycznie czyści dashboard z alertów dla zatrzymanych aplikacji."""
+    panel = admin.app.state.panel
+    panel.db.insert("nodes", name="node_dash", transport="direct", api_url="http://127.0.0.1:1", status="paired")
+
+    source = {"kind": "image", "image": "test:latest"}
+    spec = AppSpec.model_validate({"slug": "stoppedapp", "source": source, "container_port": 80, "domains": []})
+    app_id = deploy.create_app_row(panel, "stoppedapp", 1, spec, {})
+    panel.db.update("apps", app_id, status="stopped")
+
+    monitor = uptime.monitor_for(panel, "app", app_id)
+    panel.db.insert(
+        "alerts", rule="monitor_down", target_kind="monitor", target_id=monitor["id"],
+        target_name=monitor["name"], status="firing", message="nie działa", started_at=time.time()
+    )
+
+    # Przed wywołaniem - alert firing
+    firing_before = panel.db.fetchall("SELECT * FROM alerts WHERE status = 'firing'")
+    assert len(firing_before) >= 1
+
+    # alerts.firing() automatycznie wywołuje resolve_inactive_app_alerts
+    active = alerts.firing(panel)
+    assert not any(a["target_id"] == monitor["id"] for a in active)

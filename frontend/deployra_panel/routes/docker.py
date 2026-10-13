@@ -83,6 +83,40 @@ async def container_action(request: Request, cid: str, action: str, node: dict =
                            user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
     await _client(panel, node).post(_p(f"/api/containers/{cid}/action/{action}", ep))
     known = ("start", "stop", "restart", "kill", "pause", "unpause")
+    if action in ("stop", "kill", "pause"):
+        from ..services import alerts, uptime
+
+        for row in panel.db.fetchall("SELECT * FROM monitors WHERE kind = 'container' AND node_id = ?", [node["id"]]):
+            target = row.get("target") or {}
+            if target.get("name") == cid and target.get("ep", "local") == ep:
+                panel.db.update("monitors", row["id"], status="paused", last_message=t("uptime.msg.stopped"))
+                active = alerts._active(panel).get(("monitor_down", "monitor", row["id"]))
+                if active:
+                    await alerts.resolve(panel, active, t("uptime.msg.stopped"))
+
+        for app in panel.db.fetchall("SELECT * FROM apps WHERE node_id = ?", [node["id"]]):
+            if cid in (app["slug"], f"app-{app['slug']}") or cid == app.get("name"):
+                panel.db.update("apps", app["id"], status="stopped" if action in ("stop", "kill") else "paused")
+                monitor = uptime.monitor_for(panel, "app", app["id"])
+                if monitor:
+                    panel.db.update("monitors", monitor["id"], status="paused", last_message=t("uptime.msg.stopped"))
+                    active = alerts._active(panel).get(("monitor_down", "monitor", monitor["id"]))
+                    if active:
+                        await alerts.resolve(panel, active, t("uptime.msg.stopped"))
+    elif action in ("start", "unpause"):
+        from ..services import uptime
+
+        for row in panel.db.fetchall("SELECT * FROM monitors WHERE kind = 'container' AND node_id = ?", [node["id"]]):
+            target = row.get("target") or {}
+            if target.get("name") == cid and target.get("ep", "local") == ep and row.get("status") == "paused":
+                panel.db.update("monitors", row["id"], status="unknown")
+        for app in panel.db.fetchall("SELECT * FROM apps WHERE node_id = ?", [node["id"]]):
+            if cid in (app["slug"], f"app-{app['slug']}") or cid == app.get("name"):
+                panel.db.update("apps", app["id"], status="running")
+                monitor = uptime.monitor_for(panel, "app", app["id"])
+                if monitor and monitor.get("status") == "paused":
+                    panel.db.update("monitors", monitor["id"], status="unknown")
+
     return toast(t("msg.container_" + action) if action in known else action, extra={"containers-changed": True})
 
 

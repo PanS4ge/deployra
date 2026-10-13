@@ -503,9 +503,30 @@ async def app_container_action(request: Request, action: str, app: dict = Depend
         return toast(getattr(exc, "detail", None) or str(exc), "err", status=502)
 
     known = ("start", "stop", "restart", "kill", "pause", "unpause")
+    from ..services import alerts, uptime
+
+    monitor = uptime.monitor_for(panel, "app", app["id"])
     if action == "start":
         panel.db.update("apps", app["id"], status="running")
+        if monitor and monitor.get("status") == "paused":
+            panel.db.update("monitors", monitor["id"], status="unknown")
     elif action in ("stop", "kill"):
         panel.db.update("apps", app["id"], status="stopped")
+        if monitor:
+            panel.db.update("monitors", monitor["id"], status="paused", last_message=t("uptime.msg.stopped"))
+            active = alerts._active(panel).get(("monitor_down", "monitor", monitor["id"]))
+            if active:
+                await alerts.resolve(panel, active, t("uptime.msg.stopped"))
+    elif action == "pause":
+        panel.db.update("apps", app["id"], status="paused")
+        if monitor:
+            panel.db.update("monitors", monitor["id"], status="paused", last_message=t("uptime.msg.stopped"))
+            active = alerts._active(panel).get(("monitor_down", "monitor", monitor["id"]))
+            if active:
+                await alerts.resolve(panel, active, t("uptime.msg.stopped"))
+    elif action == "unpause":
+        panel.db.update("apps", app["id"], status="running")
+        if monitor and monitor.get("status") == "paused":
+            panel.db.update("monitors", monitor["id"], status="unknown")
 
     return toast(t("msg.container_" + action) if action in known else action, extra={"app-changed": True, "containers-changed": True})

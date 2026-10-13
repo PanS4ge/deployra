@@ -191,6 +191,14 @@ class Checker:
                     return False, None, t("uptime.msg.node_missing")
                 for c in await self._containers_of(node, target.get("ep", "local")):
                     if c["name"] == target.get("name"):
+                        if c["state"] == "paused" or (c["state"] == "exited" and "exited (0)" in (c.get("status") or "").lower()):
+                            from . import alerts
+
+                            active = alerts._active(self.panel).get(("monitor_down", "monitor", monitor["id"]))
+                            if active:
+                                await alerts.resolve(self.panel, active, t("uptime.msg.stopped"))
+                            self.panel.db.update("monitors", monitor["id"], status="paused", last_message=t("uptime.msg.stopped"))
+                            return None, None, t("uptime.msg.stopped")
                         ok = c["state"] == "running" and "unhealthy" not in (c.get("status") or "")
                         return ok, None, c.get("status") or c["state"]
                 return False, None, t("uptime.msg.container_missing")
@@ -212,13 +220,33 @@ class Checker:
         app = self.panel.db.get("apps", monitor["ref_id"])
         if not app:
             return False, None, t("uptime.msg.app_missing")
+        if app["status"] in ("stopped", "paused"):
+            from . import alerts
+
+            active = alerts._active(self.panel).get(("monitor_down", "monitor", monitor["id"]))
+            if active:
+                await alerts.resolve(self.panel, active, t("uptime.msg.stopped"))
+            self.panel.db.update("monitors", monitor["id"], status="paused", last_message=t("uptime.msg.stopped"))
+            return None, None, t("uptime.msg.stopped")
         if app["status"] in ("deploying", "new"):
+            from . import alerts
+
+            active = alerts._active(self.panel).get(("monitor_down", "monitor", monitor["id"]))
+            if active:
+                await alerts.resolve(self.panel, active, t("uptime.msg.deploying"))
+            self.panel.db.update("monitors", monitor["id"], status="paused", last_message=t("uptime.msg.deploying"))
             return None, None, t("uptime.msg.deploying")
         node = self.panel.node(app["node_id"])
-        if node and not app.get("domains"):  # bez domeny HTTP nic nie powie (bot, baza, port tylko w LAN) — liczy się stan kontenerów
-            return await self._check_containers(node, app)
         if not node:
-            return False, None, t("uptime.msg.not_deployed")
+            from . import alerts
+
+            active = alerts._active(self.panel).get(("monitor_down", "monitor", monitor["id"]))
+            if active:
+                await alerts.resolve(self.panel, active, t("uptime.msg.not_deployed"))
+            self.panel.db.update("monitors", monitor["id"], status="paused", last_message=t("uptime.msg.not_deployed"))
+            return None, None, t("uptime.msg.not_deployed")
+        if not app.get("domains"):  # bez domeny HTTP nic nie powie (bot, baza, port tylko w LAN) — liczy się stan kontenerów
+            return await self._check_containers(node, app, monitor=monitor)
         site = self.panel.db.get("sites", app["site_id"]) if app.get("site_id") else None
         domain = (app.get("domains") or [None])[0]
         if app.get("host_port"):
@@ -233,7 +261,7 @@ class Checker:
             elif domain:
                 url = f"https://{domain}"
             else:
-                return await self._check_containers(node, app)
+                return await self._check_containers(node, app, monitor=monitor)
 
         # 1. Próba HTTP (bramka lub bezpośrednio)
         http_ok = False
@@ -270,13 +298,15 @@ class Checker:
             return True, http_ms, http_msg or "HTTP 200"
 
         # 2. Fallback do weryfikacji kontenera: jeśli kontener działa i jest zdrowy, uznajemy aplikację za ONLINE
-        c_ok, _, c_msg = await self._check_containers(node, app)
+        c_ok, _, c_msg = await self._check_containers(node, app, monitor=monitor)
+        if c_ok is None:
+            return None, None, c_msg
         if c_ok:
             return True, None, t("uptime.msg.container_fallback")
 
         return False, None, http_msg or c_msg
 
-    async def _check_containers(self, node: dict, app: dict) -> tuple[bool | None, float | None, str]:
+    async def _check_containers(self, node: dict, app: dict, monitor: dict | None = None) -> tuple[bool | None, float | None, str]:
         from .deploy import load
 
         try:
@@ -288,7 +318,26 @@ class Checker:
         if not mine and app["kind"] == "static":  # strony statyczne serwuje wspólny nginx węzła
             mine = [c for c in items if c.get("system") == "static"]
         if not mine:
+            if app.get("status") in ("stopped", "paused"):
+                return None, None, t("uptime.msg.stopped")
             return False, None, t("uptime.msg.container_missing")
+
+        # Sprawdzamy czy kontenery zostały zatrzymane celowo przez użytkownika (np. docker stop / pauza)
+        all_stopped_cleanly = all(
+            c["state"] == "paused" or (c["state"] == "exited" and "exited (0)" in (c.get("status") or "").lower())
+            for c in mine
+        )
+        if all_stopped_cleanly:
+            self.panel.db.update("apps", app["id"], status="stopped")
+            if monitor:
+                from . import alerts
+
+                active = alerts._active(self.panel).get(("monitor_down", "monitor", monitor["id"]))
+                if active:
+                    await alerts.resolve(self.panel, active, t("uptime.msg.stopped"))
+                self.panel.db.update("monitors", monitor["id"], status="paused", last_message=t("uptime.msg.stopped"))
+            return None, None, t("uptime.msg.stopped")
+
         for c in mine:
             if c["state"] != "running" or "unhealthy" in (c.get("status") or ""):
                 return False, None, f"{c['name']}: {c.get('status') or c['state']}"

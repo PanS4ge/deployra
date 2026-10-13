@@ -1480,7 +1480,8 @@
       "timeout": "przekroczony czas sprawdzenia",
       "unknown_kind": "nieznany rodzaj monitora",
       "containers_up": "kontenery działają: {count}",
-      "container_fallback": "Kontener działa (domena niedostępna)"
+      "container_fallback": "Kontener działa (domena niedostępna)",
+      "stopped": "zatrzymana"
     },
     "name_placeholder": "Mój blog",
     "not_checked": "jeszcze nie sprawdzono",

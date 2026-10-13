@@ -1480,7 +1480,8 @@
       "timeout": "check timed out",
       "unknown_kind": "unknown monitor kind",
       "containers_up": "containers running: {count}",
-      "container_fallback": "Container running (domain unavailable)"
+      "container_fallback": "Container running (domain unavailable)",
+      "stopped": "stopped"
     },
     "name_placeholder": "My blog",
     "not_checked": "not checked yet",

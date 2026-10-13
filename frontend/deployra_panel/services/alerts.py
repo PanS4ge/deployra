@@ -147,22 +147,57 @@ async def monitor_change(panel: Any, monitor: dict[str, Any], status: str, detai
     key = ("monitor_down", "monitor", monitor["id"])
     active = _active(panel).get(key)
     kind = t("uptime.kind." + monitor["kind"])
-    if status == "down" and not active:
-        await fire(panel, "monitor_down", "monitor", monitor["id"], monitor["name"], None,
-                   t("alerts.text.monitor_down", kind=kind, detail=detail))  # fmt: skip
-    elif status == "up" and active:
-        await resolve(panel, active, t("alerts.text.monitor_up", kind=kind, detail=detail))
+    if status == "down":
+        if monitor.get("kind") == "app" and monitor.get("ref_id"):
+            app = panel.db.get("apps", monitor["ref_id"])
+            if not app or app.get("status") in ("stopped", "paused", "new", "deploying") or not app.get("node_id"):
+                if active:
+                    await resolve(panel, active, detail)
+                return
+        if not active:
+            await fire(panel, "monitor_down", "monitor", monitor["id"], monitor["name"], None,
+                       t("alerts.text.monitor_down", kind=kind, detail=detail))  # fmt: skip
+    elif status in ("up", "paused") and active:
+        await resolve(panel, active, t("alerts.text.monitor_up", kind=kind, detail=detail) if status == "up" else detail)
+
+
+def resolve_inactive_app_alerts(panel: Any) -> int:
+    """Automatycznie rozwiązuje aktywne alerty monitor_down dla aplikacji, które są zatrzymane, zapauzowane lub nie są wdrożone."""
+    rows = panel.db.fetchall("SELECT * FROM alerts WHERE rule = 'monitor_down' AND target_kind = 'monitor' AND status IN ('firing', 'ignored')")
+    resolved_count = 0
+    now_ts = time.time()
+    for row in rows:
+        monitor = panel.db.get("monitors", row["target_id"])
+        if not monitor:
+            panel.db.update("alerts", row["id"], status="resolved", resolved_at=now_ts)
+            resolved_count += 1
+            continue
+        if monitor.get("kind") == "app" and monitor.get("ref_id"):
+            app = panel.db.get("apps", monitor["ref_id"])
+            if not app or app.get("status") in ("stopped", "paused", "new", "deploying") or not app.get("node_id"):
+                panel.db.update("alerts", row["id"], status="resolved", resolved_at=now_ts)
+                panel.db.update(
+                    "monitors",
+                    monitor["id"],
+                    status="paused",
+                    last_message=t("uptime.msg.stopped") if (app and app.get("status") in ("stopped", "paused")) else t("uptime.msg.not_deployed"),
+                )
+                resolved_count += 1
+    return resolved_count
 
 
 def cleanup(panel: Any) -> None:
+    resolve_inactive_app_alerts(panel)
     panel.db.execute("DELETE FROM alerts WHERE status = 'resolved' AND started_at < ?", [time.time() - KEEP])
 
 
 def recent(panel: Any, limit: int = 30) -> list[dict[str, Any]]:
+    resolve_inactive_app_alerts(panel)
     return panel.db.fetchall("SELECT * FROM alerts ORDER BY CASE WHEN status = 'firing' THEN 0 WHEN status = 'ignored' THEN 1 ELSE 2 END, started_at DESC LIMIT ?", [limit])
 
 
 def firing(panel: Any) -> list[dict[str, Any]]:
+    resolve_inactive_app_alerts(panel)
     return panel.db.fetchall("SELECT * FROM alerts WHERE status = 'firing' ORDER BY started_at DESC")
 
 
@@ -253,7 +288,7 @@ async def evaluate_node(panel: Any, tracker: Tracker, node: dict[str, Any], usag
 
     for slug, stats in (usage.get("apps") or {}).items():
         app = apps.get(slug)
-        if not app:
+        if not app or app.get("status") in ("stopped", "paused"):
             continue
         name = app["name"]
         if stats.get("limit") and stats.get("mem") is not None:
