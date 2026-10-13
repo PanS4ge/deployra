@@ -515,9 +515,10 @@
     "portainer_3": "Click <b>Deploy the stack</b>.",
     "terminal_hint": "Log in to the server (SSH) and paste everything — it saves <code>~/deployra-node/compose.yml</code> and starts the node.",
     "no_docker": "No Docker yet? First run: <code>curl -fsSL https://get.docker.com | sh</code>",
+    "compose_hint": "Save as <code>compose.yml</code> and run <code>docker compose up -d</code> (or paste into any container manager):",
     "run_hint": "A single command, no compose file.",
     "lxc_title": "LXC container or virtual machine with Docker",
-    "lxc_hint": "Use the Portainer or Terminal tab inside that container / machine. In an LXC container first enable <b>Options → Features → nesting</b> (for an unprivileged one also <b>keyctl</b>).",
+    "lxc_hint": "In an LXC container on Proxmox first enable <b>Options → Features → nesting</b> (for unprivileged also <b>keyctl</b>), install Docker and paste the command below:",
     "host_title": "The Proxmox host itself, without Docker",
     "host_hint": "The node as a system service — it sees every LXC container that runs Docker inside. Paste into the host's shell (as root):",
     "host_logs": "Logs: <code>journalctl -u deployra-backend -f</code>",
@@ -834,7 +835,7 @@
     "wg_tunnel": "WireGuard tunnel",
     "gateway_target": "The node will connect through the tunnel to the gateway <b class=\"mono\">{target}</b>. The node sets up the tunnel itself — you don't open ports on its side.",
     "name_hint": "The node shows up in the panel under this name, e.g. proxmox or nas.",
-    "next_step": "Next you'll get a ready file for Portainer and a command for the terminal."
+    "next_step": "Next you'll get a ready terminal command, compose file, and Proxmox instructions."
   },
   "notifications": {
     "empty": "All quiet in the ether ✦"

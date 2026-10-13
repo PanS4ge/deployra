@@ -515,9 +515,10 @@
     "portainer_3": "Kliknij <b>Deploy the stack</b>.",
     "terminal_hint": "Zaloguj się na serwer (SSH) i wklej całość — zapisze <code>~/deployra-node/compose.yml</code> i uruchomi węzeł.",
     "no_docker": "Nie masz jeszcze Dockera? Najpierw: <code>curl -fsSL https://get.docker.com | sh</code>",
+    "compose_hint": "Zapisz jako <code>compose.yml</code> i uruchom <code>docker compose up -d</code> (lub wklej w dowolnym menedżerze kontenerów):",
     "run_hint": "Jedno polecenie, bez pliku compose.",
     "lxc_title": "Kontener LXC albo maszyna wirtualna z Dockerem",
-    "lxc_hint": "Użyj zakładki Portainer albo Terminal wewnątrz tego kontenera / maszyny. W kontenerze LXC włącz najpierw <b>Options → Features → nesting</b> (w nieuprzywilejowanym także <b>keyctl</b>).",
+    "lxc_hint": "W kontenerze LXC na Proxmoxie włącz najpierw <b>Options → Features → nesting</b> (w nieuprzywilejowanym także <b>keyctl</b>), zainstaluj Dockera i wklej polecenie poniżej:",
     "host_title": "Sam host Proxmoxa, bez Dockera",
     "host_hint": "Węzeł jako usługa systemowa — widzi wszystkie kontenery LXC, które mają w środku Dockera. Wklej w powłoce hosta (jako root):",
     "host_logs": "Logi: <code>journalctl -u deployra-backend -f</code>",
@@ -834,7 +835,7 @@
     "wg_tunnel": "tunel WireGuard",
     "gateway_target": "Węzeł połączy się tunelem z bramką <b class=\"mono\">{target}</b>. Tunel zestawia sam węzeł — po jego stronie nie otwierasz portów.",
     "name_hint": "Pod tą nazwą zobaczysz węzeł w panelu, np. proxmox albo nas.",
-    "next_step": "Dalej dostaniesz gotowy plik do Portainera i polecenie do terminala."
+    "next_step": "Dalej dostaniesz gotowe polecenie do terminala, plik compose oraz instrukcję dla Proxmoxa."
   },
   "notifications": {
     "empty": "Cisza w eterze ✦"

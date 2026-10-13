@@ -9,7 +9,7 @@
 {% block content %}
 <div class="callout ok"><i class="bi bi-key"></i><div>{{ t("invite.token_ready", date=node.token_expires | dt) }}</div></div>
 
-<div class="card glow" x-data="{ tab: 'portainer' }">
+<div class="card glow" x-data="{ tab: 'terminal' }">
   <div class="card-head"><h2><i class="bi bi-hdd-network"></i> {{ t("invite.how_title", name=node.name) }}</h2></div>
   <div class="card-body stack">
     <ol class="guide">
@@ -23,39 +23,36 @@
     </dl>
   </div>
   <nav class="tabs" style="padding: 0 12px">
-    <a href="#" :class="tab === 'portainer' && 'active'" @click.prevent="tab = 'portainer'"><i class="bi bi-stack"></i> Portainer</a>
     <a href="#" :class="tab === 'terminal' && 'active'" @click.prevent="tab = 'terminal'"><i class="bi bi-terminal"></i> {{ t("invite.tab_terminal") }}</a>
+    <a href="#" :class="tab === 'proxmox' && 'active'" @click.prevent="tab = 'proxmox'"><i class="bi bi-boxes"></i> Proxmox (LXC / Host)</a>
+    <a href="#" :class="tab === 'compose' && 'active'" @click.prevent="tab = 'compose'"><i class="bi bi-file-earmark-code"></i> Docker Compose</a>
     <a href="#" :class="tab === 'run' && 'active'" @click.prevent="tab = 'run'"><i class="bi bi-play-circle"></i> docker run</a>
-    <a href="#" :class="tab === 'proxmox' && 'active'" @click.prevent="tab = 'proxmox'"><i class="bi bi-boxes"></i> Proxmox</a>
   </nav>
 
-  <div class="card-body stack" x-show="tab === 'portainer'">
-    <ol class="guide">
-      <li>{{ t("invite.portainer_1") }}</li>
-      <li>{{ t("invite.portainer_2") }}</li>
-      <li>{{ t("invite.portainer_3") }}</li>
-    </ol>
-    {{ block(snippets.compose) }}
-  </div>
-
-  <div class="card-body stack" x-show="tab === 'terminal'" x-cloak>
+  <div class="card-body stack" x-show="tab === 'terminal'">
     <div class="small">{{ t("invite.terminal_hint") }}</div>
     {{ block(snippets.shell) }}
     <div class="small dim">{{ t("invite.no_docker") }}</div>
   </div>
 
-  <div class="card-body stack" x-show="tab === 'run'" x-cloak>
-    <div class="small">{{ t("invite.run_hint") }}</div>
-    {{ block(snippets.run) }}
-  </div>
-
   <div class="card-body stack" x-show="tab === 'proxmox'" x-cloak>
     <h3>{{ t("invite.lxc_title") }}</h3>
     <div class="small">{{ t("invite.lxc_hint") }}</div>
-    <h3 style="margin-top: 8px">{{ t("invite.host_title") }}</h3>
+    {{ block(snippets.shell) }}
+    <h3 style="margin-top: 12px">{{ t("invite.host_title") }}</h3>
     <div class="small">{{ t("invite.host_hint") }}</div>
     {{ block(snippets.native) }}
     <div class="small dim">{{ t("invite.host_logs") }}</div>
+  </div>
+
+  <div class="card-body stack" x-show="tab === 'compose'" x-cloak>
+    <div class="small">{{ t("invite.compose_hint") }}</div>
+    {{ block(snippets.compose) }}
+  </div>
+
+  <div class="card-body stack" x-show="tab === 'run'" x-cloak>
+    <div class="small">{{ t("invite.run_hint") }}</div>
+    {{ block(snippets.run) }}
   </div>
 </div>
 
