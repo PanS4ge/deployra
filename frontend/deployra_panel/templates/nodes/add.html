@@ -19,7 +19,11 @@
     <div class="card-body"><div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div>{{ t("nodes.connect_gateway_first") }}</div></div></div>
     {% else %}
     <form class="card-body stack" method="post" action="/nodes/invite" hx-push-url="false">
-      <div class="field"><label>{{ t("common.name") }}</label><input class="input" name="name" placeholder="{{ t('nodes.name_placeholder') }}" required maxlength="60"></div>
+      <div class="callout"><i class="bi bi-diagram-3"></i><div class="small">{{ t("nodes.gateway_target", target=target) }}</div></div>
+      <div class="field">
+        <label>{{ t("common.name") }}</label><input class="input" name="name" placeholder="{{ t('nodes.name_placeholder') }}" required maxlength="60">
+        <div class="hint">{{ t("nodes.name_hint") }}</div>
+      </div>
       <div class="field">
         <label>{{ t("nodes.lan_subnets_optional") }}</label>
         <textarea class="textarea" name="lan_subnets" style="min-height: 70px" placeholder="192.168.1.0/24"></textarea>
@@ -29,7 +33,10 @@
         <label>{{ t("nodes.token_ttl") }}</label>
         <select class="select" name="ttl"><option value="60">{{ t("nodes.ttl_hour") }}</option><option value="1440">{{ t("nodes.ttl_day") }}</option><option value="10080">{{ t("analytics.days", count=7) }}</option></select>
       </div>
-      <div class="row" style="justify-content: flex-end"><button class="btn primary"><span class="spin"></span><i class="bi bi-key"></i> {{ t("nodes.generate_token") }}</button></div>
+      <div class="row between">
+        <div class="small dim" style="flex: 1; min-width: 180px">{{ t("nodes.next_step") }}</div>
+        <button class="btn primary"><span class="spin"></span><i class="bi bi-key"></i> {{ t("nodes.generate_token") }}</button>
+      </div>
     </form>
     {% endif %}
   </div>

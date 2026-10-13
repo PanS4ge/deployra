@@ -399,6 +399,17 @@ svg.spark { display: block; flex: none; }
   .update-ver { font-size: 1.3rem; }
 }
 
+/* ---------- Przewodniki (np. dodawanie węzła) ---------- */
+ol.guide { margin: 0; padding: 0; list-style: none; counter-reset: guide; display: grid; gap: 8px; }
+ol.guide li { counter-increment: guide; position: relative; padding-left: 32px; min-height: 22px; line-height: 1.6; color: var(--text-dim); }
+ol.guide li::before {
+  content: counter(guide); position: absolute; left: 0; top: 1px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 0.75rem; font-weight: 700; line-height: 1; color: #fff; background: var(--grad);
+}
+.snippet { position: relative; }
+.snippet .code-block { padding-right: 96px; max-height: 420px; }
+.snippet > .btn { position: absolute; top: 8px; right: 18px; }
+
 /* ---------- Telefon ---------- */
 .topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .topbar-actions:not(:has(*)) { display: none; }
@@ -463,5 +474,8 @@ svg.spark { display: block; flex: none; }
   table.table:not(.keep) td.nowrap { white-space: normal; }
   table.table:not(.keep) td[style*="width"] { width: auto !important; }
   code { overflow-wrap: anywhere; }
+  .snippet { display: flex; flex-direction: column; gap: 6px; }
+  .snippet > .btn { position: static; order: -1; align-self: flex-end; }
+  .snippet .code-block { padding-right: 16px; }
   table.table:not(.keep) svg.spark { flex: 0 1 auto; min-width: 0; width: 100%; max-width: 132px; height: auto; }
 }

@@ -5,7 +5,7 @@
 {% endblock %}
 {% block content %}
 {% if pending %}
-<div class="callout" hx-post="/nodes/refresh" hx-trigger="every 6s [!document.hidden]" hx-swap="none">
+<div class="callout" hx-post="/nodes/refresh?quiet=1" hx-trigger="every 6s [!document.hidden]" hx-swap="none">
   <i class="bi bi-hourglass-split"></i>
   <div class="small">{{ t("nodes.waiting_join") }}</div>
 </div>

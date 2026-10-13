@@ -490,15 +490,31 @@
     "where_title": "Dokąd teraz prowadzi ruch?"
   },
   "invite": {
-    "copy_env": "Kopiuj .env",
-    "join_token": "Token dołączenia",
-    "repo_hint": "W katalogu repozytorium Deployry zapisz jako <code>deploy/.env</code>:",
-    "repo_title": "Albo z repozytorium",
-    "simple_hint": "Na serwerze węzła (Linux z Dockerem) zapisz plik poniżej jako <code>node.compose.yml</code> i uruchom:",
-    "simple_note": "Gotowe obrazy pobiorą się z GHCR — bez klonowania i budowania. WireGuard w kernelu (5.6+) albo <code>/dev/net/tun</code> dla wireguard-go.",
-    "simple_title": "Najprościej: sam plik compose",
-    "token_once": "Token wygenerowany. <b>Pokazuję go tylko raz</b> — skopiuj teraz. Ważny do {date}.",
-    "waiting": "Czekam na węzeł <b>{name}</b>… Gdy dołączy do tunelu, panel sam go sparuje i przeniesie Cię do listy."
+    "waiting": "Czekam na węzeł <b>{name}</b>… Gdy dołączy do tunelu, panel sam go sparuje i przeniesie Cię do listy.",
+    "token_ready": "Token gotowy i już wpisany w polecenia niżej. Jest jednorazowy, ważny do {date}.",
+    "how_title": "Uruchom węzeł {name}",
+    "step_where": "Wybierz niżej, gdzie stawiasz węzeł.",
+    "step_run": "Skopiuj gotowy plik albo polecenie i uruchom je na tym serwerze.",
+    "step_wait": "Zostań na tej stronie — panel sam wykryje i sparuje węzeł.",
+    "gateway": "Bramka",
+    "needs_title": "Wymagania",
+    "needs": "Linux z Dockerem (x86_64 albo arm64). Po stronie węzła nie otwierasz żadnych portów.",
+    "tab_terminal": "Terminal",
+    "portainer_1": "W Portainerze otwórz <b>Stacks → Add stack</b>.",
+    "portainer_2": "Nazwa: <code>deployra-node</code>, wybierz <b>Web editor</b> i wklej całość z ramki poniżej.",
+    "portainer_3": "Kliknij <b>Deploy the stack</b>.",
+    "terminal_hint": "Zaloguj się na serwer (SSH) i wklej całość — zapisze <code>~/deployra-node/compose.yml</code> i uruchomi węzeł.",
+    "no_docker": "Nie masz jeszcze Dockera? Najpierw: <code>curl -fsSL https://get.docker.com | sh</code>",
+    "run_hint": "Jedno polecenie, bez pliku compose.",
+    "lxc_title": "Kontener LXC albo maszyna wirtualna z Dockerem",
+    "lxc_hint": "Użyj zakładki Portainer albo Terminal wewnątrz tego kontenera / maszyny. W kontenerze LXC włącz najpierw <b>Options → Features → nesting</b> (w nieuprzywilejowanym także <b>keyctl</b>).",
+    "host_title": "Sam host Proxmoxa, bez Dockera",
+    "host_hint": "Węzeł jako usługa systemowa — widzi wszystkie kontenery LXC, które mają w środku Dockera. Wklej w powłoce hosta (jako root):",
+    "host_logs": "Logi: <code>journalctl -u deployra-backend -f</code>",
+    "waiting_hint": "Nie pojawia się po minucie? Na serwerze sprawdź <code>docker logs deployra-backend</code>.",
+    "c_host": "WireGuard i porty aplikacji na hoście",
+    "c_state": "klucze i stan węzła",
+    "c_files": "pliki aplikacji (ta sama ścieżka na hoście i w kontenerze)"
   },
   "jobs": {
     "col_job": "Zadanie",
@@ -805,7 +821,10 @@
     "ttl_hour": "1 godzina",
     "via_tunnel": "tunel",
     "waiting_join": "Czekam, aż nowe węzły dołączą do tunelu. Gdy kontener backendu wystartuje, panel sam dokończy parowanie.",
-    "wg_tunnel": "tunel WireGuard"
+    "wg_tunnel": "tunel WireGuard",
+    "gateway_target": "Węzeł połączy się tunelem z bramką <b class=\"mono\">{target}</b>. Tunel zestawia sam węzeł — po jego stronie nie otwierasz portów.",
+    "name_hint": "Pod tą nazwą zobaczysz węzeł w panelu, np. proxmox albo nas.",
+    "next_step": "Dalej dostaniesz gotowy plik do Portainera i polecenie do terminala."
   },
   "notifications": {
     "empty": "Cisza w eterze ✦"
@@ -1190,8 +1209,7 @@
     "need_address": "podaj adres, np. vps.example.com:51821",
     "no_pair_secret": "brak sekretu parowania dla tego węzła",
     "node_bad_reply": "odpowiedź węzła nie przeszła weryfikacji",
-    "node_mismatch": "odpowiedź węzła nie pasuje do żądania",
-    "snippet_run": "Uruchom"
+    "node_mismatch": "odpowiedź węzła nie pasuje do żądania"
   },
   "terminal": {
     "auto": "auto (bash → sh)",

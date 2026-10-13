@@ -3,7 +3,7 @@
 # Backend wykryje działające kontenery LXC z Dockerem w środku i będzie nimi zarządzał.
 #
 #   sudo bash deploy/install-native.sh                  # tryb bezpośredni (kod parowania w journalctl)
-#   sudo DEPLOYRA_GATEWAY=vps:51821 DEPLOYRA_JOIN=dplr1.… bash deploy/install-native.sh   # przez tunel
+#   sudo DEPLOYRA_NAME=proxmox DEPLOYRA_GATEWAY=vps:51821 DEPLOYRA_JOIN=dplr1.… bash deploy/install-native.sh   # przez tunel (gotowe polecenie daje panel)
 #   sudo bash deploy/install-native.sh --update 1.2.0   # aktualizacja (zwykle zleca ją panel przez systemd-run)
 set -euo pipefail
 
@@ -80,7 +80,7 @@ cp -r "$REPO_DIR/backend/deployra_backend" "$PREFIX/"
 
 if [ ! -f "$ENV_FILE" ]; then
   cat > "$ENV_FILE" <<EOF
-DEPLOYRA_NAME=$(hostname)
+DEPLOYRA_NAME=${DEPLOYRA_NAME:-$(hostname)}
 DEPLOYRA_PROXMOX=1
 DEPLOYRA_DATA=/var/lib/deployra
 DEPLOYRA_SRV=/srv/deployra

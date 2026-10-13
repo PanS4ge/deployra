@@ -490,15 +490,31 @@
     "where_title": "Where does traffic go now?"
   },
   "invite": {
-    "copy_env": "Copy .env",
-    "join_token": "Join token",
-    "repo_hint": "In the Deployra repository directory save this as <code>deploy/.env</code>:",
-    "repo_title": "Or from the repository",
-    "simple_hint": "On the node server (Linux with Docker) save the file below as <code>node.compose.yml</code> and run:",
-    "simple_note": "Ready-made images are pulled from GHCR — no cloning or building. WireGuard in the kernel (5.6+) or <code>/dev/net/tun</code> for wireguard-go.",
-    "simple_title": "Simplest: just the compose file",
-    "token_once": "Token generated. <b>It's shown only once</b> — copy it now. Valid until {date}.",
-    "waiting": "Waiting for node <b>{name}</b>… Once it joins the tunnel, the panel pairs it and takes you to the list."
+    "waiting": "Waiting for node <b>{name}</b>… Once it joins the tunnel, the panel pairs it and takes you to the list.",
+    "token_ready": "The token is ready and already filled into the commands below. It's single-use, valid until {date}.",
+    "how_title": "Start node {name}",
+    "step_where": "Pick below where you're setting up the node.",
+    "step_run": "Copy the ready file or command and run it on that server.",
+    "step_wait": "Stay on this page — the panel detects and pairs the node by itself.",
+    "gateway": "Gateway",
+    "needs_title": "Requirements",
+    "needs": "Linux with Docker (x86_64 or arm64). You don't open any ports on the node.",
+    "tab_terminal": "Terminal",
+    "portainer_1": "In Portainer open <b>Stacks → Add stack</b>.",
+    "portainer_2": "Name: <code>deployra-node</code>, choose <b>Web editor</b> and paste everything from the box below.",
+    "portainer_3": "Click <b>Deploy the stack</b>.",
+    "terminal_hint": "Log in to the server (SSH) and paste everything — it saves <code>~/deployra-node/compose.yml</code> and starts the node.",
+    "no_docker": "No Docker yet? First run: <code>curl -fsSL https://get.docker.com | sh</code>",
+    "run_hint": "A single command, no compose file.",
+    "lxc_title": "LXC container or virtual machine with Docker",
+    "lxc_hint": "Use the Portainer or Terminal tab inside that container / machine. In an LXC container first enable <b>Options → Features → nesting</b> (for an unprivileged one also <b>keyctl</b>).",
+    "host_title": "The Proxmox host itself, without Docker",
+    "host_hint": "The node as a system service — it sees every LXC container that runs Docker inside. Paste into the host's shell (as root):",
+    "host_logs": "Logs: <code>journalctl -u deployra-backend -f</code>",
+    "waiting_hint": "Not showing up after a minute? On the server check <code>docker logs deployra-backend</code>.",
+    "c_host": "WireGuard and app ports on the host",
+    "c_state": "node keys and state",
+    "c_files": "app files (same path on the host and in the container)"
   },
   "jobs": {
     "col_job": "Job",
@@ -805,7 +821,10 @@
     "ttl_hour": "1 hour",
     "via_tunnel": "tunnel",
     "waiting_join": "Waiting for new nodes to join the tunnel. Once the backend container starts, the panel finishes pairing by itself.",
-    "wg_tunnel": "WireGuard tunnel"
+    "wg_tunnel": "WireGuard tunnel",
+    "gateway_target": "The node will connect through the tunnel to the gateway <b class=\"mono\">{target}</b>. The node sets up the tunnel itself — you don't open ports on its side.",
+    "name_hint": "The node shows up in the panel under this name, e.g. proxmox or nas.",
+    "next_step": "Next you'll get a ready file for Portainer and a command for the terminal."
   },
   "notifications": {
     "empty": "All quiet in the ether ✦"
@@ -1190,8 +1209,7 @@
     "need_address": "enter an address, e.g. vps.example.com:51821",
     "no_pair_secret": "no pairing secret for this node",
     "node_bad_reply": "the node's reply failed verification",
-    "node_mismatch": "the node's reply doesn't match the request",
-    "snippet_run": "Run"
+    "node_mismatch": "the node's reply doesn't match the request"
   },
   "terminal": {
     "auto": "auto (bash → sh)",

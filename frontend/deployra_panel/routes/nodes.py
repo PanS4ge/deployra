@@ -7,7 +7,7 @@ import random
 import time
 
 import httpx
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Request, Response
 
 from deployra_common.client import RemoteError
 
@@ -32,16 +32,19 @@ def nodes(request: Request, panel: Panel = Depends(get_panel)):
 
 
 @router.post("/nodes/refresh")
-async def refresh(request: Request, panel: Panel = Depends(get_panel)):
+async def refresh(request: Request, quiet: bool = False, panel: Panel = Depends(get_panel)):
     done = await sync.refresh_pending(panel)
     if done:
         return redirect(request, "/nodes", t("msg.nodes_paired", count=done))
+    if quiet:  # odpytywanie w tle ze strony dołączania — bez dymka co 5 s
+        return Response(status_code=204)
     return toast(t("msg.node_not_joined"), "info")
 
 
 @router.get("/nodes/add")
 def add_page(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_ADD_DOCKERS))):
-    return render(request, "nodes/add.html", title=t("nodes.add"), gateway=panel.gateway())
+    gateway = panel.gateway()
+    return render(request, "nodes/add.html", title=t("nodes.add"), gateway=gateway, target=sync.node_target(gateway) if gateway else None)
 
 
 @router.post("/nodes/invite")
@@ -55,12 +58,16 @@ async def invite(
 ):
     subnets = [s for s in lan_subnets.replace(",", "\n").splitlines() if s.strip()]
     node_id, token = await sync.invite_node(panel, name, subnets, max(5, min(ttl, 7 * 24 * 60)))
+    from ..services import updates
+
     gateway = panel.gateway()
     node = panel.node(node_id)
-    snippet = sync.compose_snippet(gateway, token, node["name"], panel.db.setting("image_prefix") or sync.DEFAULT_IMAGES)
-    env = sync.env_snippet(gateway, token, node["name"])
-    return render(request, "nodes/invite.html", title=t("msg.title_join_node", name=node["name"]), node=node, token=token, snippet=snippet,
-                  gateway=gateway, env=env)  # fmt: skip
+    images = panel.db.setting("image_prefix") or sync.DEFAULT_IMAGES
+    args = (gateway, token, node["name"])
+    snippets = {"compose": sync.compose_snippet(*args, images), "shell": sync.shell_snippet(*args, images),
+                "run": sync.docker_run_snippet(*args, images), "native": sync.native_snippet(*args, updates.source(panel) or "PanS4ge/deployra")}  # fmt: skip
+    return render(request, "nodes/invite.html", title=t("msg.title_join_node", name=node["name"]), node=node, token=token, snippets=snippets,
+                  target=sync.node_target(gateway))  # fmt: skip
 
 
 @router.post("/nodes/direct")

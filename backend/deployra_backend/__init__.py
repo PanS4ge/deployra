@@ -1,4 +1,4 @@
 """Deployra Backend — agent na węźle z Dockerem."""
 
-__version__ = "1.1.9"
+__version__ = "1.1.10"
 NAME = "DeployraBackend"

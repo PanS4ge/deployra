@@ -344,36 +344,65 @@ async def remove_node(panel: Any, node: dict) -> None:
 DEFAULT_IMAGES = "ghcr.io/pans4ge/deployra"
 
 
-def env_snippet(gateway: dict, token: str, name: str) -> str:
-    """deploy/.env dla węzła stawianego z repozytorium (deploy/node.compose.yml)."""
-    bootstrap = urlparse(gateway["bootstrap_url"]).port or 51821
-    return f'DEPLOYRA_NAME="{name}"\nDEPLOYRA_GATEWAY="{gateway["public_host"]}:{bootstrap}"\nDEPLOYRA_JOIN="{token}"\n'
+def node_target(gateway: dict) -> str:
+    """Adres dołączania bramki (host:port), z którym łączy się nowy węzeł."""
+    return f"{gateway['public_host']}:{urlparse(gateway['bootstrap_url']).port or 51821}"
 
 
 def compose_snippet(gateway: dict, token: str, name: str, images: str = DEFAULT_IMAGES) -> str:
-    """Samodzielny node.compose.yml do wklejenia na nowym węźle (backend aktualizuje się sam)."""
-    host = gateway["public_host"]
-    bootstrap = urlparse(gateway["bootstrap_url"]).port or 51821
+    """Gotowy compose węzła — do wklejenia jako stack w Portainerze albo zapisania jako compose.yml."""
     images = (images or DEFAULT_IMAGES).strip().rstrip("-")
-    return f"""# node.compose.yml — Deployra Backend ({name}). {t("sync.snippet_run")}: docker compose -f node.compose.yml up -d
-name: deployra-node
-services:
+    return f"""services:
   deployra-backend:
-    image: ${{DEPLOYRA_IMAGES:-{images}}}-backend:${{DEPLOYRA_VERSION:-latest}}
+    image: {images}-backend:latest
     container_name: deployra-backend
-    network_mode: host
+    network_mode: host                     # {t('invite.c_host')}
     cap_add: [NET_ADMIN]
     devices: [/dev/net/tun]
-    restart: unless-stopped
     labels:
       deployra.system: backend
     environment:
       DEPLOYRA_NAME: "{name}"
-      DEPLOYRA_GATEWAY: "{host}:{bootstrap}"
+      DEPLOYRA_GATEWAY: "{node_target(gateway)}"
       DEPLOYRA_JOIN: "{token}"
       DEPLOYRA_LANG: "{i18n_lang()}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /var/lib/deployra:/var/lib/deployra
-      - /srv/deployra:/srv/deployra
+      - /var/lib/deployra:/var/lib/deployra   # {t('invite.c_state')}
+      - /srv/deployra:/srv/deployra           # {t('invite.c_files')}
+    restart: unless-stopped
+    mem_limit: 192m
+    logging: {{ driver: json-file, options: {{ max-size: 5m, max-file: "2" }} }}
 """
+
+
+def shell_snippet(gateway: dict, token: str, name: str, images: str = DEFAULT_IMAGES) -> str:
+    """Jedno wklejenie do terminala: zapisuje compose.yml w ~/deployra-node i uruchamia węzeł."""
+    compose = compose_snippet(gateway, token, name, images)
+    return f"mkdir -p ~/deployra-node && cd ~/deployra-node && cat > compose.yml <<'EOF'\n{compose}EOF\ndocker compose up -d\n"
+
+
+def docker_run_snippet(gateway: dict, token: str, name: str, images: str = DEFAULT_IMAGES) -> str:
+    images = (images or DEFAULT_IMAGES).strip().rstrip("-")
+    lines = [
+        "docker run -d --name deployra-backend --restart unless-stopped",
+        "  --network host --cap-add NET_ADMIN --device /dev/net/tun --memory 192m",
+        "  --label deployra.system=backend --log-opt max-size=5m --log-opt max-file=2",
+        f'  -e DEPLOYRA_NAME="{name}" -e DEPLOYRA_GATEWAY="{node_target(gateway)}" -e DEPLOYRA_LANG="{i18n_lang()}"',
+        f'  -e DEPLOYRA_JOIN="{token}"',
+        "  -v /var/run/docker.sock:/var/run/docker.sock -v /var/lib/deployra:/var/lib/deployra -v /srv/deployra:/srv/deployra",
+        f"  {images}-backend:latest",
+    ]
+    return " \\\n".join(lines) + "\n"
+
+
+def native_snippet(gateway: dict, token: str, name: str, repo: str = "PanS4ge/deployra") -> str:
+    """Host Proxmoxa bez Dockera: węzeł jako usługa systemd (widzi kontenery LXC z Dockerem w środku)."""
+    url = repo if repo.startswith(("https://", "http://")) else f"https://github.com/{repo}.git"
+    return (
+        "apt-get update && apt-get install -y git\n"
+        f"git clone {url} /opt/deployra\n"
+        f'DEPLOYRA_NAME="{name}" DEPLOYRA_GATEWAY="{node_target(gateway)}" \\\n'
+        f'  DEPLOYRA_JOIN="{token}" \\\n'
+        "  bash /opt/deployra/deploy/install-native.sh\n"
+    )

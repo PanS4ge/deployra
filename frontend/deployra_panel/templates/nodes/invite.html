@@ -1,35 +1,71 @@
 {% extends "base.html" %}
 {% block crumbs %}<div class="crumbs"><a href="/nodes">{{ t("nav.nodes") }}</a> /</div>{% endblock %}
+{% macro block(text) -%}
+<div class="snippet">
+  <pre class="code-block">{{ text }}</pre>
+  <button class="btn sm" data-copy="{{ text }}"><i class="bi bi-clipboard"></i> {{ t("common.copy") }}</button>
+</div>
+{%- endmacro %}
 {% block content %}
-<div class="callout ok"><i class="bi bi-check-circle"></i><div>{{ t("invite.token_once", date=node.token_expires | dt) }}</div></div>
-<div class="grid grid-2">
-  <div class="card">
-    <div class="card-head"><h2><i class="bi bi-1-circle"></i> {{ t("invite.simple_title") }}</h2></div>
-    <div class="card-body stack">
-      <div class="small dim">{{ t("invite.simple_hint") }}</div>
-      <pre class="code-block">docker compose -f node.compose.yml up -d</pre>
-      <div class="small dim">{{ t("invite.simple_note") }}</div>
-    </div>
+<div class="callout ok"><i class="bi bi-key"></i><div>{{ t("invite.token_ready", date=node.token_expires | dt) }}</div></div>
+
+<div class="card glow" x-data="{ tab: 'portainer' }">
+  <div class="card-head"><h2><i class="bi bi-hdd-network"></i> {{ t("invite.how_title", name=node.name) }}</h2></div>
+  <div class="card-body stack">
+    <ol class="guide">
+      <li>{{ t("invite.step_where") }}</li>
+      <li>{{ t("invite.step_run") }}</li>
+      <li>{{ t("invite.step_wait") }}</li>
+    </ol>
+    <dl class="kv small">
+      <dt>{{ t("invite.gateway") }}</dt><dd class="mono">{{ target }}</dd>
+      <dt>{{ t("invite.needs_title") }}</dt><dd>{{ t("invite.needs") }}</dd>
+    </dl>
   </div>
-  <div class="card">
-    <div class="card-head"><h2><i class="bi bi-2-circle"></i> {{ t("invite.repo_title") }}</h2><button class="btn sm" data-copy="{{ env }}"><i class="bi bi-clipboard"></i> {{ t("invite.copy_env") }}</button></div>
-    <div class="card-body stack">
-      <div class="small dim">{{ t("invite.repo_hint") }}</div>
-      <pre class="code-block">{{ env }}</pre>
-      <pre class="code-block">docker compose -f deploy/node.compose.yml up -d</pre>
-      <div class="field"><label>{{ t("invite.join_token") }}</label>
-        <span class="pill copy" data-copy="{{ token }}" style="white-space: normal; word-break: break-all">{{ token }} <i class="bi bi-clipboard"></i></span></div>
-    </div>
+  <nav class="tabs" style="padding: 0 12px">
+    <a href="#" :class="tab === 'portainer' && 'active'" @click.prevent="tab = 'portainer'"><i class="bi bi-stack"></i> Portainer</a>
+    <a href="#" :class="tab === 'terminal' && 'active'" @click.prevent="tab = 'terminal'"><i class="bi bi-terminal"></i> {{ t("invite.tab_terminal") }}</a>
+    <a href="#" :class="tab === 'run' && 'active'" @click.prevent="tab = 'run'"><i class="bi bi-play-circle"></i> docker run</a>
+    <a href="#" :class="tab === 'proxmox' && 'active'" @click.prevent="tab = 'proxmox'"><i class="bi bi-boxes"></i> Proxmox</a>
+  </nav>
+
+  <div class="card-body stack" x-show="tab === 'portainer'">
+    <ol class="guide">
+      <li>{{ t("invite.portainer_1") }}</li>
+      <li>{{ t("invite.portainer_2") }}</li>
+      <li>{{ t("invite.portainer_3") }}</li>
+    </ol>
+    {{ block(snippets.compose) }}
+  </div>
+
+  <div class="card-body stack" x-show="tab === 'terminal'" x-cloak>
+    <div class="small">{{ t("invite.terminal_hint") }}</div>
+    {{ block(snippets.shell) }}
+    <div class="small dim">{{ t("invite.no_docker") }}</div>
+  </div>
+
+  <div class="card-body stack" x-show="tab === 'run'" x-cloak>
+    <div class="small">{{ t("invite.run_hint") }}</div>
+    {{ block(snippets.run) }}
+  </div>
+
+  <div class="card-body stack" x-show="tab === 'proxmox'" x-cloak>
+    <h3>{{ t("invite.lxc_title") }}</h3>
+    <div class="small">{{ t("invite.lxc_hint") }}</div>
+    <h3 style="margin-top: 8px">{{ t("invite.host_title") }}</h3>
+    <div class="small">{{ t("invite.host_hint") }}</div>
+    {{ block(snippets.native) }}
+    <div class="small dim">{{ t("invite.host_logs") }}</div>
   </div>
 </div>
-<div class="card">
-  <div class="card-head"><h3>node.compose.yml</h3><button class="btn sm" data-copy="{{ snippet }}"><i class="bi bi-clipboard"></i> {{ t("common.copy") }}</button></div>
-  <div class="card-body"><pre class="code-block">{{ snippet }}</pre></div>
-</div>
-<div class="card" hx-post="/nodes/refresh" hx-trigger="every 5s [!document.hidden]" hx-swap="none">
-  <div class="card-body row">
-    <span class="spin" style="border-top-color: var(--violet-2)"></span>
-    <div>{{ t("invite.waiting", name=node.name) }}</div>
+
+<div class="card" hx-post="/nodes/refresh?quiet=1" hx-trigger="every 5s [!document.hidden]" hx-swap="none">
+  <div class="card-body row" style="flex-wrap: nowrap; align-items: flex-start">
+    <span class="spin" style="border-top-color: var(--violet-2); flex: none; margin-top: 3px"></span>
+    <div class="stack" style="gap: 4px">
+      <div>{{ t("invite.waiting", name=node.name) }}</div>
+      <div class="small dim">{{ t("invite.waiting_hint") }}</div>
+    </div>
   </div>
 </div>
 {% endblock %}
