@@ -91,6 +91,11 @@ class TunnelToken(BaseModel):
     token: str | None = None
 
 
+class ExternalTunnel(BaseModel):
+    config: str = Field(min_length=20, max_length=10_000)  # plik .conf klienta, np. z wg-easy
+    routes: list[str] | None = Field(default=None, max_length=32)  # podsieci przez tunel; puste = z adresu klienta
+
+
 class UpdateRequest(BaseModel):
     version: str
 
@@ -205,6 +210,7 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
             "wg_up": (ctx.edge or ctx.hub).control.is_up() if ctx.config.wg_enabled else False,
             "peers": [] if ctx.edge else ctx.hub.status(),
             "edge": ctx.edge.status() if ctx.edge else None,
+            "external": ctx.external.status(),
             "tokens": [
                 {"id": tid, "name": t["name"], "expires": t["expires"], "used": bool(t["used_by"])}
                 for tid, t in tokens.items()
@@ -307,6 +313,23 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
     @router.delete("/join-tokens/{token_id}")
     def drop_token(token_id: str, ctx: Context = Depends(get_ctx)) -> dict:
         ctx.drop_token(token_id)
+        return {"ok": True}
+
+    @router.get("/external-wg")
+    def external_list(ctx: Context = Depends(get_ctx)) -> dict:
+        return {"tunnels": ctx.external.status()}
+
+    @router.put("/external-wg/{name}")
+    def external_put(name: str, body: ExternalTunnel, ctx: Context = Depends(get_ctx)) -> dict:
+        entry = ctx.external.put(name, body.config, body.routes)
+        return {"name": name, "routes": entry["routes"], "ignored": entry["ignored"], "error": entry["error"]}
+
+    @router.delete("/external-wg/{name}")
+    def external_remove(name: str, ctx: Context = Depends(get_ctx)) -> dict:
+        try:
+            ctx.external.remove(name)
+        except KeyError:
+            raise HTTPException(404, tr("gw.ext.not_found")) from None
         return {"ok": True}
 
     @router.patch("/peers/{peer_id}")

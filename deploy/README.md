@@ -64,6 +64,18 @@ The panel shows an “Update available” banner. After you click “Update” i
 - **The panel and the gateway** get no access to Docker, so a small `deployra-*-updater` container sits next to them
   (~1 MB RAM when idle, no network, only `docker.sock`).
 
+## External WireGuard (wg-easy, home router)
+
+If your home machines already sit in another WireGuard server's network (e.g. `10.8.0.0/24` behind wg-easy on a separate VPS),
+the gateway can join it as a regular client: **Network → External WireGuard**, paste the client's `.conf` file (in wg-easy: new
+client → download). Proxy hosts can then point straight at `10.8.0.x` addresses — no Deployra needed on those machines.
+
+- Only the listed subnets go through the tunnel (by default the one from `Address`). wg-easy's `AllowedIPs = 0.0.0.0/0` is
+  dropped — otherwise all of the gateway's traffic would go through someone else's server. `DNS` and `PostUp/PostDown` are dropped too.
+- The configuration lives in the gateway's data, so the tunnel comes back by itself after a restart and after “Pull and redeploy”.
+- An interface brought up earlier by hand under the same name (e.g. `wg1`) is taken over.
+- A subnet can't also be assigned to a Deployra peer — remove it from the peer first (or remove the dead peer altogether).
+
 ## Images
 
 Ready-made images from GHCR by default (`linux/amd64` and `linux/arm64`), so there's nothing to build:

@@ -80,6 +80,7 @@ def main() -> None:
         wg_up = ctx.edge.up()
     else:
         wg_up = ctx.hub.up()
+    ctx.external.up_all()  # klient zewnętrznego WireGuarda (wg-easy itp.) — przed nginx, żeby cele 10.x były osiągalne
     result = ctx.apply_proxy()
     ctx.banwall.sync(ctx.bans.nets())
     logger.info(tr("gw.log.nginx_config", status=result.status, message=result.message).rstrip())

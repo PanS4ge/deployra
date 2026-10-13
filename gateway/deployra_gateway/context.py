@@ -52,6 +52,9 @@ class Context:
         from .edge import EdgeTunnel
 
         self.edge = EdgeTunnel(config, self.state, wg_control) if config.edge else None
+        from .wg_external import ExternalTunnels
+
+        self.external = ExternalTunnels(config, self.state)
         self.nginx = NginxControl(config.nginx_dir, config.nginx_reload, config.reload_timeout)
         self.jobs = JobRegistry()
         self.guard = SignatureGuard(lambda key: self.state.panel_secret if key == "panel" else None, NonceCache())

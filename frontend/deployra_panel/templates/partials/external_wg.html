@@ -1,0 +1,37 @@
+{% if error %}
+<div class="card-body"><div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div class="small">{{ error }}</div></div></div>
+{% elif tunnels %}
+<div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>{{ t("extwg.iface") }}</th><th>{{ t("common.address") }}</th><th>{{ t("extwg.routes") }}</th><th>{{ t("extwg.server") }}</th><th>Handshake</th><th class="right">{{ t("tunnel.traffic") }}</th><th></th></tr></thead>
+    <tbody>
+    {% for x in tunnels %}
+      <tr>
+        <td>
+          <div class="row" style="gap: 8px">
+            <span class="dot {{ 'ok' if x.online else ('warn' if x.up else 'err') }}"></span>
+            <span class="name mono">{{ x.name }}</span>
+          </div>
+        </td>
+        <td class="mono small">{{ x.addresses | join(", ") }}</td>
+        <td class="mono small">{{ x.routes | join(", ") }}</td>
+        <td class="mono small muted" title="{{ x.live_endpoint or '' }}">{{ x.endpoint }}</td>
+        <td class="small">{{ t("time.ago", value=x.handshake_age | duration) if x.handshake_age is not none else t("time.never") }}</td>
+        <td class="right small mono">{{ x.rx_bytes | bytes }} / {{ x.tx_bytes | bytes }}</td>
+        <td class="right">
+          {% if has(user, P.ALLOW_TUNNEL) %}
+          <button class="btn sm ghost danger" hx-post="/tunnel/external/{{ x.name }}/delete" hx-swap="none"
+                  hx-confirm="{{ t('extwg.remove_confirm', name=x.name) }}" data-danger><i class="bi bi-trash"></i></button>
+          {% endif %}
+        </td>
+      </tr>
+      {% if x.error %}
+      <tr><td colspan="7"><div class="callout err small"><i class="bi bi-x-octagon"></i><div>{{ x.error }}</div></div></td></tr>
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card-body muted small">{{ t("extwg.none") }}</div>
+{% endif %}

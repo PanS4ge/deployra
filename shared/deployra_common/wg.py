@@ -96,6 +96,7 @@ class WgInterface:
     addresses: list[str]
     listen_port: int | None = None
     mtu: int | None = None
+    table: str | None = None  # "off" = wg-quick nie dodaje tras (robimy to sami)
     post_up: list[str] = field(default_factory=list)
     post_down: list[str] = field(default_factory=list)
 
@@ -131,6 +132,8 @@ def render_quick(iface: WgInterface, peers: Iterable[WgPeer]) -> str:
         lines.append(f"ListenPort = {iface.listen_port}")
     if iface.mtu:
         lines.append(f"MTU = {iface.mtu}")
+    if iface.table:
+        lines.append(f"Table = {iface.table}")
     lines += [f"PostUp = {c}" for c in iface.post_up]
     lines += [f"PostDown = {c}" for c in iface.post_down]
     for peer in peers:
@@ -211,7 +214,7 @@ class WgControl:
     def write_conf(self, text: str) -> Path:
         self.conf_dir.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=self.conf_dir, prefix=f".{self.iface}.")
-        with os.fdopen(fd, "w") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(text)
         os.chmod(tmp, 0o600)
         os.replace(tmp, self.conf_path)
@@ -234,7 +237,7 @@ class WgControl:
     def syncconf(self, sync_text: str) -> None:
         fd, tmp = tempfile.mkstemp(prefix="deployra-wg-")
         try:
-            with os.fdopen(fd, "w") as fh:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 fh.write(sync_text)
             result = self._exec("wg", "syncconf", self.iface, tmp)
             if result.returncode != 0:

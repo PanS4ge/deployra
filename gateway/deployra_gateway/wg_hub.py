@@ -72,6 +72,13 @@ class Hub:
             if ipaddress.ip_network(subnet).overlaps(tunnel):
                 raise ValueError(tr("gw.subnet_overlap", subnet=subnet))
 
+        for ext_name, routes in (self.state.get("external_wg", {}) or {}).items():  # podsieć za zewnętrznym WireGuardem
+            for subnet in lan:
+                for existing in routes.get("routes", []):
+                    a, b = ipaddress.ip_network(subnet), ipaddress.ip_network(existing)
+                    if a.version == b.version and a.overlaps(b):
+                        raise ValueError(tr("gw.ext.routed_external", subnet=subnet, name=ext_name))
+
         def change(peers: dict) -> dict:
             for other_id, other in peers.items():
                 if other_id != peer_id and other["public_key"] == public_key:

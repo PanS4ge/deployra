@@ -67,7 +67,9 @@
       "synced": "Zsynchronizowano z panelem Deployry",
       "update_requested": "Zlecono aktualizację bramki do {version}",
       "waiting_sync": "Deployra-WG czeka na synchronizację z panelem Deployry.",
-      "wg_off": "WireGuard wyłączony (DEPLOYRA_WG=off) — tryb deweloperski"
+      "wg_off": "WireGuard wyłączony (DEPLOYRA_WG=off) — tryb deweloperski",
+      "ext_up": "Zewnętrzny WireGuard {name} działa: {routes}",
+      "ext_failed": "Zewnętrzny WireGuard {name}: {error}"
     },
     "nginx_pending": "nginx nie odpowiada (kontener nie działa?) — konfiguracja zostanie użyta przy starcie",
     "no_lego": "brak programu lego w obrazie bramki",
@@ -83,7 +85,21 @@
       "title": "Nieznany host"
     },
     "unknown_token": "nieznany token dołączenia",
-    "url_scheme": "adres musi zaczynać się od http:// lub https://"
+    "url_scheme": "adres musi zaczynać się od http:// lub https://",
+    "ext": {
+      "bad_name": "nazwa interfejsu: „wg” + litery/cyfry, np. wg1 (do 15 znaków), inna niż {iface}",
+      "bad_conf": "zły plik .conf: {error}",
+      "need_key_address": "w sekcji [Interface] brakuje PrivateKey albo Address",
+      "one_peer": "plik musi mieć dokładnie jeden [Peer] — serwer, z którym bramka się łączy",
+      "need_endpoint": "[Peer] nie ma Endpoint — bramka musi wiedzieć, dokąd się łączyć",
+      "no_routes": "podaj podsieci, które mają iść przez ten tunel (np. 10.8.0.0/24)",
+      "default_route": "{net} puściłoby przez tunel cały ruch bramki — podaj konkretne podsieci",
+      "overlap_hub": "{net} nachodzi na podsieć tunelu Deployry ({subnet})",
+      "overlap_peer": "{net} jest już kierowana do peera {name} — najpierw usuń ją tam (albo cały peer)",
+      "overlap_ext": "{net} idzie już przez tunel {name}",
+      "routed_external": "podsieć {subnet} idzie przez zewnętrzny WireGuard {name}",
+      "not_found": "nie ma takiego tunelu"
+    }
   },
   "node": {
     "adopt": {

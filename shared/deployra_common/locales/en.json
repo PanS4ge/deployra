@@ -67,7 +67,9 @@
       "synced": "Synced with the Deployra panel",
       "update_requested": "Gateway update to {version} requested",
       "waiting_sync": "Deployra-WG is waiting to sync with the Deployra panel.",
-      "wg_off": "WireGuard disabled (DEPLOYRA_WG=off) — development mode"
+      "wg_off": "WireGuard disabled (DEPLOYRA_WG=off) — development mode",
+      "ext_up": "External WireGuard {name} is up: {routes}",
+      "ext_failed": "External WireGuard {name}: {error}"
     },
     "nginx_pending": "nginx isn't responding (container down?) — the config will be used on start",
     "no_lego": "lego is missing from the gateway image",
@@ -83,7 +85,21 @@
       "title": "Unknown host"
     },
     "unknown_token": "unknown join token",
-    "url_scheme": "the address must start with http:// or https://"
+    "url_scheme": "the address must start with http:// or https://",
+    "ext": {
+      "bad_name": "interface name: “wg” + letters/digits, e.g. wg1 (up to 15 characters), other than {iface}",
+      "bad_conf": "bad .conf file: {error}",
+      "need_key_address": "[Interface] is missing PrivateKey or Address",
+      "one_peer": "the file must have exactly one [Peer] — the server the gateway connects to",
+      "need_endpoint": "[Peer] has no Endpoint — the gateway needs to know where to connect",
+      "no_routes": "list the subnets that should go through this tunnel (e.g. 10.8.0.0/24)",
+      "default_route": "{net} would send all of the gateway's traffic through the tunnel — list specific subnets",
+      "overlap_hub": "{net} overlaps the Deployra tunnel subnet ({subnet})",
+      "overlap_peer": "{net} is already routed to peer {name} — remove it there first (or the whole peer)",
+      "overlap_ext": "{net} already goes through tunnel {name}",
+      "routed_external": "subnet {subnet} goes through the external WireGuard {name}",
+      "not_found": "no such tunnel"
+    }
   },
   "node": {
     "adopt": {

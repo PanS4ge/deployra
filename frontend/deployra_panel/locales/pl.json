@@ -1420,5 +1420,24 @@
     "empty": "Brak wolumenów.",
     "name_placeholder": "nazwa_wolumenu",
     "path": "Ścieżka"
+  },
+  "extwg": {
+    "title": "Zewnętrzny WireGuard",
+    "add": "Połącz bramkę z innym serwerem WireGuard (wg-easy, router…)",
+    "iface": "Interfejs",
+    "routes": "Podsieci przez tunel",
+    "routes_placeholder": "domyślnie z Address, np. 10.8.0.0/24",
+    "config": "Plik .conf klienta",
+    "connect": "Połącz",
+    "server": "Serwer",
+    "none": "Brak",
+    "old_gateway": "Bramka nie obsługuje jeszcze zewnętrznego WireGuarda — zaktualizuj ją",
+    "no_gateway": "Najpierw połącz panel z bramką",
+    "saved": "Tunel {name} działa: {routes}",
+    "saved_down": "Zapisano {name}, ale tunel nie wstał: {error}",
+    "ignored": "Pominięto z pliku: {fields}.",
+    "removed": "Odłączono {name}",
+    "remove_confirm": "Odłączyć {name}? Hosty kierowane na adresy za tym tunelem przestaną działać.",
+    "notify": "{user}: bramka połączona z zewnętrznym WireGuardem {name} ({routes})"
   }
 }

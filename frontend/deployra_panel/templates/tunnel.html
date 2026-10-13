@@ -59,6 +59,28 @@
   </div>
 </div>
 
+<div class="card" id="external-card">
+  <div class="card-head"><h2><i class="bi bi-diagram-2"></i> {{ t("extwg.title") }}</h2></div>
+  <div hx-get="/tunnel/external" hx-trigger="load, every 10s [!document.hidden]" hx-swap="innerHTML" hx-disinherit="*">
+    <div class="card-body muted">{{ t("tunnel.asking_status") }}</div>
+  </div>
+  {% if has(user, P.ALLOW_TUNNEL) %}
+  <details class="card-body" style="border-top: 1px solid var(--border)">
+    <summary class="small" style="cursor: pointer"><i class="bi bi-plus-lg"></i> {{ t("extwg.add") }}</summary>
+    <form class="stack" style="margin-top: 12px" hx-post="/tunnel/external" hx-swap="none">
+      <div class="form-grid">
+        <div class="field"><label>{{ t("extwg.iface") }}</label><input class="input mono" name="name" value="wg1" pattern="wg[a-z0-9_\-]{1,13}" required></div>
+        <div class="field"><label>{{ t("extwg.routes") }}</label><input class="input mono" name="routes" placeholder="{{ t('extwg.routes_placeholder') }}"></div>
+        <div class="field full"><label>{{ t("extwg.config") }}</label>
+          <textarea class="textarea mono" name="config" required spellcheck="false" style="min-height: 180px"
+                    placeholder="[Interface]&#10;PrivateKey = …&#10;Address = 10.8.0.4/24&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = vpn.example.com:51820"></textarea></div>
+      </div>
+      <div class="row" style="justify-content: flex-end"><button class="btn"><span class="spin"></span><i class="bi bi-plug"></i> {{ t("extwg.connect") }}</button></div>
+    </form>
+  </details>
+  {% endif %}
+</div>
+
 <div class="card" id="edge-card">
   <div class="card-head"><h2><i class="bi bi-signpost-split"></i> {{ t("edge.title") }}</h2></div>
   {% if edge and edge.secret %}

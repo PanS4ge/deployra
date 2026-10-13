@@ -1420,5 +1420,24 @@
     "empty": "No volumes.",
     "name_placeholder": "volume_name",
     "path": "Path"
+  },
+  "extwg": {
+    "title": "External WireGuard",
+    "add": "Connect the gateway to another WireGuard server (wg-easy, router…)",
+    "iface": "Interface",
+    "routes": "Subnets through the tunnel",
+    "routes_placeholder": "defaults to Address, e.g. 10.8.0.0/24",
+    "config": "Client .conf file",
+    "connect": "Connect",
+    "server": "Server",
+    "none": "None",
+    "old_gateway": "The gateway doesn't support external WireGuard yet — update it",
+    "no_gateway": "Connect the panel to the gateway first",
+    "saved": "Tunnel {name} is up: {routes}",
+    "saved_down": "Saved {name}, but the tunnel didn't come up: {error}",
+    "ignored": "Skipped from the file: {fields}.",
+    "removed": "Disconnected {name}",
+    "remove_confirm": "Disconnect {name}? Hosts pointing at addresses behind this tunnel will stop working.",
+    "notify": "{user} connected the gateway to the external WireGuard {name} ({routes})"
   }
 }

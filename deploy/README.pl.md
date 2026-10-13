@@ -64,6 +64,18 @@ Panel pokazuje baner „Dostępna aktualizacja”. Po kliknięciu „Aktualizuj�
 - **Panel i bramka** nie mają dostępu do Dockera, więc obok nich stoi mały kontener `deployra-*-updater`
   (w spoczynku ~1 MB RAM, bez sieci, tylko z `docker.sock`).
 
+## Zewnętrzny WireGuard (wg-easy, router w domu)
+
+Gdy maszyny domowe są już w sieci innego serwera WireGuard (np. `10.8.0.0/24` za wg-easy na osobnym VPS-ie), bramka może
+dołączyć tam jak zwykły klient: **Sieć → Zewnętrzny WireGuard**, wklej plik `.conf` klienta (w wg-easy: nowy klient → pobierz).
+Hosty proxy kierujesz wtedy prosto na adresy `10.8.0.x` — bez Deployry na tych maszynach.
+
+- Przez tunel idą tylko podane podsieci (domyślnie ta z `Address`). `AllowedIPs = 0.0.0.0/0` z wg-easy jest pomijane —
+  inaczej cały ruch bramki szedłby przez cudzy serwer. `DNS` i `PostUp/PostDown` z pliku też są pomijane.
+- Konfiguracja leży w danych bramki, więc tunel wstaje sam po restarcie i po „Pull and redeploy”.
+- Interfejs postawiony wcześniej ręcznie pod tą samą nazwą (np. `wg1`) bramka przejmuje.
+- Podsieć nie może być jednocześnie przypisana do peera Deployry — usuń ją najpierw z peera (albo martwego peera w całości).
+
 ## Obrazy
 
 Domyślnie gotowe obrazy z GHCR (`linux/amd64` i `linux/arm64`), więc nic nie trzeba budować:

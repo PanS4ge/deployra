@@ -17,6 +17,7 @@ DEFAULTS: dict[str, Any] = {
     "proxy_state": None,  # ostatni zastosowany ProxyState (do odtworzenia po restarcie)
     "analytics_secret": None,  # klucz skrótów odwiedzających (bez niego nie da się odtworzyć IP)
     "cloudflared_token": None,  # token tunelu Cloudflare (gdy włączony)
+    "external_wg": {},  # nazwa -> klient zewnętrznego WireGuarda (wg-easy itp.), patrz wg_external
 }
 
 
