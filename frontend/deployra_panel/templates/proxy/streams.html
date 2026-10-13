@@ -2,16 +2,38 @@
 {% block content %}
 {% include "proxy/_tabs.html" %}
 {% if has(user, P.ALLOW_PROXY) %}
-<div class="card">
-  <div class="card-head"><h3><i class="bi bi-plus-circle"></i> {{ t("streams.new") }}</h3></div>
-  <form class="card-body row" hx-post="/proxy/streams/save" hx-swap="none" x-data="{ via: 'node' }">
-    <input class="input" style="width: 140px" name="listen_port" type="number" min="1" max="65535" placeholder="{{ t('streams.gateway_port_placeholder') }}" required>
+<div class="card" x-data="{
+  via: 'node',
+  listen_port: '',
+  upstream_port: '',
+  tcp: true,
+  udp: false,
+  setStream(lPort, uPort, isTcp, isUdp) {
+    this.listen_port = lPort;
+    this.upstream_port = uPort;
+    this.tcp = isTcp;
+    this.udp = isUdp;
+  }
+}">
+  <div class="card-head" style="flex-wrap: wrap">
+    <h3><i class="bi bi-plus-circle"></i> {{ t("streams.new") }}</h3>
+    <span class="spacer"></span>
+    <div class="row" style="gap: 6px; flex-wrap: wrap">
+      <span class="small muted">{{ t("streams.templates") }}:</span>
+      <button type="button" class="btn sm ghost" @click="setStream(25565, 25565, true, false)">{{ t("streams.tpl_mc_java") }}</button>
+      <button type="button" class="btn sm ghost" @click="setStream(19132, 19132, false, true)">{{ t("streams.tpl_mc_bedrock") }}</button>
+      <button type="button" class="btn sm ghost" @click="setStream(2222, 22, true, false)">{{ t("streams.tpl_ssh") }}</button>
+      <button type="button" class="btn sm ghost" @click="setStream(25575, 25575, true, false)">{{ t("streams.tpl_rcon") }}</button>
+    </div>
+  </div>
+  <form class="card-body row" hx-post="/proxy/streams/save" hx-swap="none">
+    <input class="input" style="width: 140px" name="listen_port" type="number" min="1" max="65535" placeholder="{{ t('streams.gateway_port_placeholder') }}" x-model="listen_port" required>
     <span class="muted">→</span>
     <select class="select" style="width: 200px" name="node_id" x-show="via === 'node'">{% for n in node_list if n.status == "paired" %}<option value="{{ n.id }}">{{ n.name }}</option>{% endfor %}</select>
     <input class="input mono" style="width: 170px" name="upstream_host" placeholder="{{ t('streams.lan_ip_placeholder') }}" @input="via = $event.target.value ? 'host' : 'node'">
-    <input class="input" style="width: 120px" name="upstream_port" type="number" min="1" max="65535" placeholder="port" required>
-    <label class="check"><input type="checkbox" name="tcp" value="1" checked><span class="sw"></span><span>TCP</span></label>
-    <label class="check"><input type="checkbox" name="udp" value="1"><span class="sw"></span><span>UDP</span></label>
+    <input class="input" style="width: 120px" name="upstream_port" type="number" min="1" max="65535" placeholder="port" x-model="upstream_port" required>
+    <label class="check"><input type="checkbox" name="tcp" value="1" x-model="tcp"><span class="sw"></span><span>TCP</span></label>
+    <label class="check"><input type="checkbox" name="udp" value="1" x-model="udp"><span class="sw"></span><span>UDP</span></label>
     <button class="btn primary"><i class="bi bi-plus-lg"></i> {{ t("common.add") }}</button>
   </form>
 </div>

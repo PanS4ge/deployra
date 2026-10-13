@@ -425,7 +425,8 @@ class ProxyState(BaseModel):
     sites: list[Site] = Field(default_factory=list)
     streams: list[Stream] = Field(default_factory=list)
     access_lists: list[AccessList] = Field(default_factory=list)
-    default_page: Literal["404", "deployra"] = "deployra"
+    default_page: Literal["404", "deployra", "passthrough"] = "deployra"
+    default_upstream: Upstream | None = None
 
 
 class CertRequest(BaseModel):

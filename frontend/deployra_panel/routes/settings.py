@@ -25,12 +25,16 @@ from ..web import redirect, render, toast
 
 router = APIRouter(dependencies=[Depends(current_user)])
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-GENERAL_KEYS = ("panel_domain", "base_domain", "acme_email", "default_page", "gravatar_default", "image_prefix", "language")
+GENERAL_KEYS = ("panel_domain", "base_domain", "acme_email", "default_page", "default_page_target", "gravatar_default", "image_prefix", "language")
 
 
 @router.get("/settings")
 def general(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
-    return render(request, "settings/general.html", title=t("nav.settings"), tab="general", s=panel.db.settings(), db=panel.db.dialect)
+    return render(
+        request, "settings/general.html", title=t("nav.settings"), tab="general",
+        s=panel.db.settings(), db=panel.db.dialect,
+        apps=panel.db.all("apps"), sites=panel.db.all("sites"),
+    )
 
 
 @router.post("/settings")
@@ -45,6 +49,9 @@ async def save_general(request: Request, panel: Panel = Depends(get_panel), user
             panel.default_language = value or panel.config.language or None
         panel.db.set_setting(key, value)
     panel.db.set_setting("acme_staging", bool(form.get("acme_staging")))
+    from ..services import proxy_state
+
+    await proxy_state.push(panel)
     return toast(t("msg.settings_saved"))
 
 

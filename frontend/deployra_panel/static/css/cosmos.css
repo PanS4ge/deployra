@@ -146,8 +146,8 @@ h3 { font-size: 1.02rem; }
 .card-head .sub { color: var(--muted); font-size: 0.85rem; }
 .card.glow { box-shadow: var(--shadow), var(--glow); }
 .card.link { transition: transform 0.15s, border-color 0.15s; cursor: pointer; }
-.card.link:hover { transform: translateY(-2px); border-color: var(--border-strong); }
 .grid { display: grid; gap: 18px; }
+.grid.align-start { align-items: start; }
 .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -366,7 +366,7 @@ table.table { width: 100%; border-collapse: collapse; }
 .beats span.muted { width: auto; height: auto; background: none; white-space: nowrap; flex: none; }
 
 /* ---------- Wykresy (SVG z serwera) ---------- */
-svg.chart { width: 100%; height: 240px; display: block; overflow: visible; }
+svg.chart { width: 100%; height: 170px; max-height: 200px; display: block; overflow: visible; }
 svg.chart .grid { stroke: rgba(139, 150, 255, 0.1); stroke-width: 1; }
 svg.chart .axis { fill: var(--muted); font-size: 11px; font-family: var(--font); }
 svg.chart .hover { fill: transparent; }

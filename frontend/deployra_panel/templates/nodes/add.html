@@ -20,6 +20,14 @@
     {% else %}
     <form class="card-body stack" method="post" action="/nodes/invite" hx-push-url="false">
       <div class="callout"><i class="bi bi-terminal"></i><div class="small">{{ t("nodes.gateway_target", target=target) }}</div></div>
+      <div class="card-body row" style="background: rgba(139, 92, 246, 0.05); border: 1px dashed var(--border); border-radius: 8px; padding: 10px 14px; gap: 14px">
+        <div class="small" style="line-height: 1.5">
+          <b>Jak to działa?</b><br>
+          <span class="badge violet sm">Krok 1</span> Nazwij swój serwer niżej.<br>
+          <span class="badge violet sm">Krok 2</span> Otrzymasz gotową komendę do wklejenia w SSH (oraz instrukcję jak w 30 sek postawić Dockera).<br>
+          <span class="badge ok sm">Krok 3</span> Twój serwer sam połączy się z Deployra!
+        </div>
+      </div>
       <div class="field">
         <label>{{ t("common.name") }}</label><input class="input" name="name" placeholder="{{ t('nodes.name_placeholder') }}" required maxlength="60" autofocus>
         <div class="hint">{{ t("nodes.name_hint") }}</div>

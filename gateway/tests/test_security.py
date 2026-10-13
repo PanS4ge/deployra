@@ -153,3 +153,25 @@ def test_geoip_lookup_and_refresh(tmp_path):
     updated = asyncio.run(geo.refresh(force=True, transport=httpx.MockTransport(handler)))
     assert updated == ["country", "asn"] and len(requested) == 4
     assert geo.path("country").read_bytes() == b"MMDB" and geo.status()["country"] is True
+
+
+def test_cloudflare_ips_protected(ctx):
+    # Cloudflare IP ranges are automatically allowed and cannot be banned
+    assert ctx.bans.allowed("104.21.5.10") is True
+    assert ctx.bans.allowed("172.67.100.20") is True
+    with pytest.raises(ValueError):
+        ctx.bans.add("104.16.1.1")
+
+
+def test_sample_requests_captured(tmp_path):
+    watch = IpWatch(tmp_path)
+    watch.ingest({"a": "198.51.100.22", "m": "POST", "r": "/api/v1/auth?token=123", "s": 401, "h": "app.example.com", "b": 42, "u": "curl/7.68.0"})
+    top = watch.top()
+    assert len(top) == 1
+    samples = top[0]["samples"]
+    assert len(samples) == 1
+    assert samples[0]["method"] == "POST"
+    assert samples[0]["path"] == "/api/v1/auth?token=123"
+    assert samples[0]["status"] == 401
+    assert samples[0]["ua"] == "curl/7.68.0"
+

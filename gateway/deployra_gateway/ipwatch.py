@@ -63,6 +63,7 @@ class IpWatch:
         self.day = _day(now)
         self.today: dict[str, list] = {}  # ip → [req, bytes, err4, err5, probes, last, {domena: n}]
         self.paths: dict[str, list[str]] = {}
+        self.samples: dict[str, list[dict[str, Any]]] = {}
         self._load_today()
 
     # --- zbieranie ----------------------------------------------------------------------
@@ -79,6 +80,8 @@ class IpWatch:
             status, size = 0, 0
         domain = str(record.get("h") or "_").lower().strip(".")[:253] or "_"
         path = str(record.get("r") or "")[:200]
+        method = str(record.get("m") or "GET").upper()[:10]
+        ua = str(record.get("u") or "")[:120]
         probe = bool(path) and PROBES.search(path) is not None
         with self._lock:
             self._roll(ts)
@@ -112,6 +115,21 @@ class IpWatch:
                 if path not in seen:
                     seen.append(path)
                     del seen[:-MAX_PATHS]
+            sample_list = self.samples.setdefault(ip, [])
+            sample_list.append({
+                "time": ts,
+                "method": method,
+                "path": path or "/",
+                "status": status,
+                "domain": domain,
+                "bytes": size,
+                "ua": ua,
+            })
+            if len(sample_list) > 12:
+                del sample_list[:-12]
+            if len(self.samples) > DAY_CAP * 2:
+                active_ips = set(self.today)
+                self.samples = {k: v for k, v in self.samples.items() if k in active_ips}
 
     def _roll(self, ts: float) -> None:
         minute = int(ts // 60)
@@ -121,7 +139,7 @@ class IpWatch:
         day = _day(ts)
         if day > self.day:
             self._persist()
-            self.day, self.today, self.paths = day, {}, {}
+            self.day, self.today, self.paths, self.samples = day, {}, {}, {}
             self.db.execute("DELETE FROM ip_daily WHERE day < ?", [_day(ts - self.retention_days * 86400)])
 
     # --- trwałość -------------------------------------------------------------------------
@@ -174,6 +192,7 @@ class IpWatch:
             for ip, row in self.today.items():
                 add(ip, row)
             paths = {ip: list(found) for ip, found in self.paths.items()}
+            samples = {ip: list(found) for ip, found in self.samples.items()}
 
         def requests(row: list) -> int:
             return row[6].get(domain, 0) if domain else row[REQ]
@@ -184,6 +203,7 @@ class IpWatch:
                 "ip": ip, "requests": requests(row), "bytes": row[BYTES], "err4": row[ERR4], "err5": row[ERR5],
                 "probes": row[PROBE], "last": row[5], "paths": paths.get(ip, []),
                 "domains": [name for name, _ in sorted(row[6].items(), key=lambda kv: kv[1], reverse=True)[:3]],
+                "samples": samples.get(ip, []),
             })  # fmt: skip
         return out
 
@@ -207,6 +227,7 @@ class IpWatch:
                     peaks[ip] = max(peaks.get(ip, 0), row[REQ])
             paths = {ip: list(found) for ip, found in self.paths.items()}
             domains = {ip: list(self.today[ip][6])[:3] if ip in self.today else [] for ip in totals}
+            samples = {ip: list(found) for ip, found in self.samples.items()}
         out = []
         for ip, row in totals.items():
             reasons = []
@@ -220,6 +241,7 @@ class IpWatch:
                 out.append({
                     "ip": ip, "reasons": reasons, "severity": "high" if reasons[0]["code"] == "rate" else "medium",
                     "requests": row[REQ], "peak": peaks[ip], "err4": row[ERR4], "paths": paths.get(ip, []), "domains": domains.get(ip, []),
+                    "samples": samples.get(ip, []),
                 })  # fmt: skip
         out.sort(key=lambda item: (item["severity"] != "high", -item["peak"]))
         return out

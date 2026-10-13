@@ -6,9 +6,13 @@
   <div class="row small"><span class="dot err"></span> {{ error }}</div>
 {% else %}
   <div class="row small"><span class="dot {{ 'ok' if gw.wg_up else 'warn' }}"></span> {{ gateway.public_host }} · {{ t("tunnel.peers_online", count=gw.peers | length, online=gw.peers | selectattr("online") | list | length) }}</div>
-  {% for p in gw.peers[:6] %}
-  <div class="row between small"><span class="row" style="gap: 6px"><span class="dot {{ 'ok' if p.online else 'err' }}"></span>{{ p.name }}</span><span class="mono muted">{{ p.address }}</span></div>
-  {% endfor %}
+  {% if gw.peers %}
+    {% for p in gw.peers[:6] %}
+    <div class="row between small"><span class="row" style="gap: 6px"><span class="dot {{ 'ok' if p.online else 'err' }}"></span>{{ p.name }}</span><span class="mono muted">{{ p.address }}</span></div>
+    {% endfor %}
+  {% else %}
+    <div class="small muted" style="padding-top: 4px"><i class="bi bi-info-circle"></i> {{ t("tunnel.zero_peers_hint") }}</div>
+  {% endif %}
   {% if gw.nginx and not gw.nginx.ok %}<div class="small" style="color: var(--warn)">nginx: {{ gw.nginx.message }}</div>{% endif %}
 {% endif %}
 </div>

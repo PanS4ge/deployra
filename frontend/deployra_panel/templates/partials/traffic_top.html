@@ -13,7 +13,10 @@
         <td class="mono small nowrap"><span class="copy" data-copy="{{ item.ip }}" title="{{ t('common.click_to_copy') }}" style="cursor: pointer">{{ item.ip }}</span>{% if item.probes %} <span class="badge warn" title="{{ item.paths | join(', ') }}">{{ t("traffic.probes_short", count=item.probes) }}</span>{% endif %}</td>
         <td class="small nowrap">{{ geo_cell(item.geo) }}</td>
         <td class="small trunc" style="max-width: 200px" title="{{ ('AS' ~ item.geo.asn) if item.geo.asn else '' }}">{{ item.geo.isp or "—" }}</td>
-        <td class="right mono small">{{ item.requests }}</td>
+        <td class="right nowrap">
+          <span class="mono small">{{ item.requests }}</span>
+          <button class="btn sm ghost icon" style="margin-left: 4px; padding: 1px 5px; font-size: 0.72rem" title="{{ t('traffic.samples_btn') }}" @click.stop="$dispatch('view-samples', { ip: '{{ item.ip }}', samples: {{ (item.samples or []) | tojson | forceescape }}, paths: {{ (item.paths or []) | tojson | forceescape }} })"><i class="bi bi-clock-history"></i></button>
+        </td>
         <td class="right small">{{ item.bytes | bytes }}</td>
         <td class="right mono small">{{ item.err4 }} / {{ item.err5 }}</td>
         <td class="small muted trunc" style="max-width: 200px" title="{{ item.domains | join(', ') }}">{{ item.domains | join(", ") }}</td>

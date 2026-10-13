@@ -9,8 +9,29 @@
 {% block content %}
 <div class="callout ok"><i class="bi bi-key"></i><div>{{ t("invite.token_ready", date=node.token_expires | dt) }}</div></div>
 
-<div class="card glow" x-data="{ tab: 'terminal' }">
-  <div class="card-head"><h2><i class="bi bi-hdd-network"></i> {{ t("invite.how_title", name=node.name) }}</h2></div>
+<!-- KROK 1: Przygotowanie serwera i instalacja Dockera -->
+<div class="card" style="margin-bottom: 16px">
+  <div class="card-head">
+    <h3><span class="badge violet" style="font-size: 0.9rem; padding: 2px 8px; margin-right: 6px">(1)</span> Przygotuj serwer &amp; Docker</h3>
+  </div>
+  <div class="card-body stack" style="gap: 12px">
+    <div class="small">
+      <b>1. Zaloguj się na swój serwer przez SSH:</b>
+    </div>
+    {{ block("ssh root@twoj-serwer-ip") }}
+    <div class="small">
+      <b>2. Nie masz jeszcze zainstalowanego Dockera?</b> Zainstaluj go w minutę oficjalnym skryptem:
+    </div>
+    {{ block("curl -fsSL https://get.docker.com | sh") }}
+    <div class="small dim"><i class="bi bi-info-circle"></i> {{ t("invite.needs") }} Po stronie Twojego serwera nie musisz otwierać żadnych portów — węzeł połączy się sam przez bezpieczny tunel.</div>
+  </div>
+</div>
+
+<!-- KROK 2: Uruchomienie węzła Deployra -->
+<div class="card glow" x-data="{ tab: 'terminal' }" style="margin-bottom: 16px">
+  <div class="card-head">
+    <h2><span class="badge violet" style="font-size: 0.9rem; padding: 2px 8px; margin-right: 6px">(2)</span> {{ t("invite.how_title", name=node.name) }}</h2>
+  </div>
   <div class="card-body stack">
     <ol class="guide">
       <li>{{ t("invite.step_where") }}</li>
@@ -23,16 +44,27 @@
     </dl>
   </div>
   <nav class="tabs" style="padding: 0 12px">
-    <a href="#" :class="tab === 'terminal' && 'active'" @click.prevent="tab = 'terminal'"><i class="bi bi-terminal"></i> {{ t("invite.tab_terminal") }}</a>
-    <a href="#" :class="tab === 'proxmox' && 'active'" @click.prevent="tab = 'proxmox'"><i class="bi bi-boxes"></i> Proxmox (LXC / Host)</a>
-    <a href="#" :class="tab === 'compose' && 'active'" @click.prevent="tab = 'compose'"><i class="bi bi-file-earmark-code"></i> Docker Compose</a>
+    <a href="#" :class="tab === 'terminal' && 'active'" @click.prevent="tab = 'terminal'"><i class="bi bi-terminal"></i> 🌟 {{ t("invite.tab_terminal") }} (Zalecane)</a>
     <a href="#" :class="tab === 'run' && 'active'" @click.prevent="tab = 'run'"><i class="bi bi-play-circle"></i> docker run</a>
+    <a href="#" :class="tab === 'compose' && 'active'" @click.prevent="tab = 'compose'"><i class="bi bi-file-earmark-code"></i> Docker Compose / Portainer</a>
+    <a href="#" :class="tab === 'proxmox' && 'active'" @click.prevent="tab = 'proxmox'"><i class="bi bi-boxes"></i> Proxmox (LXC / Host)</a>
   </nav>
 
   <div class="card-body stack" x-show="tab === 'terminal'">
     <div class="small">{{ t("invite.terminal_hint") }}</div>
     {{ block(snippets.shell) }}
     <div class="small dim">{{ t("invite.no_docker") }}</div>
+  </div>
+
+  <div class="card-body stack" x-show="tab === 'run'" x-cloak>
+    <div class="small">{{ t("invite.run_hint") }}</div>
+    {{ block(snippets.run) }}
+  </div>
+
+  <div class="card-body stack" x-show="tab === 'compose'" x-cloak>
+    <div class="small">{{ t("invite.compose_hint") }}</div>
+    <div class="callout small" style="background: rgba(139, 92, 246, 0.08); border-color: rgba(139, 92, 246, 0.3)"><i class="bi bi-box"></i> <div>{{ t("invite.portainer_1") }} {{ t("invite.portainer_2") }} {{ t("invite.portainer_3") }}</div></div>
+    {{ block(snippets.compose) }}
   </div>
 
   <div class="card-body stack" x-show="tab === 'proxmox'" x-cloak>
@@ -44,19 +76,13 @@
     {{ block(snippets.native) }}
     <div class="small dim">{{ t("invite.host_logs") }}</div>
   </div>
-
-  <div class="card-body stack" x-show="tab === 'compose'" x-cloak>
-    <div class="small">{{ t("invite.compose_hint") }}</div>
-    {{ block(snippets.compose) }}
-  </div>
-
-  <div class="card-body stack" x-show="tab === 'run'" x-cloak>
-    <div class="small">{{ t("invite.run_hint") }}</div>
-    {{ block(snippets.run) }}
-  </div>
 </div>
 
+<!-- KROK 3: Oczekiwanie na automatyczne sparowanie -->
 <div class="card" hx-post="/nodes/refresh?quiet=1" hx-trigger="every 5s [!document.hidden]" hx-swap="none">
+  <div class="card-head">
+    <h3><span class="badge ok" style="font-size: 0.9rem; padding: 2px 8px; margin-right: 6px">(3)</span> Gotowe — czekamy na połączenie</h3>
+  </div>
   <div class="card-body row" style="flex-wrap: nowrap; align-items: flex-start">
     <span class="spin" style="border-top-color: var(--violet-2); flex: none; margin-top: 3px"></span>
     <div class="stack" style="gap: 4px">

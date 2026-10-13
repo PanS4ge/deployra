@@ -22,6 +22,31 @@ from .state import State
 DEFAULT_SETTINGS = {"auto": False, "rate": 600, "minutes": 60, "allowlist": []}
 SETS = (("deployra-ban", "inet", "iptables", 4), ("deployra-ban6", "inet6", "ip6tables", 6))
 
+CLOUDFLARE_NETWORKS: tuple[str, ...] = (
+    "173.245.48.0/20",
+    "103.21.244.0/22",
+    "103.22.200.0/22",
+    "103.31.4.0/22",
+    "141.101.64.0/18",
+    "108.162.192.0/18",
+    "190.93.240.0/20",
+    "188.114.96.0/20",
+    "197.234.240.0/22",
+    "198.41.128.0/17",
+    "162.158.0.0/15",
+    "104.16.0.0/13",
+    "104.24.0.0/14",
+    "172.64.0.0/13",
+    "131.0.72.0/22",
+    "2400:cb00::/32",
+    "2606:4700::/32",
+    "2803:f800::/32",
+    "2405:b500::/32",
+    "2405:8100::/32",
+    "2a06:98c0::/29",
+    "2c0f:f248::/32",
+)
+
 
 def normalize(target: str, protected: list[str] | None = None) -> str:
     """Adres albo podsieć do zbanowania; odrzuca adresy prywatne, tunel i zbyt szerokie zakresy."""
@@ -43,7 +68,7 @@ def normalize(target: str, protected: list[str] | None = None) -> str:
 class Bans:
     def __init__(self, state: State, protected: list[str] | None = None) -> None:
         self.state = state
-        self.protected = protected or []
+        self.protected = list(protected or []) + list(CLOUDFLARE_NETWORKS)
 
     @property
     def settings(self) -> dict[str, Any]:
@@ -81,6 +106,8 @@ class Bans:
             address = ipaddress.ip_address(ip)
         except ValueError:
             return False
+        if any(address in ipaddress.ip_network(net, strict=False) for net in CLOUDFLARE_NETWORKS):
+            return True
         return any(address in ipaddress.ip_network(net, strict=False) for net in self.settings["allowlist"])
 
     def add(self, target: str, minutes: int | None = None, reason: str = "", auto: bool = False) -> dict[str, Any]:

@@ -10,7 +10,7 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
@@ -27,7 +27,7 @@ from .services import access
 from .web import is_htmx, render, toast
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-PUBLIC_PREFIXES = ("/static/", "/hooks/", "/healthz", "/login", "/setup", "/language")
+PUBLIC_PREFIXES = ("/static/", "/hooks/", "/healthz", "/login", "/setup", "/language", "/favicon.ico")
 
 
 def create_app(config: Config | None = None, panel: Panel | None = None) -> FastAPI:
@@ -73,7 +73,7 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
         path = request.url.path
         cookie_lang, accept = request.cookies.get(i18n.LANG_COOKIE), request.headers.get("accept-language")
         i18n_core.current.set(i18n.resolve(None, cookie_lang, panel.default_language, accept))
-        if path.startswith("/static/") or path.startswith("/hooks/") or path == "/healthz":
+        if path.startswith("/static/") or path.startswith("/hooks/") or path == "/healthz" or path == "/favicon.ico":
             return await call_next(request)
 
         has_users = await run_in_threadpool(panel.has_users)
@@ -146,6 +146,10 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
             request, "error.html", status_code=exc.status_code, title=i18n.t("msg.title_error", code=exc.status_code), message=str(exc.detail),
             icon="question-octagon" if exc.status_code == 404 else "exclamation-octagon",
         )  # fmt: skip
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon() -> Response:
+        return FileResponse(Path(__file__).parent / "static" / "img" / "favicon.ico", media_type="image/x-icon")
 
     @app.get("/healthz")
     def healthz() -> dict:

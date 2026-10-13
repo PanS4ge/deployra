@@ -61,14 +61,48 @@ add_header X-Deployra-Cache $upstream_cache_status;
 }
 
 def deployra_page() -> str:
-    """Kosmiczna strona „nieznany host” — dla odwiedzających, więc w stałym języku bramki (DEPLOYRA_LANG)."""
+    """Kosmiczna strona „nieznany host” — dla odwiedzających, w stałym języku bramki (DEPLOYRA_LANG)."""
     lang = i18n.default_language()
     title, text = (i18n.server.raw(f"gw.unknown_host.{key}", lang).replace('"', "'") for key in ("title", "text"))
     return (
-        f"<!DOCTYPE html><html lang={lang}><meta charset=utf-8><title>Deployra</title>"
-        "<body style='margin:0;min-height:100vh;display:grid;place-items:center;background:#05060f;color:#e6e8ff;"
-        f"font-family:system-ui'><div style=text-align:center><h1>{title}</h1>"
-        f"<p style=color:#8b90b8>{text}</p></div></body></html>"
+        f"<!DOCTYPE html><html lang='{lang}'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+        f"<title>{title} · Deployra</title>"
+        f"<style>"
+        f"body{{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#03050d;color:#e6e8ff;"
+        f"font-family:system-ui,-apple-system,sans-serif;"
+        f"background-image:radial-gradient(circle at 50% 20%,rgba(139,92,246,0.22),transparent 45%),"
+        f"radial-gradient(circle at 80% 80%,rgba(34,211,238,0.15),transparent 40%),"
+        f"radial-gradient(1px 1px at 25px 35px,#fff,transparent),"
+        f"radial-gradient(1.5px 1.5px at 120px 80px,#a5b4fc,transparent),"
+        f"radial-gradient(1px 1px at 240px 190px,#c4b5fd,transparent),"
+        f"radial-gradient(2px 2px at 320px 50px,#67e8f9,transparent);"
+        f"background-size:100% 100%,100% 100%,350px 350px,350px 350px,350px 350px,350px 350px;}}"
+        f".card{{background:rgba(10,13,30,0.8);backdrop-filter:blur(24px);border:1px solid rgba(139,92,246,0.3);"
+        f"border-radius:24px;padding:44px 32px;max-width:440px;width:90%;text-align:center;"
+        f"box-shadow:0 20px 60px rgba(0,0,0,0.8),0 0 50px rgba(139,92,246,0.18);}}"
+        f".badge{{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;text-transform:uppercase;"
+        f"letter-spacing:.08em;color:#c4b5fd;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.3);"
+        f"border-radius:9999px;padding:4px 12px;margin-bottom:20px;}}"
+        f".dot{{width:6px;height:6px;border-radius:50%;background:#22d3ee;box-shadow:0 0 8px #22d3ee;}}"
+        f"h1{{font-size:1.85rem;font-weight:800;margin:12px 0 8px;"
+        f"background:linear-gradient(135deg,#ffffff 40%,#c4b5fd 80%,#67e8f9 100%);"
+        f"-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-.02em;}}"
+        f"p{{color:#94a3b8;font-size:.95rem;line-height:1.5;margin:0 0 20px;}}"
+        f".foot{{font-size:.8rem;color:#64748b;border-top:1px solid rgba(255,255,255,0.06);padding-top:16px;margin-top:8px;}}"
+        f"</style></head>"
+        f"<body><div class='card'>"
+        f"<div class='badge'><span class='dot'></span>Deployra · Deep Space</div>"
+        f"<svg viewBox='0 0 64 64' width='84' height='84' fill='none' style='display:block;margin:0 auto 8px;filter:drop-shadow(0 0 20px rgba(139,92,246,0.5))'>"
+        f"<defs><radialGradient id='p' cx='38%' cy='32%' r='70%'>"
+        f"<stop offset='0' stop-color='#f0abfc'/><stop offset='.45' stop-color='#8b5cf6'/>"
+        f"<stop offset='1' stop-color='#1e1b4b'/></radialGradient></defs>"
+        f"<circle cx='32' cy='32' r='17' fill='url(#p)'/>"
+        f"<ellipse cx='32' cy='33' rx='29' ry='9' stroke='#22d3ee' stroke-width='3' transform='rotate(-18 32 32)'/>"
+        f"</svg>"
+        f"<h1>{title}</h1>"
+        f"<p>{text}</p>"
+        f"<div class='foot'>Deployra Edge Gateway · 404 Not Found</div>"
+        f"</div></body></html>"
     )
 
 
@@ -210,12 +244,17 @@ def render_stream(stream: Stream, ipv6: bool, bans: list[str] = ()) -> str:
     return "\n\n".join(out) + "\n"
 
 
-def render_default(ipv6: bool, page: str, root: str = ROOT) -> str:
-    body = (
-        f"default_type text/html;\n    return 404 \"{deployra_page()}\";"
-        if page == "deployra"
-        else "return 404;"
-    )
+def render_default(ipv6: bool, page: str, root: str = ROOT, default_upstream: Upstream | None = None) -> str:
+    if page == "passthrough" and default_upstream:
+        target_url = _upstream_url(default_upstream)
+        body = (
+            f"include {root}/snippets/proxy.conf;\n"
+            f"        proxy_pass {target_url};"
+        )
+    elif page == "deployra":
+        body = f"default_type text/html;\n        return 404 \"{deployra_page()}\";"
+    else:
+        body = "return 404;"
     http = _listen(80, ipv6, default=True) + ["server_name _;", BAN_CHECK, f"include {root}/snippets/acme.conf;"]
     https = _listen(443, ipv6, "ssl", default=True) + ["server_name _;", "ssl_reject_handshake on;"]
     return (
@@ -228,7 +267,7 @@ def render_default(ipv6: bool, page: str, root: str = ROOT) -> str:
 def render(state: ProxyState, cert_ready: Callable[[int], bool], ipv6: bool, root: str = ROOT, bans: list[str] = ()) -> dict[str, str]:
     """Zwraca {ścieżka względna: treść} dla katalogów http/, stream/, access/."""
     acls = {acl.id: acl for acl in state.access_lists}
-    files: dict[str, str] = {"http/00-bans.conf": render_bans(list(bans)), "http/00-default.conf": render_default(ipv6, state.default_page, root)}
+    files: dict[str, str] = {"http/00-bans.conf": render_bans(list(bans)), "http/00-default.conf": render_default(ipv6, state.default_page, root, state.default_upstream)}
     for site in state.sites:
         if not site.enabled:
             continue

@@ -93,7 +93,44 @@ def build_state(panel: Any) -> ProxyState:
                 clients=[AccessClient(**c) for c in row.get("clients") or []],
             )
         )  # fmt: skip
-    return ProxyState(sites=sites, streams=streams, access_lists=acls, default_page=db.setting("default_page", "deployra"))
+    default_page = db.setting("default_page", "deployra")
+    default_target_raw = db.setting("default_page_target", "")
+    default_upstream = None
+    if default_page == "passthrough" and default_target_raw:
+        try:
+            if default_target_raw.startswith("app:"):
+                app_id = int(default_target_raw.removeprefix("app:"))
+                app = db.get("apps", app_id)
+                if app:
+                    node = nodes.get(app.get("node_id"))
+                    host = panel.node_upstream_host(node) if node else None
+                    if host and app.get("port"):
+                        default_upstream = Upstream(scheme="http", host=host, port=int(app["port"]), path="")
+            elif default_target_raw.startswith("site:"):
+                site_id = int(default_target_raw.removeprefix("site:"))
+                site_row = db.get("sites", site_id)
+                if site_row and site_row.get("target"):
+                    default_upstream = resolve_target(panel, site_row["target"], nodes)
+            elif "://" in default_target_raw or ":" in default_target_raw:
+                raw = default_target_raw
+                scheme = "http"
+                if "://" in raw:
+                    scheme, raw = raw.split("://", 1)
+                path = ""
+                if "/" in raw:
+                    raw, path = raw.split("/", 1)
+                    path = "/" + path
+                host, port_str = raw.split(":", 1) if ":" in raw else (raw, "80")
+                default_upstream = Upstream(scheme=scheme, host=host.strip("[]"), port=int(port_str), path=path)
+        except Exception as exc:
+            logger.warning(f"Nie udało się ustalić default_upstream dla {default_target_raw}: {exc}")
+    return ProxyState(
+        sites=sites,
+        streams=streams,
+        access_lists=acls,
+        default_page=default_page if default_page in ("404", "deployra", "passthrough") else "deployra",
+        default_upstream=default_upstream,
+    )
 
 
 async def push(panel: Any) -> dict:

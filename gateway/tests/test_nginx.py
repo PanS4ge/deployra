@@ -63,6 +63,21 @@ def test_redirect_dead_stream_and_full_render():
     assert "ssl_reject_handshake on;" in files["http/00-default.conf"]
 
 
+def test_default_page_passthrough_and_cosmic():
+    # 1. Cosmic default page
+    state_cosmic = ProxyState(default_page="deployra")
+    files_cosmic = nginx_driver.render(state_cosmic, lambda cid: False, ipv6=False)
+    assert "Deployra · Deep Space" in files_cosmic["http/00-default.conf"]
+    assert "return 404" in files_cosmic["http/00-default.conf"]
+
+    # 2. Passthrough to custom upstream app
+    state_pass = ProxyState(default_page="passthrough", default_upstream={"scheme": "http", "host": "10.8.0.5", "port": 8080, "path": ""})
+    files_pass = nginx_driver.render(state_pass, lambda cid: False, ipv6=False)
+    assert "proxy_pass http://10.8.0.5:8080;" in files_pass["http/00-default.conf"]
+    assert "include /etc/nginx/deployra/snippets/proxy.conf;" in files_pass["http/00-default.conf"]
+
+
+
 def _fake_reloader(ctl_dir, verdict, stop):
     while not stop.is_set():
         for req in ctl_dir.glob("*.request"):

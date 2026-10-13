@@ -14,8 +14,35 @@
       </select>
       <div class="hint">{{ t("settings.default_language_hint") }}</div>
     </div>
-    <div class="field"><label>{{ t("settings.default_page") }}</label>
-      <select class="select" name="default_page"><option value="deployra" {{ "selected" if s.default_page != "404" }}>{{ t("settings.default_page_cosmic") }}</option><option value="404" {{ "selected" if s.default_page == "404" }}>{{ t("settings.default_page_404") }}</option></select>
+    <div class="field" x-data="{ mode: '{{ s.default_page or 'deployra' }}' }">
+      <label>{{ t("settings.default_page") }}</label>
+      <div class="stack" style="gap: 8px; flex: 1">
+        <select class="select" name="default_page" x-model="mode">
+          <option value="deployra" {{ "selected" if s.default_page == "deployra" or not s.default_page }}>{{ t("settings.default_page_cosmic") }}</option>
+          <option value="404" {{ "selected" if s.default_page == "404" }}>{{ t("settings.default_page_404") }}</option>
+          <option value="passthrough" {{ "selected" if s.default_page == "passthrough" }}>{{ t("settings.default_page_passthrough") }}</option>
+        </select>
+        <div x-show="mode === 'passthrough'" x-cloak class="stack" style="gap: 6px">
+          <select class="select" name="default_page_target">
+            <option value="">{{ t("settings.default_page_select_app") }}</option>
+            {% if apps %}
+            <optgroup label="{{ t('nav.apps') }}">
+              {% for a in apps %}
+              <option value="app:{{ a.id }}" {{ "selected" if s.default_page_target == 'app:' ~ a.id }}>{{ a.name }} ({{ a.domains | join(', ') if a.domains else (':' ~ a.port if a.port else '') }})</option>
+              {% endfor %}
+            </optgroup>
+            {% endif %}
+            {% if sites %}
+            <optgroup label="{{ t('nav.proxy') }}">
+              {% for st in sites if st.kind == 'proxy' %}
+              <option value="site:{{ st.id }}" {{ "selected" if s.default_page_target == 'site:' ~ st.id }}>{{ st.domains | join(', ') }}</option>
+              {% endfor %}
+            </optgroup>
+            {% endif %}
+          </select>
+          <div class="hint small muted">{{ t("settings.default_page_passthrough_hint") }}</div>
+        </div>
+      </div>
     </div>
     <div class="field"><label>{{ t("settings.gravatar") }}</label>
       <select class="select" name="gravatar_default">{% for g in ["identicon", "retro", "robohash", "monsterid", "wavatar", "mp"] %}<option {{ "selected" if s.gravatar_default == g }}>{{ g }}</option>{% endfor %}</select>

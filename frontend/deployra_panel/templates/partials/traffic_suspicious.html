@@ -17,7 +17,10 @@
           {% for r in item.reasons %}<span class="badge {{ 'err' if r.code == 'rate' else 'warn' }}" {% if r.code == 'probes' %}title="{{ item.paths | join(', ') }}"{% endif %}>{{ t("traffic.reason_" ~ r.code, value=r.value) }}</span> {% endfor %}
           {% if item.allowlisted %}<span class="badge ok">{{ t("traffic.allowlisted") }}</span>{% endif %}
         </td>
-        <td class="right mono small">{{ item.requests }}</td>
+        <td class="right nowrap">
+          <span class="mono small">{{ item.requests }}</span>
+          <button class="btn sm ghost icon" style="margin-left: 4px; padding: 1px 5px; font-size: 0.72rem" title="{{ t('traffic.samples_btn') }}" @click.stop="$dispatch('view-samples', { ip: '{{ item.ip }}', samples: {{ (item.samples or []) | tojson | forceescape }}, paths: {{ (item.paths or []) | tojson | forceescape }} })"><i class="bi bi-clock-history"></i></button>
+        </td>
         <td class="right nowrap">{{ ban_button(item, quick=True) }}</td>
       </tr>
     {% endfor %}

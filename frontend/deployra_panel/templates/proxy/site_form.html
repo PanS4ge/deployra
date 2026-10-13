@@ -4,7 +4,32 @@
 {% set r = site.redirect or {} %}
 {% block content %}
 <form class="stack" hx-post="/proxy/hosts/save" hx-swap="none"
-      x-data="{ ttype: '{{ tg.type or 'node' }}', ingress: '{{ site.ingress or 'public' }}' }">
+      x-data="{
+        ttype: '{{ tg.type or 'node' }}',
+        ingress: '{{ site.ingress or 'public' }}',
+        scheme: '{{ tg.scheme or 'http' }}',
+        port: '{{ tg.port or '' }}',
+        path: '{{ tg.path or '' }}',
+        websockets: {{ 'true' if site.websockets else 'false' }},
+        caching: {{ 'true' if site.caching else 'false' }},
+        block_exploits: {{ 'true' if site.block_exploits else 'false' }},
+        max_body_mb: {{ site.max_body_mb if site.max_body_mb is not none else 100 }},
+        hsts: {{ 'true' if site.hsts else 'false' }},
+        ssl_forced: {{ 'true' if site.ssl_forced else 'false' }},
+        activeTpl: '',
+        setTpl(name, tpl) {
+          this.activeTpl = name;
+          if (tpl.port !== undefined) this.port = tpl.port;
+          if (tpl.scheme !== undefined) this.scheme = tpl.scheme;
+          if (tpl.path !== undefined) this.path = tpl.path;
+          if (tpl.websockets !== undefined) this.websockets = tpl.websockets;
+          if (tpl.caching !== undefined) this.caching = tpl.caching;
+          if (tpl.block_exploits !== undefined) this.block_exploits = tpl.block_exploits;
+          if (tpl.max_body_mb !== undefined) this.max_body_mb = tpl.max_body_mb;
+          if (tpl.hsts !== undefined) this.hsts = tpl.hsts;
+          if (tpl.ssl_forced !== undefined) this.ssl_forced = tpl.ssl_forced;
+        }
+      }">
   <input type="hidden" name="id" value="{{ site.id or '' }}">
   <input type="hidden" name="kind" value="{{ kind }}">
   {% if site.app_id %}<div class="callout"><i class="bi bi-rocket-takeoff"></i><div class="small">{{ t("site.app_host_hint") }}</div></div>{% endif %}
@@ -25,6 +50,58 @@
   </div>
 
   {% if kind == "proxy" %}
+  <!-- Szablony konfiguracji aplikacji -->
+  <div class="card">
+    <div class="card-head">
+      <h3><i class="bi bi-magic"></i> {{ t("site.templates") }}</h3>
+      <span class="spacer"></span>
+      <span class="small muted">{{ t("site.templates_hint") }}</span>
+    </div>
+    <div class="card-body stack" style="gap: 12px">
+      <div class="row" style="gap: 8px; flex-wrap: wrap">
+        <button type="button" class="btn sm ghost" :class="activeTpl === 'minecraft' && 'primary'" @click="setTpl('minecraft', {port: 8123, scheme: 'http', websockets: true, block_exploits: true, max_body_mb: 50})">
+          {{ t("site.tpl_minecraft") }}
+        </button>
+        <button type="button" class="btn sm ghost" :class="activeTpl === 'nodejs' && 'primary'" @click="setTpl('nodejs', {port: 3000, scheme: 'http', websockets: true, caching: false, block_exploits: true, max_body_mb: 100})">
+          {{ t("site.tpl_nodejs") }}
+        </button>
+        <button type="button" class="btn sm ghost" :class="activeTpl === 'nextcloud' && 'primary'" @click="setTpl('nextcloud', {port: 80, scheme: 'http', websockets: true, max_body_mb: 10240, hsts: true, block_exploits: false})">
+          {{ t("site.tpl_nextcloud") }}
+        </button>
+        <button type="button" class="btn sm ghost" :class="activeTpl === 'homeassistant' && 'primary'" @click="setTpl('homeassistant', {port: 8123, scheme: 'http', websockets: true, max_body_mb: 100})">
+          {{ t("site.tpl_homeassistant") }}
+        </button>
+        <button type="button" class="btn sm ghost" :class="activeTpl === 'jellyfin' && 'primary'" @click="setTpl('jellyfin', {port: 8096, scheme: 'http', websockets: true, max_body_mb: 0, caching: false})">
+          {{ t("site.tpl_jellyfin") }}
+        </button>
+        <button type="button" class="btn sm ghost" :class="activeTpl === 'portainer' && 'primary'" @click="setTpl('portainer', {port: 9000, scheme: 'http', websockets: true, max_body_mb: 100})">
+          {{ t("site.tpl_portainer") }}
+        </button>
+        <button type="button" class="btn sm ghost" :class="activeTpl === 'proxmox' && 'primary'" @click="setTpl('proxmox', {port: 8006, scheme: 'https', websockets: true, max_body_mb: 100})">
+          {{ t("site.tpl_proxmox") }}
+        </button>
+        <button type="button" class="btn sm ghost" :class="activeTpl === 'wordpress' && 'primary'" @click="setTpl('wordpress', {port: 80, scheme: 'http', websockets: false, max_body_mb: 128, block_exploits: true})">
+          {{ t("site.tpl_wordpress") }}
+        </button>
+        <button type="button" class="btn sm ghost" :class="activeTpl === 'vaultwarden' && 'primary'" @click="setTpl('vaultwarden', {port: 80, scheme: 'http', websockets: true, max_body_mb: 100, hsts: true, ssl_forced: true})">
+          {{ t("site.tpl_vaultwarden") }}
+        </button>
+      </div>
+
+      <div class="callout info small" x-show="activeTpl === 'minecraft'" x-cloak>
+        <i class="bi bi-controller"></i>
+        <div class="stack" style="gap: 6px">
+          <div><b>{{ t("site.tpl_minecraft") }}:</b> {{ t("site.tpl_minecraft_hint") }}</div>
+          <div class="row" style="gap: 12px; flex-wrap: wrap">
+            <a href="/dns" class="name"><i class="bi bi-globe2"></i> <b>{{ t("site.tpl_minecraft_dns_link") }}</b></a>
+            <span class="muted">·</span>
+            <a href="/proxy/streams" class="name muted"><i class="bi bi-shuffle"></i> {{ t("site.tpl_minecraft_stream_link") }}</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="card">
     <div class="card-head"><h3><i class="bi bi-bullseye"></i> {{ t("proxy.target") }}</h3></div>
     <div class="card-body stack">
@@ -41,9 +118,9 @@
           <select class="select" name="via_node"><option value="">—</option>{% for n in nodes %}<option value="{{ n.id }}" {{ "selected" if tg.via_node == n.id }}>{{ n.name }}</option>{% endfor %}</select>
           <div class="hint">{{ t("site.via_node_hint") }}</div>
         </div>
-        <div class="field"><label>{{ t("site.scheme") }}</label><select class="select" name="scheme"><option {{ "selected" if tg.scheme != "https" }}>http</option><option {{ "selected" if tg.scheme == "https" }}>https</option></select></div>
-        <div class="field"><label>Port</label><input class="input" name="port" type="number" min="1" max="65535" value="{{ tg.port or '' }}" required></div>
-        <div class="field"><label>{{ t("site.target_path") }}</label><input class="input mono" name="path" value="{{ tg.path or '' }}" placeholder="/"></div>
+        <div class="field"><label>{{ t("site.scheme") }}</label><select class="select" name="scheme" x-model="scheme"><option value="http">http</option><option value="https">https</option></select></div>
+        <div class="field"><label>Port</label><input class="input" name="port" type="number" min="1" max="65535" x-model="port" required></div>
+        <div class="field"><label>{{ t("site.target_path") }}</label><input class="input mono" name="path" x-model="path" placeholder="/"></div>
       </div>
       <details {{ "open" if site.locations }}>
         <summary class="small muted" style="cursor: pointer">{{ t("site.locations", count=(site.locations or []) | length) }}</summary>
@@ -75,9 +152,9 @@
         </select>
       </div>
       <div class="field" style="justify-content: flex-end; gap: 10px">
-        <label class="check"><input type="checkbox" name="ssl_forced" value="1" {{ "checked" if site.ssl_forced }}><span class="sw"></span><span>{{ t("apps.force_https") }}</span></label>
+        <label class="check"><input type="checkbox" name="ssl_forced" value="1" x-model="ssl_forced"><span class="sw"></span><span>{{ t("apps.force_https") }}</span></label>
         <label class="check"><input type="checkbox" name="http2" value="1" {{ "checked" if site.http2 }}><span class="sw"></span><span>HTTP/2</span></label>
-        <label class="check"><input type="checkbox" name="hsts" value="1" {{ "checked" if site.hsts }}><span class="sw"></span><span>HSTS</span></label>
+        <label class="check"><input type="checkbox" name="hsts" value="1" x-model="hsts"><span class="sw"></span><span>HSTS</span></label>
         <label class="check"><input type="checkbox" name="hsts_subdomains" value="1" {{ "checked" if site.hsts_subdomains }}><span class="sw"></span><span>{{ t("site.hsts_subdomains") }}</span></label>
       </div>
     </div>
@@ -87,17 +164,17 @@
     <div class="card-head"><h3><i class="bi bi-sliders"></i> {{ t("site.options") }}</h3></div>
     <div class="card-body form-grid">
       <div class="stack" style="gap: 10px">
-        {% if kind == "proxy" %}<label class="check"><input type="checkbox" name="websockets" value="1" {{ "checked" if site.websockets }}><span class="sw"></span><span>WebSockets</span></label>
-        <label class="check"><input type="checkbox" name="caching" value="1" {{ "checked" if site.caching }}><span class="sw"></span><span>{{ t("site.caching") }}</span></label>
+        {% if kind == "proxy" %}<label class="check"><input type="checkbox" name="websockets" value="1" x-model="websockets"><span class="sw"></span><span>WebSockets</span></label>
+        <label class="check"><input type="checkbox" name="caching" value="1" x-model="caching"><span class="sw"></span><span>{{ t("site.caching") }}</span></label>
         <label class="check"><input type="checkbox" name="trust_forwarded_proto" value="1" {{ "checked" if site.trust_forwarded_proto }}><span class="sw"></span><span>{{ t("site.trust_xfp") }}</span></label>{% endif %}
-        <label class="check"><input type="checkbox" name="block_exploits" value="1" {{ "checked" if site.block_exploits }}><span class="sw"></span><span>{{ t("site.block_exploits") }}</span></label>
+        <label class="check"><input type="checkbox" name="block_exploits" value="1" x-model="block_exploits"><span class="sw"></span><span>{{ t("site.block_exploits") }}</span></label>
         <label class="check"><input type="checkbox" name="enabled" value="1" {{ "checked" if site.enabled }}><span class="sw"></span><span>{{ t("site.enabled") }}</span></label>
       </div>
       <div class="stack">
         <div class="field"><label>{{ t("site.access_list") }}</label>
           <select class="select" name="access_list_id"><option value="">{{ t("site.public") }}</option>{% for a in acls %}<option value="{{ a.id }}" {{ "selected" if site.access_list_id == a.id }}>{{ a.name }}</option>{% endfor %}</select>
         </div>
-        {% if kind == "proxy" %}<div class="field"><label>{{ t("site.max_body") }}</label><input class="input" name="max_body_mb" type="number" min="0" value="{{ site.max_body_mb }}"></div>{% endif %}
+        {% if kind == "proxy" %}<div class="field"><label>{{ t("site.max_body") }}</label><input class="input" name="max_body_mb" type="number" min="0" x-model="max_body_mb"></div>{% endif %}
       </div>
       {% if has(user, P.ALLOW_PROXY_ADVANCED) %}
       <div class="field full">

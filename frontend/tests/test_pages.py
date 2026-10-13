@@ -45,3 +45,11 @@ def test_npm_import_lives_in_settings(admin):
     assert 'href="/import/npm"' in settings
     page = admin.get("/import/npm", headers={"HX-Request": ""}).text
     assert 'class="tabs"' in page and 'class="active"' in page
+
+
+def test_favicon_accessible_without_login(client):
+    res = client.get("/favicon.ico")
+    assert res.status_code == 200
+    assert "image/x-icon" in res.headers["content-type"]
+    assert len(res.content) > 100
+

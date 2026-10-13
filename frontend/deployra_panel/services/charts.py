@@ -55,7 +55,7 @@ def area_chart(
     labels: Sequence[str],
     series: Sequence[tuple[str, Sequence[float], str, bool]],
     width: int = 860,
-    height: int = 240,
+    height: int = 170,
     scale_max: float | None = None,
 ) -> Markup:
     """Wykres: lista serii (nazwa, wartości, kolor, czy wypełniać). Podpowiedzi przez <title>. `scale_max` — stała skala (np. 100 dla %)."""

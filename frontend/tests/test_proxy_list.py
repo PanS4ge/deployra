@@ -1,10 +1,13 @@
+import time
+
 from deployra_common.client import RemoteError
-from deployra_panel.services import analytics, proxy_health
+from deployra_panel.services import analytics, proxy_health, proxy_state
 
 
 class FakeGateway:
     def __init__(self, batch=True):
         self.batch, self.posts, self.gets = batch, [], 0
+        self.get_paths = []
 
     async def post(self, path, json=None, **_):
         self.posts.append((path, json))
@@ -16,6 +19,7 @@ class FakeGateway:
 
     async def get(self, path, **_):
         self.gets += 1
+        self.get_paths.append(path)
         return {"domains": {"a.example.com": [{"day": "2026-10-12", "requests": 5, "uniques": 3, "returning": 1, "bytes": 10}]}}
 
 
@@ -29,6 +33,7 @@ def test_proxy_list_loads_health_and_sparks_in_batches(admin, monkeypatch):
     panel = admin.app.state.panel
     proxy_health._cache.clear()
     analytics._cache.clear()
+    proxy_state._EXTERNAL_CACHE.update(at=time.time(), routes={})
     gateway = FakeGateway()
     monkeypatch.setattr(panel, "gateway_client", lambda: gateway)
     ids = add_sites(panel)
