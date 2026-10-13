@@ -14,8 +14,8 @@
         <td><span class="badge">{{ r.type }}</span></td>
         <td class="mono"><span class="name">{{ short }}</span>{% if short != "@" and short != r.name %}<span class="muted small">.{{ zone_name }}</span>{% endif %}</td>
         <td class="mono small" style="max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" title="{{ r.content }}">
+          {% if known.get(r.content) %}<span class="badge ok" title="{{ t('dnsrec.known_hint') }}"><i class="bi bi-hdd-network"></i> {{ known[r.content] | join(" · ") }}</span> {% endif %}
           {% if r.type == "MX" %}<span class="muted">{{ r.priority }}</span> {% endif %}{{ r.content }}
-          {% if gateway_ip and r.content == gateway_ip %}<span class="badge ok" title="{{ t('dnsrec.gateway_hint') }}">{{ t("dnsrec.gateway") }}</span>{% endif %}
         </td>
         <td>{% if r.type in proxiable %}<i class="bi {{ 'bi-cloud-fill' if r.proxied else 'bi-cloud' }}" style="color: {{ '#f6821f' if r.proxied else 'var(--muted, #888)' }}" title="{{ t('dnsrec.proxied') }}"></i>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="small nowrap">{{ ttl_text(r.ttl) }}</td>

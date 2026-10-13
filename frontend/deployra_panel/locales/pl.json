@@ -1545,6 +1545,8 @@
     "notify_deleted": "{user}: usunięto rekord DNS {name}",
     "bad_type": "nieobsługiwany typ rekordu",
     "need_content": "podaj wartość rekordu",
-    "bad_ip": "{value} to nie jest adres IP pasujący do typu rekordu"
+    "bad_ip": "{value} to nie jest adres IP pasujący do typu rekordu",
+    "edge": "bramka brzegowa",
+    "known_hint": "ten adres to serwer Deployry"
   }
 }

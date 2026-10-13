@@ -3,7 +3,7 @@ import json
 import httpx
 
 from deployra_common.schemas import AppSpec
-from deployra_panel.services import deploy, dns, dns_records
+from deployra_panel.services import deploy, dns, dns_records, sync
 from test_resources import nodes  # noqa: F401 — fixture `nodes`
 
 ZONE = {"id": "z1", "name": "example.com"}
@@ -53,6 +53,12 @@ def test_dns_page_links_records_and_edits(admin, nodes, monkeypatch):
     panel.db.set_setting("public_ip", "203.0.113.10")
     monkeypatch.setattr(dns, "client", lambda p: dns.Cloudflare("token", transport=httpx.MockTransport(cloudflare.handler)))
 
+    async def hub_status(panel):  # węzeł „dom” widziany przez WireGuard z adresu 203.0.113.10
+        return {"peers": [{"id": "peer-dom", "endpoint": "203.0.113.10:51820"}]}
+
+    monkeypatch.setattr(sync, "gateway_status", hub_status)
+    panel.db.update("nodes", 1, peer_id="peer-dom")
+
     spec = AppSpec.model_validate({"slug": "blog", "source": {"kind": "image", "image": "ghost:5"}, "container_port": 2368, "domains": ["blog.example.com"]})
     app_id = deploy.create_app_row(panel, "Blog", 1, spec, {})
     site_blog = panel.db.insert("sites", kind="proxy", domains=["blog.example.com"], target={"type": "node", "node_id": 1, "port": 20001}, app_id=app_id)
@@ -65,7 +71,7 @@ def test_dns_page_links_records_and_edits(admin, nodes, monkeypatch):
     table = admin.get("/dns/records", params={"zone": "z1", "name": "example.com"}).text
     assert "/apps/" in table and "/nodes/1/containers/app-blog" in table and "Deployra" in table  # rekord → aplikacja → kontener
     assert f"/proxy/hosts/{site_nas}" in table and "→ 10.8.0.12:443" in table  # nas i *.dev → host proxy z adresem
-    assert table.count("dnsrec") == 0 and ">bramka<" in table and "1 h" in table and "5 min" in table
+    assert table.count("dnsrec") == 0 and "dom · bramka</span>" in table and "1 h" in table and "5 min" in table  # IP rozpoznane: węzeł + bramka
 
     added = admin.post("/dns/records", data={"zone": "z1", "zone_name": "example.com", "type": "A", "name": "kuma", "content": "203.0.113.10",
                                              "ttl": "1", "proxied": "1"})  # fmt: skip

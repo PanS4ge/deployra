@@ -1545,6 +1545,8 @@
     "notify_deleted": "{user} deleted DNS record {name}",
     "bad_type": "unsupported record type",
     "need_content": "enter the record value",
-    "bad_ip": "{value} isn't an IP address matching the record type"
+    "bad_ip": "{value} isn't an IP address matching the record type",
+    "edge": "edge gateway",
+    "known_hint": "this address is a Deployra server"
   }
 }

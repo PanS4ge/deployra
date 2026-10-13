@@ -119,3 +119,64 @@ async def gateway_ip(panel: Any) -> str | None:
         return await public_ip(panel)
     except (DnsError, OSError):
         return None
+
+
+async def known_ips(panel: Any) -> dict[str, list[str]]:
+    """IP → nazwy serwerów Deployry (bramka, bramka brzegowa, węzły) — do plakietki przy wartości rekordu."""
+    import asyncio
+    import socket
+    from urllib.parse import urlparse
+
+    out: dict[str, list[str]] = {}
+
+    def add(ip: str | None, label: str) -> None:
+        if ip and label not in out.setdefault(ip, []):
+            out[ip].append(label)
+
+    async def resolve(host: str | None) -> list[str]:
+        host = (host or "").strip().strip("[]")
+        if not host:
+            return []
+        try:
+            return [str(ipaddress.ip_address(host))]
+        except ValueError:
+            pass
+        try:
+            infos = await asyncio.wait_for(asyncio.to_thread(socket.getaddrinfo, host, None), 3)
+        except (OSError, asyncio.TimeoutError):
+            return []
+        return sorted({i[4][0] for i in infos})
+
+    nodes = panel.db.all("nodes")
+    # węzły w tunelu: publiczny adres widać jako endpoint WireGuarda na hubie
+    try:
+        from .sync import gateway_status
+
+        status = await asyncio.wait_for(gateway_status(panel), 5) or {}
+    except Exception:  # noqa: BLE001 — bez huba zostają adresy z konfiguracji
+        status = {}
+    by_peer = {n.get("peer_id"): n for n in nodes if n.get("peer_id")}
+    for peer in status.get("peers") or []:
+        node = by_peer.get(peer.get("id"))
+        endpoint = str(peer.get("endpoint") or "")
+        if node and endpoint:
+            try:
+                ip = str(ipaddress.ip_address(endpoint.rsplit(":", 1)[0].strip("[]")))
+            except ValueError:
+                continue
+            if not ipaddress.ip_address(ip).is_loopback:
+                add(ip, node["name"])
+    for node in nodes:
+        for host in (urlparse(node.get("api_url") or "").hostname, node.get("proxy_address")):
+            for ip in await resolve(host):
+                add(ip, node["name"])
+    gateway, edge = panel.gateway(), panel.edge_row()
+    for ip in await resolve((gateway or {}).get("public_host")):
+        add(ip, t("dnsrec.gateway"))
+    if edge and edge.get("secret"):
+        for ip in await resolve(edge.get("public_host")):
+            add(ip, t("dnsrec.edge"))
+    configured = (panel.db.setting("public_ip") or "").strip()
+    if configured:
+        add(configured, t("dnsrec.gateway"))
+    return out

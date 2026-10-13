@@ -46,7 +46,7 @@ async def records_table(request: Request, zone: str, name: str = "", panel: Pane
     records, error = await _cf_call(panel, lambda cf: cf.records(zone))
     link = dns_records.linker(panel)
     rows = [{**r, "link": link(zone, r)} for r in sorted(records or [], key=lambda r: (r["name"].count("."), r["name"], r["type"]))]
-    return render(request, "dns/_table.html", rows=rows, error=error, zone_id=zone, zone_name=name, gateway_ip=await dns_records.gateway_ip(panel),
+    return render(request, "dns/_table.html", rows=rows, error=error, zone_id=zone, zone_name=name, known=await dns_records.known_ips(panel),
                   ttls=dns_records.TTLS, proxiable=dns_records.PROXIABLE, ttl_text=dns_records.ttl_text)  # fmt: skip
 
 
