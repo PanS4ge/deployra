@@ -50,10 +50,13 @@ async def _post_unsigned(url: str, body: dict) -> dict:
 # --- bramka ----------------------------------------------------------------------------
 
 
-async def pair_gateway(panel: Any, address: str, code: str, colocated: bool, api_override: str = "") -> dict:
-    if panel.gateway():
-        raise LookupError(t("sync.already_linked"))
+async def pair_gateway(
+    panel: Any, address: str, code: str, colocated: bool, api_override: str = "", name_override: str = ""
+) -> dict:
     bootstrap = _base_url(address, 51821)
+    for existing in panel.gateways():
+        if existing.get("bootstrap_url") == bootstrap:
+            raise LookupError(t("sync.already_linked"))
     code = pairing.normalize_code(code)
     x_private, x_public = pairing.new_keypair()
     use_wg = not colocated and wg_peer.available(panel)
@@ -75,7 +78,12 @@ async def pair_gateway(panel: Any, address: str, code: str, colocated: bool, api
     api_url = api_override.strip().rstrip("/") or info["api_url"]
     wg_enabled = 1 if info.get("wg_enabled", True) else 0
     role = info.get("role", "hub" if wg_enabled else "proxy")
-    name = "Deployra-WG" if wg_enabled else "Deployra-Proxy"
+    if name_override:
+        name = name_override
+    elif not panel.gateways():
+        name = "Deployra-WG" if wg_enabled else "Deployra-Proxy"
+    else:
+        name = f"Deployra-Proxy ({info.get('public_host') or len(panel.gateways()) + 1})"
     row = {
         "name": name,
         "role": role,
@@ -108,10 +116,15 @@ async def gateway_status(panel: Any) -> dict | None:
     return await client.get("/api/status")
 
 
-async def unlink_gateway(panel: Any) -> None:
-    panel.db.execute("DELETE FROM gateway")  # bez huba bramka brzegowa nie ma tunelu — znika razem z nim
-    for key in ("hub", "edge"):
-        panel._clients.pop(key, None)
+async def unlink_gateway(panel: Any, gateway_id: int | None = None) -> None:
+    if gateway_id:
+        panel.db.execute("DELETE FROM gateway WHERE id = ?", [gateway_id])
+        panel._clients.pop(f"gw-{gateway_id}", None)
+    else:
+        panel.db.execute("DELETE FROM gateway")
+        for key in list(panel._clients.keys()):
+            if key in ("hub", "edge") or key.startswith("gw-"):
+                panel._clients.pop(key, None)
 
 
 # --- bramka brzegowa („widelec”) -----------------------------------------------------------
