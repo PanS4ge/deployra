@@ -75,8 +75,12 @@ class Config:
             host = f"[{host}]"  # IPv6
         return f"{host}:{self.wg_port}"
 
+    api_url_override: str = field(default_factory=lambda: _env("DEPLOYRA_API_URL"))
+
     @property
     def api_url(self) -> str:
+        if self.api_url_override:
+            return self.api_url_override
         if self.pure:
             host = self.public_host or "127.0.0.1"
             return f"http://{host}:{self.api_port}"
