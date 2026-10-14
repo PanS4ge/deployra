@@ -310,6 +310,54 @@ async def set_access(request: Request, app: dict = Depends(_app), panel: Panel =
     return toast(message, level if level != "ok" else "ok")
 
 
+@router.get("/apps/{app_id}/logs")
+async def app_logs(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                   user: dict = Depends(require(Permission.ALLOW_SEEKING_CONTAINER))):
+    node = panel.node(app["node_id"])
+    if not node:
+        return redirect(request, f"/apps/{app['id']}", "Węzeł przypisany do aplikacji nie istnieje.", "err")
+    try:
+        spec, _ = deploy.load(panel, app)
+        ep = getattr(spec, "endpoint", "local") or "local"
+    except Exception:
+        ep = "local"
+    epa = "" if ep == "local" else f"?ep={ep}"
+    slug = app["slug"]
+    try:
+        containers = await panel.node_client(node).get(f"/api/containers{epa}")
+        match = next((c for c in (containers or []) if c.get("name") == f"app-{slug}" or c.get("app") == slug or slug in (c.get("name") or "")), None)
+        if match:
+            cid = match.get("id") or match.get("Id") or match.get("name")
+            return redirect(request, f"/nodes/{node['id']}/containers/{cid}#logs{epa}")
+    except Exception:
+        pass
+    return redirect(request, f"/apps/{app['id']}", f"Aplikacja «{app['name']}» nie ma jeszcze aktywnego kontenera na węźle.", "err")
+
+
+@router.get("/apps/{app_id}/files")
+async def app_files(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                    user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES))):
+    node = panel.node(app["node_id"])
+    if not node:
+        return redirect(request, f"/apps/{app['id']}", "Węzeł przypisany do aplikacji nie istnieje.", "err")
+    try:
+        spec, _ = deploy.load(panel, app)
+        ep = getattr(spec, "endpoint", "local") or "local"
+    except Exception:
+        ep = "local"
+    epa = "" if ep == "local" else f"?ep={ep}"
+    slug = app["slug"]
+    try:
+        containers = await panel.node_client(node).get(f"/api/containers{epa}")
+        match = next((c for c in (containers or []) if c.get("name") == f"app-{slug}" or c.get("app") == slug or slug in (c.get("name") or "")), None)
+        if match:
+            cid = match.get("id") or match.get("Id") or match.get("name")
+            return redirect(request, f"/nodes/{node['id']}/containers/{cid}/files{epa}")
+    except Exception:
+        pass
+    return redirect(request, f"/apps/{app['id']}", f"Aplikacja «{app['name']}» nie ma jeszcze aktywnego kontenera na węźle.", "err")
+
+
 # --- przejęcie kontenera spoza Deployry -----------------------------------------------------------
 
 

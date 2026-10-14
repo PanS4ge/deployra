@@ -225,16 +225,22 @@ def container_files_mkdir(cid: str, body: MkdirRequest, client: Any = Depends(dk
 
 @router.get("/containers/{cid}/logs")
 def container_logs(cid: str, tail: int = 300, timestamps: bool = False, client: Any = Depends(dk)) -> dict:
-    raw = client.api.logs(cid, tail=max(1, min(tail, 5000)), timestamps=timestamps)
-    return {"lines": raw.decode(errors="replace").splitlines()}
+    try:
+        raw = client.api.logs(cid, tail=max(1, min(tail, 5000)), timestamps=timestamps)
+        return {"lines": raw.decode(errors="replace").splitlines()}
+    except Exception as exc:
+        return {"lines": [f"⚠️ Błąd odczytu logów kontenera: {exc}"]}
 
 
 @router.get("/containers/{cid}/logs/stream", response_class=EventSourceResponse)
 async def container_logs_stream(
     cid: str, tail: int = 200, timestamps: bool = False, info: dict = Depends(_container), client: Any = Depends(dk)
 ):
-    async for line in docker_svc.follow_logs(client, cid, tail=max(0, min(tail, 5000)), timestamps=timestamps):
-        yield ServerSentEvent(raw_data=line, event="line")
+    try:
+        async for line in docker_svc.follow_logs(client, cid, tail=max(0, min(tail, 5000)), timestamps=timestamps):
+            yield ServerSentEvent(raw_data=line, event="line")
+    except Exception as exc:
+        yield ServerSentEvent(raw_data=f"⚠️ Błąd strumienia logów: {exc}", event="line")
 
 
 @ws_router.websocket("/containers/{cid}/exec")

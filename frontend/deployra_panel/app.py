@@ -129,9 +129,11 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
     @app.exception_handler(RemoteError)
     async def _remote(request: Request, exc: RemoteError) -> Response:
         message = i18n.t("msg.remote_error", detail=exc.detail)
+        status = exc.status if exc.status in (400, 401, 403, 404, 409) else 502
         if is_htmx(request):
-            return toast(message, "err", status=502)
-        return render(request, "error.html", status_code=502, title=i18n.t("msg.title_node_error"), message=message, icon="hdd-network")
+            return toast(message, "err", status=status)
+        title = i18n.t("msg.title_not_found") if status == 404 else i18n.t("msg.title_node_error")
+        return render(request, "error.html", status_code=status, title=title, message=message, icon="hdd-network" if status >= 500 else "exclamation-diamond")
 
     @app.exception_handler(httpx.HTTPError)
     async def _offline(request: Request, exc: httpx.HTTPError) -> Response:

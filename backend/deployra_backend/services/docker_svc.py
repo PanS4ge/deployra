@@ -148,9 +148,13 @@ async def stats_stream(client: Any, cid: str, interval: float = 2.0) -> AsyncIte
 
 async def follow_logs(client: Any, cid: str, *, tail: int = 200, follow: bool = True, timestamps: bool = False) -> AsyncIterator[str]:
     """Linie logów; przy rozłączeniu klienta zamyka strumień Dockera (bez wiszących wątków)."""
-    stream = await asyncio.to_thread(
-        client.api.logs, cid, stream=True, follow=follow, tail=tail, timestamps=timestamps
-    )
+    try:
+        stream = await asyncio.to_thread(
+            client.api.logs, cid, stream=True, follow=follow, tail=tail, timestamps=timestamps
+        )
+    except Exception as exc:
+        yield f"⚠️ Błąd odczytu logów Dockera: {exc}"
+        return
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=1000)
 

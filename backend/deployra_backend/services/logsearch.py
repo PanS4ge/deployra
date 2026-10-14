@@ -67,7 +67,10 @@ def search(client: Any, must: list[re.Pattern[str]], exclude: list[re.Pattern[st
         if (containers or apps) and name not in (containers or set()) and app not in (apps or set()):
             continue
         scanned += 1
-        stream = client.api.logs(summary["Id"], stream=True, follow=False, timestamps=True, since=int(since), until=int(until) + 1)
+        try:
+            stream = client.api.logs(summary["Id"], stream=True, follow=False, timestamps=True, since=int(since), until=int(until) + 1)
+        except Exception:
+            continue
         try:
             for line in _lines(stream):
                 stamp, _, message = line.partition(" ")

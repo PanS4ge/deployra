@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import re
 from typing import Any
 
-import re
-
+import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import ValidationError
 
 from deployra_common import container_profiles
-from deployra_common.client import SignedClient
+from deployra_common.client import RemoteError, SignedClient
 from deployra_common.jobs import Job
 from deployra_common.schemas import ContainerSpec, NetworkSpec, PortMap, StackSpec, VolumeMount, VolumeSpec
 
@@ -49,6 +50,9 @@ def relay_job(panel: Panel, node: dict, title: str, method: str, path: str, body
 
 def ep_param(ep: str = "local") -> str:
     """Endpoint Dockera: `local` (host) albo `ct-<vmid>` (kontener LXC na Proxmoxie)."""
+    ep = (ep or "local").strip()
+    if not ep or ep == "None":
+        ep = "local"
     if not re.match(r"^(local|ct-\d{1,9})$", ep):
         raise HTTPException(400, t("msg.bad_endpoint"))
     return ep
@@ -175,7 +179,24 @@ async def container_create(request: Request, node: dict = Depends(node_or_404), 
 @router.get("/nodes/{node_id}/containers/{cid}")
 async def container(request: Request, cid: str, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
                     user: dict = Depends(require(Permission.ALLOW_SEEKING_CONTAINER))):  # fmt: skip
-    info = await _client(panel, node).get(_p(f"/api/containers/{cid}", ep))
+    try:
+        info = await _client(panel, node).get(_p(f"/api/containers/{cid}", ep))
+    except RemoteError as exc:
+        if exc.status == 404:
+            # Fuzzy match: maybe cid was app-slug or a short id or compose service
+            try:
+                all_c = await _client(panel, node).get(_p("/api/containers", ep))
+                slug = cid[4:] if cid.startswith("app-") else cid
+                match = next((c for c in (all_c or []) if c.get("id", "").startswith(cid) or c.get("name") == cid or c.get("app") == slug or c.get("name") == f"app-{slug}" or slug in (c.get("name") or "")), None)
+                if match:
+                    target_id = match.get("id") or match.get("Id") or match.get("name")
+                    return redirect(request, f"/nodes/{node['id']}/containers/{target_id}{_q(ep)}")
+            except Exception:
+                pass
+            return render(request, "error.html", status_code=404, title="Nie znaleziono kontenera",
+                          message=f"Kontener «{cid}» nie istnieje na węźle {node['name']}. Być może aplikacja nie została jeszcze wdrożona lub kontener został zatrzymany/usunięty.",
+                          icon="box-seam")
+        raise
     name = info.get("Name", "").lstrip("/")
     cfg = info.get("Config") or {}
     env = cfg.get("Env") or []
@@ -198,7 +219,7 @@ async def container(request: Request, cid: str, node: dict = Depends(node_or_404
     except Exception:
         pass
     return render(request, "nodes/container.html", title=name, node=node, tab="containers", c=info, name=name,
-                  profile=profile, initial_logs=initial_logs, raw=json.dumps(info, indent=2, ensure_ascii=False))  # fmt: skip
+                  profile=profile, initial_logs=initial_logs, raw=json.dumps(info, indent=2, ensure_ascii=False), ep=ep)  # fmt: skip
 
 
 @router.post("/nodes/{node_id}/containers/{cid}/action/quick/{action_id}")
@@ -262,10 +283,20 @@ async def container_backup_to_storage(request: Request, node_id: int, cid: str,
 async def logs_stream(cid: str, tail: int = 300, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
                       user: dict = Depends(require(Permission.ALLOW_SEEKING_CONTAINER))):  # fmt: skip
     client = _client(panel, node)
-    async with client.stream("GET", _p(f"/api/containers/{cid}/logs/stream", ep), params={"tail": tail}) as response:
-        async for event, data in relay.iter_sse(response):
-            if event == "line":
-                yield ServerSentEvent(raw_data=line_html(data), event="line")
+    try:
+        async with client.stream("GET", _p(f"/api/containers/{cid}/logs/stream", ep), params={"tail": tail}) as response:
+            async for event, data in relay.iter_sse(response):
+                if event == "line":
+                    yield ServerSentEvent(raw_data=line_html(data), event="line")
+    except RemoteError as exc:
+        err_msg = line_html(f"⚠️ Nie można pobrać strumienia logów: {exc.detail}")
+        yield ServerSentEvent(raw_data=err_msg, event="line")
+    except (httpx.HTTPError, asyncio.TimeoutError):
+        err_msg = line_html(f"⚠️ Węzeł {node['name']} nie odpowiada")
+        yield ServerSentEvent(raw_data=err_msg, event="line")
+    except Exception as exc:
+        err_msg = line_html(f"⚠️ Błąd strumienia logów: {exc}")
+        yield ServerSentEvent(raw_data=err_msg, event="line")
 
 
 @router.get("/nodes/{node_id}/containers/{cid}/stats/stream", response_class=EventSourceResponse)
@@ -273,10 +304,13 @@ async def stats_stream(cid: str, node: dict = Depends(node_or_404), ep: str = De
                        user: dict = Depends(require(Permission.ALLOW_SEEKING_CONTAINER))):  # fmt: skip
     client = _client(panel, node)
     template = templates.get_template("partials/container_stats.html")
-    async with client.stream("GET", _p(f"/api/containers/{cid}/stats/stream", ep)) as response:
-        async for event, data in relay.iter_sse(response):
-            if event == "stats":
-                yield ServerSentEvent(raw_data=" ".join(template.render(s=json.loads(data)).split()), event="stats")
+    try:
+        async with client.stream("GET", _p(f"/api/containers/{cid}/stats/stream", ep)) as response:
+            async for event, data in relay.iter_sse(response):
+                if event == "stats":
+                    yield ServerSentEvent(raw_data=" ".join(template.render(s=json.loads(data)).split()), event="stats")
+    except (RemoteError, httpx.HTTPError, asyncio.TimeoutError, Exception):
+        pass
 
 
 # --- obrazy -------------------------------------------------------------------------------
@@ -590,7 +624,23 @@ async def container_files(
     user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES)),
 ):
     client = _client(panel, node)
-    info = await client.get(_p(f"/api/containers/{cid}", ep))
+    try:
+        info = await client.get(_p(f"/api/containers/{cid}", ep))
+    except RemoteError as exc:
+        if exc.status == 404:
+            try:
+                all_c = await client.get(_p("/api/containers", ep))
+                slug = cid[4:] if cid.startswith("app-") else cid
+                match = next((c for c in (all_c or []) if c.get("id", "").startswith(cid) or c.get("name") == cid or c.get("app") == slug or c.get("name") == f"app-{slug}" or slug in (c.get("name") or "")), None)
+                if match:
+                    target_id = match.get("id") or match.get("Id") or match.get("name")
+                    return redirect(request, f"/nodes/{node['id']}/containers/{target_id}/files{_q(ep)}")
+            except Exception:
+                pass
+            return render(request, "error.html", status_code=404, title="Nie znaleziono kontenera",
+                          message=f"Kontener «{cid}» nie istnieje na węźle {node['name']}. Być może aplikacja nie została jeszcze wdrożona lub kontener został zatrzymany/usunięty.",
+                          icon="box-seam")
+        raise
     c_name = info.get("Name", "").lstrip("/") or cid[:12]
 
     try:

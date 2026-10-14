@@ -3,7 +3,7 @@
 {% block crumbs %}<div class="crumbs"><a href="/apps">{{ t("nav.apps") }}</a> /</div>{% endblock %}
 {% block actions %}
 {{ status_badge(app.status) }}
-{% if spec.source.kind in ("image", "git", "runtime") and spec.endpoint == "local" %}
+{% if spec.source.kind in ("image", "git", "runtime") %}
 <a class="btn ghost" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}#logs" title="{{ t('apps.logs') }}"><i class="bi bi-journal-text"></i> {{ t("apps.logs") }}</a>
 <a class="btn ghost" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}/files" title="Pliki w kontenerze"><i class="bi bi-folder2-open"></i> Pliki</a>
 {% endif %}
@@ -165,7 +165,7 @@
       {% endif %}
       <div class="row between"><span class="small dim">{{ t("apps.containers_hint") }}</span>
         <span class="row" style="gap: 6px">
-          {% if spec.source.kind in ("image", "git", "runtime") and spec.endpoint == "local" %}
+          {% if spec.source.kind in ("image", "git", "runtime") %}
           <a class="btn sm" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}#logs"><i class="bi bi-journal-text"></i> {{ t("apps.logs") }}</a>
           <a class="btn sm" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}/files"><i class="bi bi-folder2-open"></i> Pliki</a>
           {% endif %}

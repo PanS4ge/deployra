@@ -6,9 +6,11 @@ pliki, wdrożenie, zmienne). Administrator (konto bez ograniczeń) widzi tu swoj
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, WebSocket
 from fastapi.concurrency import run_in_threadpool
 from fastapi.sse import EventSourceResponse, ServerSentEvent
@@ -109,10 +111,20 @@ async def logs(row: dict = Depends(_grant), panel: Panel = Depends(get_panel)):
     _need(row, access.LOGS)
     target = access.target(panel, row)
     client = panel.node_client(target.node)
-    async with client.stream("GET", _p(f"/api/containers/{target.container}/logs/stream", target.ep), params={"tail": 300}) as response:
-        async for event, data in relay.iter_sse(response):
-            if event == "line":
-                yield ServerSentEvent(raw_data=line_html(data), event="line")
+    try:
+        async with client.stream("GET", _p(f"/api/containers/{target.container}/logs/stream", target.ep), params={"tail": 300}) as response:
+            async for event, data in relay.iter_sse(response):
+                if event == "line":
+                    yield ServerSentEvent(raw_data=line_html(data), event="line")
+    except RemoteError as exc:
+        err_msg = line_html(f"⚠️ Nie można pobrać strumienia logów: {exc.detail}")
+        yield ServerSentEvent(raw_data=err_msg, event="line")
+    except (httpx.HTTPError, asyncio.TimeoutError):
+        err_msg = line_html(f"⚠️ Węzeł {target.node.get('name', 'zdalny')} nie odpowiada")
+        yield ServerSentEvent(raw_data=err_msg, event="line")
+    except Exception as exc:
+        err_msg = line_html(f"⚠️ Błąd strumienia logów: {exc}")
+        yield ServerSentEvent(raw_data=err_msg, event="line")
 
 
 @router.get("/servers/{grant_id}/stats/stream", response_class=EventSourceResponse)
@@ -120,10 +132,13 @@ async def stats(row: dict = Depends(_grant), panel: Panel = Depends(get_panel)):
     target = access.target(panel, row)
     client = panel.node_client(target.node)
     template = templates.get_template("partials/container_stats.html")
-    async with client.stream("GET", _p(f"/api/containers/{target.container}/stats/stream", target.ep)) as response:
-        async for event, data in relay.iter_sse(response):
-            if event == "stats":
-                yield ServerSentEvent(raw_data=" ".join(template.render(s=json.loads(data)).split()), event="stats")
+    try:
+        async with client.stream("GET", _p(f"/api/containers/{target.container}/stats/stream", target.ep)) as response:
+            async for event, data in relay.iter_sse(response):
+                if event == "stats":
+                    yield ServerSentEvent(raw_data=" ".join(template.render(s=json.loads(data)).split()), event="stats")
+    except (RemoteError, httpx.HTTPError, asyncio.TimeoutError, Exception):
+        pass
 
 
 @router.get("/servers/{grant_id}/console")
