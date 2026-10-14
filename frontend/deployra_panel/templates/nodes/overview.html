@@ -27,6 +27,7 @@
         <dt>{{ t("nodes.connection") }}</dt><dd>{{ t("nodes.wg_tunnel") if node.transport == "tunnel" else t("nodes.direct") }}</dd>
         <dt>{{ t("nodes.api_address_short") }}</dt><dd class="mono">{{ panel.node_url(node) if node.tunnel_ip or node.api_url else "—" }}</dd>
         <dt>{{ t("nodes.proxy_address_short") }}</dt><dd class="mono">{{ panel.node_upstream_host(node) or "—" }}</dd>
+        {% if info.ip %}<dt>{{ t("nodes.detected_ip") }}</dt><dd class="mono">{{ info.ip }}</dd>{% endif %}
         {% if node.lan_subnets %}<dt>{{ t("tunnel.lan_subnets") }}</dt><dd class="mono">{{ node.lan_subnets | join(", ") }}</dd>{% endif %}
         <dt>Host</dt><dd>{{ info.hostname or "—" }} <span class="muted small">{{ info.os or "" }}</span></dd>
         <dt>CPU / RAM</dt><dd>{{ t("nodes.cores", count=info.cpu_logical or "?") }} · {{ info.ram_human or "?" }}</dd>

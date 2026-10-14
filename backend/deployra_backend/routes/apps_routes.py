@@ -232,14 +232,32 @@ class SftpUser(BaseModel):
     keys: list[str] | None = None
 
 
+class SftpPortConfig(BaseModel):
+    port: int
+
+
 @router.get("/sftp")
 def list_sftp(ctx: Context = Depends(get_ctx)) -> dict:
     return {
         "enabled": ctx.config.sftp_enabled,
-        "port": ctx.config.sftp_port,
+        "port": ctx.state.get("sftp_port") or ctx.config.sftp_port,
         "fingerprint": ctx.sftp.fingerprint() if ctx.sftp else None,
         "users": sftp_users.list_users(ctx.state),
     }
+
+
+@router.post("/sftp/config")
+async def update_sftp_config(body: SftpPortConfig, ctx: Context = Depends(get_ctx)) -> dict:
+    if not (1 <= body.port <= 65535):
+        raise HTTPException(400, "Port musi być z zakresu 1-65535")
+    ctx.state.update(sftp_port=body.port)
+    if ctx.sftp:
+        await ctx.sftp.stop()
+        ctx.sftp = None
+        from ..app import ensure_sftp
+
+        await ensure_sftp(ctx)
+    return {"ok": True, "port": body.port}
 
 
 @router.put("/sftp/{username}")

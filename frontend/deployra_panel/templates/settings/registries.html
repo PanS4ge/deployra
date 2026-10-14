@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "settings/_tabs.html" %}
+
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-head">
+      <h3><i class="bi bi-box-seam"></i> {{ t("registries.title") }}</h3>
+    </div>
+    <div class="card-body stack">
+      <div class="small dim">{{ t("registries.hint") }}</div>
+      {% if items %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>{{ t("registries.col_name") }}</th>
+            <th>{{ t("registries.col_url") }}</th>
+            <th>{{ t("registries.col_user") }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in items %}
+          <tr>
+            <td><strong>{{ r.name }}</strong></td>
+            <td><code>{{ r.url }}</code></td>
+            <td>{{ r.username }}</td>
+            <td style="text-align: right">
+              <form hx-post="/settings/registries/{{ r.id }}/delete" hx-confirm="{{ t('registries.confirm_delete') }}" hx-swap="none" style="display: inline">
+                <button class="btn small danger"><i class="bi bi-trash"></i></button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">{{ t("registries.none") }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h3><i class="bi bi-plus-lg"></i> {{ t("registries.add_title") }}</h3>
+    </div>
+    <form class="card-body stack" method="post" action="/settings/registries">
+      <div>
+        <label class="label">{{ t("registries.field_name") }}</label>
+        <input class="input" type="text" name="name" placeholder="GitHub Container Registry" required>
+      </div>
+      <div>
+        <label class="label">{{ t("registries.field_url") }}</label>
+        <input class="input" type="text" name="url" placeholder="ghcr.io" required>
+        <div class="small dim" style="margin-top: 4px">{{ t("registries.url_hint") }}</div>
+      </div>
+      <div>
+        <label class="label">{{ t("registries.field_username") }}</label>
+        <input class="input" type="text" name="username" placeholder="username" autocomplete="username" required>
+      </div>
+      <div>
+        <label class="label">{{ t("registries.field_password") }}</label>
+        <input class="input" type="password" name="password" placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+      <div class="row" style="justify-content: flex-end">
+        <button class="btn primary"><i class="bi bi-check-lg"></i> {{ t("registries.submit") }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes">{{ t("nav.nodes") }}</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
+{% block heading %}{{ t("nodes.tab_ports") }} · {{ node.name }}{% endblock %}
+{% block content %}
+{% include "nodes/_tabs.html" %}
+
+<div class="grid grid-3" style="margin-bottom: 16px">
+  <div class="card stat">
+    <div class="label">Pula portów węzła</div>
+    <div class="value mono" style="font-size: 1.25rem">{{ (ports_data.pool or [20000, 29999]) | join(" – ") }}</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Zajęte porty</div>
+    <div class="value" style="color: var(--violet-2)">{{ (ports_data.used or []) | length }}</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Status kolizji</div>
+    <div class="value" style="color: var(--green); font-size: 1.1rem"><i class="bi bi-shield-check"></i> Brak konfliktów</div>
+  </div>
+</div>
+
+<div class="card" x-data="{ q: '', proto: '' }">
+  <div class="card-head">
+    <h3><i class="bi bi-ethernet"></i> Mapa portów sieciowych</h3>
+    <span class="spacer"></span>
+    <input class="input sm mono" x-model="q" placeholder="Filtruj port lub właściciela..." style="max-width: 220px">
+    <select class="select sm" x-model="proto" style="width: auto">
+      <option value="">Wszystkie protokoły</option>
+      <option value="tcp">TCP</option>
+      <option value="udp">UDP</option>
+    </select>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th style="width: 120px">Port hosta</th>
+          <th style="width: 90px">Protokół</th>
+          <th>Właściciel / Usługa</th>
+          <th>Typ</th>
+          <th>Endpoint</th>
+          <th style="text-align: right">Akcje</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for p in ports_data.used or [] %}
+        <tr x-show="(!q || '{{ p.port }} {{ p.owner }} {{ p.kind }}'.toLowerCase().includes(q.toLowerCase())) && (!proto || '{{ p.protocol }}' === proto)">
+          <td class="mono bold" style="font-size: 1.05rem; color: var(--violet-2)">{{ p.port }}</td>
+          <td><span class="badge {{ 'info' if p.protocol == 'tcp' else 'warn' }}">{{ p.protocol | upper }}</span></td>
+          <td class="name">
+            <b>{{ p.owner }}</b>
+            {% if p.container_port %}<span class="muted small mono"> → {{ p.container_port }}</span>{% endif %}
+          </td>
+          <td>
+            {% if p.kind == 'container' %}
+              <span class="badge"><i class="bi bi-box"></i> Kontener</span>
+            {% elif p.kind == 'system' %}
+              <span class="badge violet"><i class="bi bi-gear"></i> Systemowy</span>
+            {% else %}
+              <span class="badge info">{{ p.kind }}</span>
+            {% endif %}
+          </td>
+          <td class="small mono muted">{{ p.endpoint or 'host' }}</td>
+          <td style="text-align: right">
+            {% if p.kind == 'container' %}
+            <a class="btn sm ghost" href="/nodes/{{ node.id }}/containers/{{ p.owner }}" title="Przejdź do kontenera"><i class="bi bi-box-arrow-up-right"></i></a>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="muted">Brak zajętych portów na tym węźle.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

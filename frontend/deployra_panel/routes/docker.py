@@ -7,10 +7,11 @@ from typing import Any
 
 import re
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import ValidationError
 
+from deployra_common import container_profiles
 from deployra_common.client import SignedClient
 from deployra_common.jobs import Job
 from deployra_common.schemas import ContainerSpec, NetworkSpec, PortMap, StackSpec, VolumeMount, VolumeSpec
@@ -71,6 +72,8 @@ def _errors(exc: ValidationError) -> str:
 @router.get("/nodes/{node_id}/containers")
 async def containers(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel)):
     items = await _client(panel, node).get(_p("/api/containers", ep))
+    for c in items or []:
+        c["profile"] = container_profiles.detect_profile(c.get("image", ""), ports=c.get("ports"))
     from ..services import uptime
 
     monitors = uptime.container_stats(panel, node["id"], ep)
@@ -150,6 +153,21 @@ async def container_create(request: Request, node: dict = Depends(node_or_404), 
         )
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc) if isinstance(exc, ValidationError) else str(exc), "err", status=400)
+
+    # Sprawdzenie kolizji portów hosta
+    host_ports = [p.host for p in spec.ports if p.host is not None]
+    if host_ports:
+        try:
+            ports_resp = await _client(panel, node).get("/api/ports")
+            occupied = ports_resp.get("ports", [])
+            for hp in host_ports:
+                conflict = next((u for u in occupied if u.get("port") == hp), None)
+                if conflict:
+                    owner = conflict.get("owner", "system")
+                    return toast(t("msg.port_collision", port=hp, owner=owner), "err", status=409)
+        except Exception:
+            pass
+
     job = relay_job(panel, node, t("jobs.title_container", name=spec.name, node=node["name"]), "POST", _p("/api/containers", ep), spec.model_dump(mode="json"))
     return redirect(request, f"/jobs/{job.id}")
 
@@ -159,8 +177,79 @@ async def container(request: Request, cid: str, node: dict = Depends(node_or_404
                     user: dict = Depends(require(Permission.ALLOW_SEEKING_CONTAINER))):  # fmt: skip
     info = await _client(panel, node).get(_p(f"/api/containers/{cid}", ep))
     name = info.get("Name", "").lstrip("/")
+    cfg = info.get("Config") or {}
+    env = cfg.get("Env") or []
+    ports = []
+    for p in (cfg.get("ExposedPorts") or {}).keys():
+        try:
+            ports.append({"container": int(p.split("/")[0])})
+        except (ValueError, IndexError):
+            pass
+    for p in ((info.get("NetworkSettings") or {}).get("Ports") or {}).keys():
+        try:
+            ports.append({"container": int(p.split("/")[0])})
+        except (ValueError, IndexError):
+            pass
+    profile = container_profiles.detect_profile(cfg.get("Image", ""), env, ports)
     return render(request, "nodes/container.html", title=name, node=node, tab="containers", c=info, name=name,
-                  raw=json.dumps(info, indent=2, ensure_ascii=False))  # fmt: skip
+                  profile=profile, raw=json.dumps(info, indent=2, ensure_ascii=False))  # fmt: skip
+
+
+@router.post("/nodes/{node_id}/containers/{cid}/action/quick/{action_id}")
+async def container_quick_action(request: Request, node_id: int, cid: str, action_id: str,
+                                 node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
+                                 panel: Panel = Depends(get_panel),
+                                 user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):
+    res = await _client(panel, node).post(_p(f"/api/containers/{cid}/action/quick/{action_id}", ep))
+    output = (res or {}).get("output", "")
+    code = (res or {}).get("exit_code", 0)
+    if code != 0:
+        return toast(f"Błąd ({code}): {output[:120]}", kind="err")
+    summary = output.strip().splitlines()[0] if output.strip() else "Wykonano pomyślnie"
+    return toast(f"Sukces: {summary[:120]}")
+
+
+@router.get("/nodes/{node_id}/containers/{cid}/dump")
+async def container_dump_download(request: Request, node_id: int, cid: str,
+                                  node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
+                                  panel: Panel = Depends(get_panel),
+                                  user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):
+    client = _client(panel, node)
+    res = await client.client.get(
+        client._url(_p(f"/api/containers/{cid}/action/quick/dump_sql", ep)),
+        headers=client._headers("GET", f"/api/containers/{cid}/action/quick/dump_sql"),
+    )
+    if res.status_code != 200:
+        raise HTTPException(res.status_code, "Nie udało się wykonać zrzutu bazy")
+    fn = res.headers.get("content-disposition", "").split("filename=")[-1].strip('"') or f"dump_{cid[:12]}.sql.gz"
+    return Response(
+        content=res.content,
+        media_type="application/gzip",
+        headers={"Content-Disposition": f'attachment; filename="{fn}"'},
+    )
+
+
+@router.post("/nodes/{node_id}/containers/{cid}/backup-dump")
+async def container_backup_to_storage(request: Request, node_id: int, cid: str,
+                                      node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
+                                      panel: Panel = Depends(get_panel),
+                                      user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):
+    from ..services import backup_storage
+
+    driver = backup_storage.get_driver(panel)
+    if not driver:
+        return toast("Brak skonfigurowanego magazynu kopii w Ustawienia -> Kopie zapasowe", kind="err")
+    client = _client(panel, node)
+    res = await client.client.get(
+        client._url(_p(f"/api/containers/{cid}/action/quick/dump_sql", ep)),
+        headers=client._headers("GET", f"/api/containers/{cid}/action/quick/dump_sql"),
+    )
+    if res.status_code != 200:
+        return toast(f"Błąd zrzutu bazy: {res.text[:100]}", kind="err")
+    fn = res.headers.get("content-disposition", "").split("filename=")[-1].strip('"') or f"db_dump_{cid[:12]}.sql.gz"
+    target_name = f"database/{node['name']}/{fn}"
+    driver.upload(target_name, res.content)
+    return toast(f"Zapisano zrzut bazy w magazynie kopii: {fn}")
 
 
 @router.get("/nodes/{node_id}/containers/{cid}/logs/stream", response_class=EventSourceResponse)
@@ -196,7 +285,14 @@ async def images(request: Request, node: dict = Depends(node_or_404), ep: str = 
 @router.post("/nodes/{node_id}/images/pull")
 async def image_pull(request: Request, image: str = Form(...), node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
                      user: dict = Depends(require(Permission.ALLOW_PULL_IMAGES))):  # fmt: skip
-    job = relay_job(panel, node, t("jobs.title_pull", image=image, node=node["name"]), "POST", _p("/api/images/pull", ep), {"image": image.strip()})
+    from ..services import registries
+
+    image_name = image.strip()
+    auth = registries.auth_for_image(panel, image_name)
+    body: dict[str, Any] = {"image": image_name}
+    if auth:
+        body["auth"] = auth
+    job = relay_job(panel, node, t("jobs.title_pull", image=image_name, node=node["name"]), "POST", _p("/api/images/pull", ep), body)
     return redirect(request, f"/jobs/{job.id}")
 
 
@@ -210,7 +306,7 @@ async def image_remove(request: Request, image_id: str = Form(...), node: dict =
 @router.post("/nodes/{node_id}/images/prune")
 async def image_prune(request: Request, all: str = Form(""), node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
                       user: dict = Depends(require(Permission.ALLOW_DELETE_DOCKERS))):  # fmt: skip
-    result = await _client(panel, node).post(_p("/api/images/prune", ep), json={"all": bool(all)})
+    result = await _client(panel, node).post(_p("/api/images/prune", ep), json={"all": bool(all)}, timeout=300.0)
     from ..web import human_bytes
 
     return redirect(request, f"/nodes/{node['id']}/images{_q(ep)}", f"Odzyskano {human_bytes(result.get('SpaceReclaimed', 0))}")
@@ -297,6 +393,28 @@ async def stack_save(request: Request, name: str = Form(...), compose: str = For
         spec = StackSpec(compose=compose.replace("\r\n", "\n"), env=_kv_lines(env))
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc) if isinstance(exc, ValidationError) else str(exc), "err", status=400)
+
+    # Sprawdzenie kolizji portów hosta w compose
+    compose_ports = extract_compose_host_ports(compose)
+    if compose_ports:
+        try:
+            ports_resp = await _client(panel, node).get("/api/ports")
+            occupied = ports_resp.get("ports", [])
+            for hp in compose_ports:
+                conflict = next(
+                    (u for u in occupied if u.get("port") == hp and not (
+                        u.get("owner", "").startswith(f"{name}_") or
+                        u.get("owner", "").startswith(f"{name}-") or
+                        u.get("owner") == name
+                    )),
+                    None,
+                )
+                if conflict:
+                    owner = conflict.get("owner", "system")
+                    return toast(t("msg.port_collision_compose", port=hp, owner=owner), "err", status=409)
+        except Exception:
+            pass
+
     job = relay_job(panel, node, t("jobs.title_stack", name=name, node=node["name"]), "PUT", _p(f"/api/stacks/{name}?pull={'true' if pull else 'false'}", ep),
                     spec.model_dump())  # fmt: skip
     return redirect(request, f"/jobs/{job.id}")
@@ -338,6 +456,24 @@ async def sftp_delete(request: Request, username: str, node: dict = Depends(node
                       user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
     await _client(panel, node).delete(_p(f"/api/sftp/{username}", ep))
     return redirect(request, f"/nodes/{node['id']}/sftp{_q(ep)}", t("msg.sftp_deleted", name=username))
+
+
+@router.post("/nodes/{node_id}/sftp/port")
+async def sftp_port_save(request: Request, port: int = Form(...), node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
+                         user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
+    if not (1 <= port <= 65535):
+        raise HTTPException(400, "Port musi być z zakresu 1-65535")
+    try:
+        ports_resp = await _client(panel, node).get("/api/ports")
+        occupied = ports_resp.get("ports", [])
+        conflict = next((u for u in occupied if u.get("port") == port and u.get("owner") != "SFTP"), None)
+        if conflict:
+            owner = conflict.get("owner", "system")
+            return toast(t("msg.port_collision", port=port, owner=owner), "err", status=409)
+    except Exception:
+        pass
+    await _client(panel, node).post(_p("/api/sftp/config", ep), json={"port": port})
+    return redirect(request, f"/nodes/{node['id']}/sftp{_q(ep)}", t("msg.sftp_port_saved", port=port))
 
 
 # --- ustawienia węzła ------------------------------------------------------------------------
@@ -382,3 +518,35 @@ def _pairs(text: str) -> list[tuple[str, str]]:
             left, right = "", line
         out.append((left.strip(), right.strip()))
     return out
+
+
+def extract_compose_host_ports(compose_text: str) -> list[int]:
+    """Wyciąga porty hosta zdefiniowane w docker-compose."""
+    try:
+        import yaml
+        data = yaml.safe_load(compose_text)
+        if not isinstance(data, dict):
+            return []
+        services = data.get("services")
+        if not isinstance(services, dict):
+            return []
+        host_ports: list[int] = []
+        for svc in services.values():
+            if not isinstance(svc, dict):
+                continue
+            ports = svc.get("ports") or []
+            for p in ports:
+                if isinstance(p, dict):
+                    pub = p.get("published")
+                    if pub and str(pub).isdigit():
+                        host_ports.append(int(pub))
+                elif isinstance(p, str):
+                    p = p.split("/")[0]
+                    parts = p.split(":")
+                    if len(parts) >= 2:
+                        host_p = parts[-2]
+                        if host_p.isdigit():
+                            host_ports.append(int(host_p))
+        return host_ports
+    except Exception:
+        return []

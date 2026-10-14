@@ -22,7 +22,12 @@
       <tr>
         <td class="nowrap small mono muted" style="width: 1%">{{ h.ts | dts if h.ts else "—" }}</td>
         <td class="nowrap" style="width: 1%">
-          <a class="badge" href="#" onclick="logFilter('container:{{ h.container }}'); return false" title="{{ h.node.name }}">{{ h.container }}</a>
+          <div class="row" style="gap: 4px; align-items: center">
+            <a class="badge" href="#" onclick="logFilter('container:{{ h.container }}'); return false" title="{{ h.node.name }}">{{ h.container }}</a>
+            <a class="btn icon sm ghost" href="/nodes/{{ h.node.id }}/containers/{{ h.container_id or h.container }}" title="{{ t('logs.open_container') }}" style="padding: 2px 4px; font-size: 0.8rem">
+              <i class="bi bi-box-arrow-up-right"></i>
+            </a>
+          </div>
         </td>
         <td class="mono small" style="white-space: pre-wrap; word-break: break-word">{{ h.html }}</td>
       </tr>

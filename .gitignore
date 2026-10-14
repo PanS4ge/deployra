@@ -28,3 +28,19 @@ legacy/
 
 # Środowisko deweloperskie (scripts/dev_stack.py)
 .dev/
+
+# Lokalne skrypty robocze / diagnostyczne w katalogu głównym
+/check_*.py
+/cleanup_*.py
+/exec_*.py
+/find_*.py
+/fix_*.py
+/inspect_*.py
+/list_*.py
+/map_*.py
+/match_*.py
+/register_*.py
+/revert_*.py
+/test_*.py
+/*.json
+/HANDOFF.md

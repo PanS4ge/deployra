@@ -117,3 +117,18 @@ def test_pairing_code_file_for_local_panel(tmp_path, monkeypatch):
         assert enroll.ensure_pairing_code(ctx) is None and not code_file.exists()
         new_code = enroll.reset_pairing(ctx)
         assert code_file.read_text() == new_code
+
+
+def test_sftp_port_config_and_info_ip(api, ctx):
+    info = api.request("GET", "/api/info").json()
+    assert "ip" in info
+    res = api.request("POST", "/api/sftp/config", json={"port": 22222})
+    assert res.status_code == 200
+    assert res.json()["port"] == 22222
+    assert ctx.state.get("sftp_port") == 22222
+
+    sftp_info = api.request("GET", "/api/sftp").json()
+    assert sftp_info["port"] == 22222
+
+    bad = api.request("POST", "/api/sftp/config", json={"port": 999999})
+    assert bad.status_code == 400

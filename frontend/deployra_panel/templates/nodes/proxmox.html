@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes">{{ t("nav.nodes") }}</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
+{% block heading %}Proxmox VE · {{ node.name }}{% endblock %}
+{% block actions %}
+{% if proxmox_url %}
+<a class="btn primary" href="{{ proxmox_url }}" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> Otwórz Proxmox VE</a>
+{% endif %}
+{% endblock %}
+{% block content %}
+{% include "nodes/_tabs.html" %}
+
+{% set vms = [] %}
+{% set cts_no_docker = [] %}
+{% set cts_with_docker = [] %}
+{% for e in entities %}
+  {% if e.kind == 'qemu' %}
+    {% set _ = vms.append(e) %}
+  {% elif e.has_docker %}
+    {% set _ = cts_with_docker.append(e) %}
+  {% else %}
+    {% set _ = cts_no_docker.append(e) %}
+  {% endif %}
+{% endfor %}
+
+<div class="grid grid-3" style="margin-bottom: 16px">
+  <div class="card stat">
+    <div class="label">Maszyny wirtualne (QEMU/KVM)</div>
+    <div class="value" style="color: var(--cyan)">{{ vms | length }}</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Aplikacje LXC (samodzielne CT)</div>
+    <div class="value" style="color: var(--violet-2)">{{ cts_no_docker | length }}</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Endpointy LXC z Dockerem</div>
+    <div class="value" style="color: var(--green)">{{ cts_with_docker | length }}</div>
+  </div>
+</div>
+
+<!-- Maszyny wirtualne (QEMU/KVM) jako aplikacje -->
+<div class="card" style="margin-bottom: 16px">
+  <div class="card-head">
+    <h3><i class="bi bi-display"></i> Maszyny wirtualne (VM jako aplikacje)</h3>
+    <span class="spacer"></span>
+    <span class="small muted">Zarządzanie maszynami KVM i podgląd noVNC</span>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th style="width: 90px">VMID</th>
+          <th>Nazwa maszyny</th>
+          <th>Stan</th>
+          <th>CPU</th>
+          <th>Pamięć RAM</th>
+          <th>Dysk / OS</th>
+          <th style="text-align: right">Konsola i sterowanie</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for vm in vms %}
+        <tr>
+          <td class="mono bold" style="color: var(--cyan)">#{{ vm.vmid }}</td>
+          <td class="name">
+            <b>{{ vm.name }}</b>
+            <div class="small muted mono">{{ vm.ostype }}</div>
+          </td>
+          <td>
+            <span class="badge {{ 'ok' if vm.status == 'running' else 'err' }}">
+              <i class="bi bi-{{ 'play-fill' if vm.status == 'running' else 'stop-fill' }}"></i>
+              {{ 'Działa' if vm.status == 'running' else 'Zatrzymana' }}
+            </span>
+          </td>
+          <td class="small">{{ vm.cores }} vCPU</td>
+          <td class="small">{{ vm.memory_mb }} MB</td>
+          <td class="small mono trunc" style="max-width: 200px" title="{{ vm.disk }}">{{ vm.disk or '—' }}</td>
+          <td style="text-align: right">
+            <div class="row" style="gap: 6px; justify-content: flex-end">
+              {% if proxmox_url %}
+              <a class="btn sm cool" href="{{ proxmox_url }}/?console=kvm&novnc=1&vmid={{ vm.vmid }}&vmname={{ vm.name }}" target="_blank" rel="noopener" title="Podgląd ekranu / konsola noVNC">
+                <i class="bi bi-window-desktop"></i> noVNC
+              </a>
+              {% endif %}
+              {% if vm.status == 'running' %}
+              <button class="btn sm ghost" hx-post="/nodes/{{ node.id }}/proxmox/qemu/{{ vm.vmid }}/action/reboot" hx-swap="none" title="Zrestartuj VM"><i class="bi bi-arrow-clockwise"></i></button>
+              <button class="btn sm ghost danger" hx-post="/nodes/{{ node.id }}/proxmox/qemu/{{ vm.vmid }}/action/shutdown" hx-swap="none" title="Wyłącz VM (shutdown)"><i class="bi bi-power"></i></button>
+              {% else %}
+              <button class="btn sm primary" hx-post="/nodes/{{ node.id }}/proxmox/qemu/{{ vm.vmid }}/action/start" hx-swap="none" title="Uruchom VM"><i class="bi bi-play-fill"></i> Start</button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="muted">Brak skonfigurowanych maszyn wirtualnych QEMU na tym węźle.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Kontenery LXC bez Dockera (samodzielne aplikacje) -->
+<div class="card" style="margin-bottom: 16px">
+  <div class="card-head">
+    <h3><i class="bi bi-box-seam"></i> Kontenery LXC (bez Dockera jako aplikacje)</h3>
+    <span class="spacer"></span>
+    <span class="small muted">Pojedyncze środowiska i usługi w LXC</span>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th style="width: 90px">VMID</th>
+          <th>Nazwa / Hostname</th>
+          <th>Stan</th>
+          <th>Adres IP</th>
+          <th>CPU</th>
+          <th>RAM / Swap</th>
+          <th>Dysk</th>
+          <th style="text-align: right">Konsola i sterowanie</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for ct in cts_no_docker %}
+        <tr>
+          <td class="mono bold" style="color: var(--violet-2)">#{{ ct.vmid }}</td>
+          <td class="name">
+            <b>{{ ct.name }}</b>
+            <div class="small muted mono">{{ ct.ostype }} {% if ct.unprivileged %}(unprivileged){% endif %}</div>
+          </td>
+          <td>
+            <span class="badge {{ 'ok' if ct.status == 'running' else 'err' }}">
+              <i class="bi bi-{{ 'play-fill' if ct.status == 'running' else 'stop-fill' }}"></i>
+              {{ 'Działa' if ct.status == 'running' else 'Zatrzymany' }}
+            </span>
+          </td>
+          <td class="mono small">{{ ct.ip or '—' }}</td>
+          <td class="small">{{ ct.cores }} rdzeni</td>
+          <td class="small">{{ ct.memory_mb }} MB</td>
+          <td class="small mono trunc" style="max-width: 180px" title="{{ ct.disk }}">{{ ct.disk or '—' }}</td>
+          <td style="text-align: right">
+            <div class="row" style="gap: 6px; justify-content: flex-end">
+              {% if proxmox_url %}
+              <a class="btn sm cool" href="{{ proxmox_url }}/?console=lxc&novnc=1&vmid={{ ct.vmid }}&vmname={{ ct.name }}" target="_blank" rel="noopener" title="Konsola noVNC kontenera CT">
+                <i class="bi bi-terminal"></i> noVNC
+              </a>
+              {% endif %}
+              {% if ct.status == 'running' %}
+              <button class="btn sm ghost" hx-post="/nodes/{{ node.id }}/proxmox/lxc/{{ ct.vmid }}/action/reboot" hx-swap="none" title="Zrestartuj CT"><i class="bi bi-arrow-clockwise"></i></button>
+              <button class="btn sm ghost danger" hx-post="/nodes/{{ node.id }}/proxmox/lxc/{{ ct.vmid }}/action/stop" hx-swap="none" title="Zatrzymaj CT"><i class="bi bi-stop-fill"></i></button>
+              {% else %}
+              <button class="btn sm primary" hx-post="/nodes/{{ node.id }}/proxmox/lxc/{{ ct.vmid }}/action/start" hx-swap="none" title="Uruchom CT"><i class="bi bi-play-fill"></i> Start</button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="muted">Brak samodzielnych kontenerów LXC bez Dockera.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Konfiguracja URL Proxmoxa -->
+<div class="card">
+  <div class="card-head"><h3><i class="bi bi-sliders"></i> Ustawienia połączenia Proxmox VE</h3></div>
+  <form class="card-body form-grid" hx-post="/nodes/{{ node.id }}/proxmox/config" hx-swap="none">
+    <div class="field full">
+      <label>Adres WWW panelu Proxmox VE</label>
+      <input class="input mono" name="url" value="{{ proxmox_url or '' }}" placeholder="https://pve.example.com lub https://192.168.1.100:8006">
+      <div class="hint small muted">Używany do bezpośrednich linków do panelu Proxmox VE oraz konsol noVNC (maszyn VM i kontenerów). Gdy używasz subdomeny z Cloudflare/Nginx na standardowym porcie, wpisz pełny URL (np. <code>https://pve.twojadomena.pl</code>).</div>
+    </div>
+    <div class="full row" style="justify-content: flex-end">
+      <button class="btn primary"><i class="bi bi-check2"></i> Zapisz adres Proxmoxa</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

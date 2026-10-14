@@ -260,8 +260,75 @@ BACKUP_TABLES = ("settings", "access_lists", "certificates", "sites", "streams",
 
 
 @router.get("/settings/backup")
-def backup_page(request: Request, user: dict = Depends(require(Permission.ALLOW_RISKY_SETTINGS))):
-    return render(request, "settings/backup.html", title=t("settings.tab_backup"), tab="backup")
+def backup_page(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_RISKY_SETTINGS))):
+    config = panel.db.setting("backup_config") or {}
+    return render(request, "settings/backup.html", title=t("settings.tab_backup"), tab="backup", config=config)
+
+
+@router.post("/settings/backup/storage")
+async def save_backup_storage(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_RISKY_SETTINGS))):
+    form = await request.form()
+    curr = panel.db.setting("backup_config") or {}
+    target = str(form.get("target") or "local")
+    retention = int(form.get("retention") or 10)
+    secrets_included = bool(form.get("secrets_included"))
+
+    s3_secret = str(form.get("s3_secret_key") or "").strip()
+    ftp_pwd = str(form.get("ftp_password") or "").strip()
+    sftp_pwd = str(form.get("sftp_password") or "").strip()
+
+    conf = {
+        **curr,
+        "target": target,
+        "retention": retention,
+        "secrets_included": secrets_included,
+        "local_path": str(form.get("local_path") or "./backups").strip(),
+        "s3_endpoint": str(form.get("s3_endpoint") or "https://s3.amazonaws.com").strip(),
+        "s3_bucket": str(form.get("s3_bucket") or "").strip(),
+        "s3_access_key": str(form.get("s3_access_key") or "").strip(),
+        "s3_region": str(form.get("s3_region") or "us-east-1").strip(),
+        "s3_prefix": str(form.get("s3_prefix") or "").strip(),
+        "ftp_host": str(form.get("ftp_host") or "").strip(),
+        "ftp_port": int(form.get("ftp_port") or 21),
+        "ftp_user": str(form.get("ftp_user") or "").strip(),
+        "ftp_path": str(form.get("ftp_path") or "/").strip(),
+        "ftp_tls": bool(form.get("ftp_tls")),
+        "sftp_host": str(form.get("sftp_host") or "").strip(),
+        "sftp_port": int(form.get("sftp_port") or 22),
+        "sftp_user": str(form.get("sftp_user") or "root").strip(),
+        "sftp_path": str(form.get("sftp_path") or "/backups").strip(),
+    }
+    if s3_secret:
+        conf["s3_secret_key"] = panel.sealer.seal(s3_secret)
+    if ftp_pwd:
+        conf["ftp_password"] = panel.sealer.seal(ftp_pwd)
+    if sftp_pwd:
+        conf["sftp_password"] = panel.sealer.seal(sftp_pwd)
+
+    panel.db.set_setting("backup_config", conf)
+    return redirect(request, "/settings/backup", t("msg.settings_saved"))
+
+
+@router.post("/settings/backup/storage/test")
+async def test_backup_storage(panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_RISKY_SETTINGS))):
+    from ..services import backup_storage
+
+    try:
+        driver = backup_storage.get_driver(panel)
+        msg = driver.test()
+        return toast(msg, "ok")
+    except Exception as exc:
+        return toast(f"Błąd połączenia: {exc}", "err", status=400)
+
+
+@router.post("/settings/backup/storage/run")
+async def run_backup_now(panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_RISKY_SETTINGS))):
+    from ..services import backup_storage
+
+    res = backup_storage.run_backup(panel)
+    if res.get("ok"):
+        return toast(f"Kopia zapasowa wykonana pomyślnie ({res.get('filename')})", "ok")
+    return toast(f"Błąd kopii zapasowej: {res.get('error')}", "err", status=500)
 
 
 @router.get("/settings/backup/export")
@@ -310,6 +377,41 @@ async def import_backup(request: Request, file: UploadFile, panel: Panel = Depen
     result = await proxy_state.push(panel)
     message, level = proxy_state.push_message(result)
     return redirect(request, "/settings/backup", t("msg.restored", count=restored) + " " + message, level)
+
+
+# --- rejestry Docker -------------------------------------------------------------------------------
+
+
+@router.get("/settings/registries")
+def registries_page(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
+    from ..services import registries
+
+    items = registries.list_registries(panel)
+    return render(request, "settings/registries.html", title=t("settings.tab_registries"), tab="registries", items=items)
+
+
+@router.post("/settings/registries")
+async def add_registry_route(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
+    from ..services import registries
+
+    form = await request.form()
+    name = str(form.get("name") or "").strip()
+    url = str(form.get("url") or "").strip()
+    username = str(form.get("username") or "").strip()
+    password = str(form.get("password") or "").strip()
+    try:
+        registries.add_registry(panel, name, url, username, password)
+        return redirect(request, "/settings/registries", t("msg.registry_added"))
+    except ValueError as exc:
+        return toast(str(exc), "err", status=400)
+
+
+@router.post("/settings/registries/{reg_id}/delete")
+def delete_registry_route(request: Request, reg_id: int, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
+    from ..services import registries
+
+    registries.delete_registry(panel, reg_id)
+    return redirect(request, "/settings/registries", t("msg.registry_deleted"))
 
 
 # --- strefa ryzyka ---------------------------------------------------------------------------------

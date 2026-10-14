@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Form, Request, Response
 
 from deployra_common.client import RemoteError
 
-from ..context import Panel, get_panel
+from ..context import LOCAL_UPSTREAM, Panel, get_panel
 from ..deps import current_user, node_or_404, require
 from ..i18n import t
 from ..permissions import Permission
@@ -132,9 +132,10 @@ def node_resources(request: Request, range: str = "24h", node: dict = Depends(no
 
 @router.post("/nodes/{node_id}/info")
 async def refresh_info(request: Request, node: dict = Depends(node_or_404), panel: Panel = Depends(get_panel)):
-    info = await panel.node_client(node).get("/api/info")
+    info = await panel.node_client(node).get("/api/info", params={"refresh": "true"})
     panel.db.update("nodes", node["id"], info=info)
-    return redirect(request, f"/nodes/{node['id']}", t("msg.node_refreshed"))
+    target = request.headers.get("referer") or f"/nodes/{node['id']}"
+    return redirect(request, target, t("msg.node_refreshed"))
 
 
 @router.post("/nodes/{node_id}/rps")
@@ -158,6 +159,13 @@ def rename(request: Request, name: str = Form(...), node: dict = Depends(node_or
     return redirect(request, f"/nodes/{node['id']}", t("msg.renamed"))
 
 
+@router.post("/nodes/{node_id}/address")
+def address(request: Request, proxy_address: str = Form(""), node: dict = Depends(node_or_404), panel: Panel = Depends(get_panel),
+            user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
+    panel.db.update("nodes", node["id"], proxy_address=proxy_address.strip() or LOCAL_UPSTREAM)
+    return redirect(request, f"/nodes/{node['id']}/settings", t("msg.address_saved"))
+
+
 @router.post("/nodes/{node_id}/subnets")
 async def subnets(request: Request, lan_subnets: str = Form(""), node: dict = Depends(node_or_404), panel: Panel = Depends(get_panel),
                   user: dict = Depends(require(Permission.ALLOW_TUNNEL))):  # fmt: skip
@@ -176,6 +184,45 @@ async def repair(request: Request, code: str = Form(...), node: dict = Depends(n
                  user: dict = Depends(require(Permission.ALLOW_ADD_DOCKERS))):  # fmt: skip
     await sync.pair_node(panel, node, code)
     return redirect(request, f"/nodes/{node['id']}", t("msg.repaired"))
+
+
+@router.get("/nodes/{node_id}/ports")
+async def node_ports(request: Request, node: dict = Depends(node_or_404), ep: str = "local", panel: Panel = Depends(get_panel)):
+    try:
+        ports_data = await panel.node_client(node).get("/api/ports")
+    except Exception:
+        ports_data = {"pool": [20000, 29999], "used": []}
+    return render(request, "nodes/ports.html", title=f"{node['name']} · Porty", node=node, tab="ports", ports_data=ports_data)
+
+
+@router.get("/nodes/{node_id}/proxmox")
+async def node_proxmox(request: Request, node: dict = Depends(node_or_404), ep: str = "local", panel: Panel = Depends(get_panel)):
+    client = panel.node_client(node)
+    try:
+        entities = await client.get("/api/proxmox/entities")
+    except Exception:
+        entities = []
+    pve_url = (node.get("info") or {}).get("proxmox_url")
+    return render(request, "nodes/proxmox.html", title=f"{node['name']} · Proxmox VE", node=node, tab="proxmox", entities=entities, proxmox_url=pve_url)
+
+
+@router.post("/nodes/{node_id}/proxmox/{kind}/{vmid}/action/{action}")
+async def proxmox_action(request: Request, node_id: int, kind: str, vmid: int, action: str, node: dict = Depends(node_or_404), panel: Panel = Depends(get_panel),
+                         user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):
+    client = panel.node_client(node)
+    await client.post(f"/api/proxmox/{kind}/{vmid}/action/{action}")
+    return toast(f"Wykonano: {action} na #{vmid}")
+
+
+@router.post("/nodes/{node_id}/proxmox/config")
+async def proxmox_config(request: Request, node_id: int, url: str = Form(...), node: dict = Depends(node_or_404), panel: Panel = Depends(get_panel),
+                         user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):
+    client = panel.node_client(node)
+    await client.post("/api/proxmox/config", json={"url": url.strip()})
+    info = node.get("info") or {}
+    info["proxmox_url"] = url.strip()
+    panel.db.update("nodes", node["id"], info=info)
+    return toast("Zapisano adres Proxmox VE")
 
 
 @router.post("/nodes/{node_id}/delete")

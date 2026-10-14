@@ -225,15 +225,19 @@ def app_page(request: Request, job: str = "", app: dict = Depends(_app), panel: 
         domain = panel.db.setting("panel_domain") or request.url.hostname
         hook_url = f"https://{domain}/hooks/git/{app['id']}"
     from ..services import uptime
+    from deployra_common.container_profiles import detect_profile
 
     monitor = uptime.monitor_for(panel, "app", app["id"])
     others = [(n, resources.node_free(n["id"])) for n in _nodes(panel) if n["id"] != app["node_id"]]
+    img = spec.source.image if spec.source.kind == "image" else ""
+    app_profile = detect_profile(f"app-{app['slug']}", img)
     return render(
         request, "apps/detail.html", title=app["name"], app=app, spec=spec, options=options, node=node, site=site, cert=cert,
         job=live_job, hook_url=hook_url, hook_secret=panel.sealer.unseal(app.get("webhook_secret")),
         monitor=monitor, monitor_stats=uptime.stats_for(panel, [("app", app["id"])]).get(("app", app["id"])),
         settings=panel.db.settings(), other_nodes=others, auto_capable=migrate.auto_capable(spec),
         acls=panel.db.fetchall("SELECT id, name FROM access_lists ORDER BY name"),
+        app_profile=app_profile,
     )  # fmt: skip
 
 

@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
+<nav class="tabs" style="margin-bottom: 12px">
+  <a href="/logs?source=all&range={{ span }}&q={{ q | urlencode }}" class="{{ 'active' if source in ('all', '', None) }}"><i class="bi bi-list-ul"></i> {{ t("logs.tab_all") }}</a>
+  <a href="/logs?source=containers&range={{ span }}&q={{ q | urlencode }}" class="{{ 'active' if source == 'containers' }}"><i class="bi bi-box"></i> {{ t("logs.tab_containers") }}</a>
+  <a href="/logs?source=nginx&range={{ span }}&q={{ q | urlencode }}" class="{{ 'active' if source == 'nginx' }}"><i class="bi bi-hdd-network"></i> {{ t("logs.tab_nginx") }}</a>
+</nav>
 <form class="card" id="log-form" hx-get="/logs/search" hx-target="#log-results" hx-swap="innerHTML" hx-indicator="#log-form">
+  <input type="hidden" name="source" value="{{ source or 'all' }}">
   <div class="card-body stack" style="gap: 8px">
     <div class="row" style="gap: 8px; flex-wrap: wrap">
       <input class="input mono" name="q" value="{{ q }}" placeholder='error app:sklep -healthcheck' style="flex: 1; min-width: 240px" autocomplete="off" autofocus>
@@ -14,7 +20,7 @@
     </div>
   </div>
 </form>
-<div class="card" id="log-results" hx-get="/logs/search?q={{ q | urlencode }}&range={{ span }}" hx-trigger="load" hx-swap="innerHTML">
+<div class="card" id="log-results" hx-get="/logs/search?q={{ q | urlencode }}&range={{ span }}&source={{ source or 'all' }}" hx-trigger="load" hx-swap="innerHTML">
   <div class="card-body muted small">{{ t("common.loading") }}</div>
 </div>
 <script>

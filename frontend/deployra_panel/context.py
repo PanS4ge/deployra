@@ -8,13 +8,13 @@ from typing import Any
 from fastapi import Request
 
 from deployra_common.client import SignedClient
-from deployra_common.jobs import JobRegistry
 from deployra_common.updates import UpdateAgent
 
 from .config import Config
 from .db import Database, now
 from .i18n import t
 from .security import LoginLimiter, Sealer, Sessions
+from .services.persistent_jobs import PersistentJobRegistry
 
 NODE_API_PORT = 2750
 LOCAL_UPSTREAM = "local"  # proxy_address węzła obok panelu: adres ustalany na bieżąco (tunel panelu albo 127.0.0.1)
@@ -29,7 +29,7 @@ class Panel:
         self.sealer = Sealer(config.data_dir / "secret.key")
         self.sessions = Sessions(self.db, config.session_hours)
         self.limiter = LoginLimiter()
-        self.jobs = JobRegistry()
+        self.jobs = PersistentJobRegistry(self.db)
         self.updates = UpdateAgent(config.update_dir)
         self.default_language: str | None = self.db.setting("language") or config.language or None  # odświeżane przy zapisie ustawień
         from .plugins import PluginManager

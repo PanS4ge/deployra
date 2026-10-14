@@ -8,8 +8,10 @@
 </div>
 <div class="card-body">
   {% if chart %}
-  {{ chart }}
-  <div class="row small muted" style="gap: 16px; margin-top: 6px">
+  <div class="chart-wrap">
+    {{ chart }}
+  </div>
+  <div class="chart-legend small muted">
     <span><span class="dot" style="background: #8b5cf6"></span> CPU</span><span><span class="dot" style="background: #22d3ee"></span> RAM</span><span><span class="dot" style="background: #f472b6"></span> {{ t("res.disk") }}</span>
   </div>
   {% else %}<div class="muted small">{{ t("res.collecting") }}</div>{% endif %}

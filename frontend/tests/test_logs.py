@@ -40,5 +40,12 @@ def test_logs_page_and_search(admin, nodes):
     assert path == "/api/logs/search" and body["must"] == ["error"] and body["exclude"] == ["health"] and body["apps"] == ["web"]
     assert 3000 < body["until"] - body["since"] < 4000
     assert "Trafienia: 7" in page and "<mark>ERROR</mark> timeout &lt;x&gt;" in page and "logFilter('container:app-web')" in page
+    assert "/containers/app-web" in page
     bad = admin.get("/logs/search", params={"q": "/(/"}).text
     assert "callout err" in bad
+
+    # Test filtering containers vs nginx
+    res_cont = admin.get("/logs/search", params={"source": "containers"}).text
+    assert "app-web" in res_cont
+    res_nginx = admin.get("/logs/search", params={"source": "nginx"}).text
+    assert "app-web" not in res_nginx

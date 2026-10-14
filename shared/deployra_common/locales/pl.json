@@ -81,7 +81,7 @@
     "token_expired": "token wygasł — wygeneruj nowy w panelu",
     "token_used": "ten token został już użyty przez inny węzeł",
     "unknown_host": {
-      "text": "Ta domena nie jest skonfigurowana w Deployrze.",
+      "text": "Ta domena nie jest skonfigurowana.",
       "title": "Nieznany host"
     },
     "unknown_token": "nieznany token dołączenia",

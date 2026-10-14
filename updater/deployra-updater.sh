@@ -234,8 +234,11 @@ apply() {
     for f in $pins; do
         sed -i "s/^DEPLOYRA_VERSION=.*/DEPLOYRA_VERSION=$version/" "$f" && log "Pinned version in $f → $version"
     done
-    # stare warstwy Deployry tylko zajmują dysk (obrazy aplikacji zostawiamy w spokoju)
-    docker image prune -f --filter "label=deployra.component" >/dev/null 2>&1 || true
+    # stare obrazy Deployry tylko zajmują dysk (obrazy aplikacji zostawiamy w spokoju)
+    docker image prune -a -f --filter "label=deployra.component" >/dev/null 2>&1 || true
+    docker images --filter "reference=*deployra*" -q 2>/dev/null | sort -u | while read -r img; do
+        [ -n "$img" ] && docker rmi "$img" >/dev/null 2>&1 || true
+    done
     log "✔ Updated to $version"
     status done "$version" done
 }

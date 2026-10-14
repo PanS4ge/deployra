@@ -19,7 +19,16 @@ from deployra_common.i18n import tr
 
 from .state import State
 
-DEFAULT_SETTINGS = {"auto": False, "rate": 600, "minutes": 60, "allowlist": []}
+DEFAULT_SETTINGS = {
+    "auto": False,
+    "rate": 600,
+    "minutes": 60,
+    "err404_threshold": 15,
+    "probe_threshold": 5,
+    "ban_404": True,
+    "ban_probes": True,
+    "allowlist": [],
+}
 SETS = (("deployra-ban", "inet", "iptables", 4), ("deployra-ban6", "inet6", "ip6tables", 6))
 
 CLOUDFLARE_NETWORKS: tuple[str, ...] = (
@@ -74,15 +83,33 @@ class Bans:
     def settings(self) -> dict[str, Any]:
         return {**DEFAULT_SETTINGS, **(self.state.get("ban_settings") or {})}
 
-    def update_settings(self, auto: bool, rate: int, minutes: int, allowlist: list[str]) -> dict[str, Any]:
+    def update_settings(
+        self,
+        auto: bool,
+        rate: int,
+        minutes: int,
+        allowlist: list[str],
+        err404_threshold: int = 15,
+        probe_threshold: int = 5,
+        ban_404: bool = True,
+        ban_probes: bool = True,
+    ) -> dict[str, Any]:
         clean = []
         for item in allowlist:
             try:
                 clean.append(str(ipaddress.ip_network(item.strip(), strict=False)))
             except ValueError:
                 raise ValueError(tr("gw.ban.bad_target", target=item)) from None
-        settings = {"auto": bool(auto), "rate": max(60, min(int(rate), 100_000)), "minutes": max(1, min(int(minutes), 43_200)),
-                    "allowlist": clean}  # fmt: skip
+        settings = {
+            "auto": bool(auto),
+            "rate": max(60, min(int(rate), 100_000)),
+            "minutes": max(1, min(int(minutes), 43_200)),
+            "err404_threshold": max(3, min(int(err404_threshold), 10_000)),
+            "probe_threshold": max(1, min(int(probe_threshold), 1_000)),
+            "ban_404": bool(ban_404),
+            "ban_probes": bool(ban_probes),
+            "allowlist": clean,
+        }
         self.state.update(ban_settings=settings)
         return settings
 

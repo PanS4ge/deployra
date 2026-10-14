@@ -59,7 +59,10 @@ def test_traffic_pages_with_gateway(admin, monkeypatch):
     admin.post("/traffic/unban", data={"target": "9.9.9.9"})
     assert ("POST", "/api/bans/remove", {"target": "9.9.9.9"}) in fake.calls
     admin.post("/traffic/settings", data={"auto": "1", "rate": "1200", "minutes": "15", "allowlist": "1.1.1.1\n8.8.8.8"})
-    assert ("PUT", "/api/bans/settings", {"auto": True, "rate": 1200, "minutes": 15, "allowlist": ["1.1.1.1", "8.8.8.8"]}) in fake.calls
+    assert ("PUT", "/api/bans/settings", {
+        "auto": True, "rate": 1200, "minutes": 15, "err404_threshold": 15,
+        "probe_threshold": 5, "ban_404": False, "ban_probes": False, "allowlist": ["1.1.1.1", "8.8.8.8"]
+    }) in fake.calls
 
 
 def test_traffic_requires_proxy_permission(admin):

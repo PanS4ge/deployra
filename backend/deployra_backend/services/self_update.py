@@ -291,7 +291,17 @@ def apply(api: Any, data_dir: Path, cid: str, version: str, wait: float = VERIFY
     except Exception as exc:  # noqa: BLE001
         log(f"(couldn't remove {backup}: {exc})")
     try:
-        api.remove_image(info["Image"])  # stary obraz tylko zajmuje dysk; w użyciu → zostaje
+        api.remove_image(info["Image"], force=False)  # stary obraz tylko zajmuje dysk; w użyciu → zostaje
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        for img in api.images(filters={"label": "deployra.component"}):
+            iid = img.get("Id")
+            if iid and iid != new_image.get("Id"):
+                try:
+                    api.remove_image(iid, force=False)
+                except Exception:
+                    pass
     except Exception:  # noqa: BLE001
         pass
     log(f"✔ Updated to {version}")

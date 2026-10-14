@@ -7,6 +7,7 @@ import threading
 from collections.abc import AsyncIterator
 from typing import Any
 
+from deployra_common import container_profiles
 from deployra_common.i18n import tr
 from deployra_common.jobs import Job, JobFailed
 from deployra_common.schemas import ContainerSpec, NetworkSpec, VolumeSpec
@@ -208,7 +209,7 @@ def list_images(client: Any) -> list[dict]:
     return sorted(out, key=lambda i: (i["tags"][0] if i["tags"] else "~", i["id"]))
 
 
-def pull_image(client: Any, job: Job, image: str) -> str:
+def pull_image(client: Any, job: Job, image: str, auth_config: dict | None = None) -> str:
     """Pobiera obraz, logując zmiany statusu warstw (bez zalewania logu paskiem postępu)."""
     from docker.utils import parse_repository_tag
 
@@ -216,7 +217,7 @@ def pull_image(client: Any, job: Job, image: str) -> str:
     tag = tag or "latest"
     job.log(tr("node.pulling", image=f"{repo}:{tag}"))
     last: dict[str, str] = {}
-    for event in client.api.pull(repo, tag=tag, stream=True, decode=True):
+    for event in client.api.pull(repo, tag=tag, stream=True, decode=True, auth_config=auth_config):
         if "error" in event:
             raise JobFailed(event.get("error") or tr("node.pull_error"))
         status, layer = event.get("status", ""), event.get("id", "")
@@ -364,3 +365,80 @@ def find_container(client: Any, name: str) -> dict | None:
     for c in client.api.containers(all=True, filters={"name": f"^/{name}$"}):
         return c
     return None
+
+
+def get_container_profile(client: Any, cid: str) -> dict:
+    """Zwraca profil kontenera i listę dostępnych szybkich akcji."""
+    info = client.api.inspect_container(cid)
+    cfg = info.get("Config") or {}
+    img = cfg.get("Image") or ""
+    env = cfg.get("Env") or []
+    ports = []
+    for p in (cfg.get("ExposedPorts") or {}).keys():
+        try:
+            ports.append({"container": int(p.split("/")[0])})
+        except (ValueError, IndexError):
+            pass
+    for p in ((info.get("NetworkSettings") or {}).get("Ports") or {}).keys():
+        try:
+            ports.append({"container": int(p.split("/")[0])})
+        except (ValueError, IndexError):
+            pass
+    p = container_profiles.detect_profile(img, env, ports)
+    return {
+        "kind": p.kind,
+        "title": p.title,
+        "category": p.category,
+        "icon": p.icon,
+        "color": p.color,
+        "can_dump": p.can_dump,
+        "actions": [
+            {
+                "id": a.id,
+                "label": a.label,
+                "icon": a.icon,
+                "style": a.style,
+                "confirm": a.confirm,
+                "is_dump": a.is_dump,
+                "description": a.description,
+            }
+            for a in p.actions
+        ],
+    }
+
+
+def run_quick_action(client: Any, cid: str, action_id: str) -> tuple[int, str | bytes, bool, str]:
+    """Wykonywanie szybkiej akcji w kontenerze. Zwraca (kod_wyjścia, wynik, czy_plik, nazwa_pliku)."""
+    import gzip
+
+    info = client.api.inspect_container(cid)
+    cfg = info.get("Config") or {}
+    img = cfg.get("Image") or ""
+    env = cfg.get("Env") or []
+    ports = []
+    for p in (cfg.get("ExposedPorts") or {}).keys():
+        try:
+            ports.append({"container": int(p.split("/")[0])})
+        except (ValueError, IndexError):
+            pass
+    for p in ((info.get("NetworkSettings") or {}).get("Ports") or {}).keys():
+        try:
+            ports.append({"container": int(p.split("/")[0])})
+        except (ValueError, IndexError):
+            pass
+    profile = container_profiles.detect_profile(img, env, ports)
+    cmd, is_dump, filename = container_profiles.build_action_command(profile, action_id, env)
+
+    exec_res = client.api.exec_create(cid, cmd)
+    exec_id = exec_res["Id"]
+    output = client.api.exec_start(exec_id)
+    exit_code = (client.api.exec_inspect(exec_id) or {}).get("ExitCode", 0)
+
+    if is_dump:
+        raw_bytes = output if isinstance(output, bytes) else str(output).encode()
+        compressed = gzip.compress(raw_bytes)
+        return exit_code, compressed, True, filename
+
+    out_str = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
+    return exit_code, out_str, False, ""
+

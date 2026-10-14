@@ -8,7 +8,7 @@ import socket
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel
 
@@ -91,6 +91,23 @@ def container(info: dict = Depends(_container)) -> dict:
 def container_action(cid: str, action: str, client: Any = Depends(dk)) -> dict:
     docker_svc.container_action(client, cid, action)
     return {"ok": True}
+
+
+@router.get("/containers/{cid}/profile")
+def container_profile(cid: str, client: Any = Depends(dk)) -> dict:
+    return docker_svc.get_container_profile(client, cid)
+
+
+@router.api_route("/containers/{cid}/action/quick/{action_id}", methods=["GET", "POST"])
+def container_quick_action(cid: str, action_id: str, client: Any = Depends(dk)):
+    code, output, is_dump, filename = docker_svc.run_quick_action(client, cid, action_id)
+    if is_dump:
+        return Response(
+            content=output,
+            media_type="application/gzip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    return {"exit_code": code, "output": output}
 
 
 @router.delete("/containers/{cid}")
@@ -214,6 +231,7 @@ async def container_exec(
 
 class PullRequest(BaseModel):
     image: str
+    auth: dict | None = None
 
 
 class PruneRequest(BaseModel):
@@ -230,7 +248,9 @@ async def pull(body: PullRequest, client: Any = Depends(dk), ctx: Context = Depe
     from deployra_common.schemas import check_image
 
     image = check_image(body.image)
-    return job_response(ctx.jobs.start("pull", f"Pobieranie {image}", lambda job: docker_svc.pull_image(client, job, image)))
+    return job_response(
+        ctx.jobs.start("pull", f"Pobieranie {image}", lambda job: docker_svc.pull_image(client, job, image, auth_config=body.auth))
+    )
 
 
 @router.delete("/images/{image_id:path}")

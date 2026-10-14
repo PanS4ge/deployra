@@ -175,3 +175,63 @@ def test_sample_requests_captured(tmp_path):
     assert samples[0]["status"] == 401
     assert samples[0]["ua"] == "curl/7.68.0"
 
+
+def test_ipwatch_tracks_404(tmp_path):
+    watch = IpWatch(tmp_path)
+    # 3 hits to 404 from 1.2.3.4
+    for _ in range(3):
+        watch.ingest({"a": "1.2.3.4", "m": "GET", "r": "/nonexistent", "s": 404, "h": "app.example.com"})
+    # 1 hit with 200 from 1.2.3.4
+    watch.ingest({"a": "1.2.3.4", "m": "GET", "r": "/home", "s": 200, "h": "app.example.com"})
+    # 1 hit with 404 from 5.6.7.8
+    watch.ingest({"a": "5.6.7.8", "m": "GET", "r": "/secret", "s": 404, "h": "wrong.domain"})
+
+    top = watch.top()
+    assert len(top) == 2
+    ip1 = next(item for item in top if item["ip"] == "1.2.3.4")
+    assert ip1["requests"] == 4 and ip1["err404"] == 3 and ip1["err4"] == 3
+
+    ip2 = next(item for item in top if item["ip"] == "5.6.7.8")
+    assert ip2["requests"] == 1 and ip2["err404"] == 1
+
+    # not_found list
+    nf = watch.not_found()
+    assert len(nf) == 2
+    assert nf[0]["ip"] == "1.2.3.4" and nf[0]["count"] == 3
+    assert nf[1]["ip"] == "5.6.7.8" and nf[1]["count"] == 1
+
+    # top filtered by 404
+    top_404 = watch.top(filter_404=True)
+    assert len(top_404) == 2
+    assert top_404[0]["ip"] == "1.2.3.4" and top_404[0]["err404"] == 3
+
+    # Persistence across restart
+    watch.flush()
+    watch2 = IpWatch(tmp_path)
+    top_after = watch2.top()
+    ip1_after = next(item for item in top_after if item["ip"] == "1.2.3.4")
+    assert ip1_after["err404"] == 3
+    nf_after = watch2.not_found()
+    assert nf_after[0]["ip"] == "1.2.3.4" and nf_after[0]["count"] == 3
+
+
+def test_autoban_configurable_triggers(ctx):
+    from deployra_gateway.app import security_tick
+
+    # Enable auto ban with 404 threshold = 5
+    ctx.bans.update_settings(auto=True, rate=600, minutes=60, allowlist=[], err404_threshold=5, ban_404=True)
+
+    # Ingest 5 404s from public attacker IP
+    attacker = "93.184.216.34"
+    for _ in range(5):
+        ctx.ipwatch.ingest({"a": attacker, "m": "GET", "r": "/wp-login.php", "s": 404, "h": "example.com"})
+
+    # Run security tick
+    changed = security_tick(ctx)
+    assert changed is True
+    assert ctx.bans.is_banned(attacker) is True
+    ban_entry = next(b for b in ctx.bans.list() if b["target"] == attacker)
+    assert "404" in ban_entry["reason"] or "probes" in ban_entry["reason"]
+
+
+

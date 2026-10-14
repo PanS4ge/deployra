@@ -1,23 +1,202 @@
 {% extends "base.html" %}
 {% block content %}
 {% include "settings/_tabs.html" %}
-<div class="grid grid-2">
-  <div class="card">
-    <div class="card-head"><h3><i class="bi bi-download"></i> {{ t("backup.export") }}</h3></div>
-    <div class="card-body stack">
-      <div class="small dim">{{ t("backup.export_hint") }}</div>
-      <div class="row">
-        <a class="btn primary" href="/settings/backup/export" hx-boost="false"><i class="bi bi-filetype-json"></i> {{ t("backup.download") }}</a>
-        <a class="btn" href="/settings/backup/export?secrets_included=true" hx-boost="false" title="{{ t('backup.with_secrets_hint') }}"><i class="bi bi-key"></i> {{ t("backup.with_secrets") }}</a>
+
+<div class="stack" style="gap: 20px">
+  <div class="card" x-data="{ target: '{{ config.target or 'local' }}' }">
+    <div class="card-head">
+      <h3><i class="bi bi-hdd-network"></i> {{ t("backup.storage_title") }}</h3>
+      {% if config.last_run %}
+      <span class="badge {% if config.last_status == 'ok' %}ok{% else %}err{% endif %}">
+        {% if config.last_status == 'ok' %}<i class="bi bi-check-circle"></i> {{ t("backup.status_ok") }}{% else %}<i class="bi bi-exclamation-circle"></i> {{ t("backup.status_err") }}{% endif %}
+      </span>
+      {% endif %}
+    </div>
+
+    <form class="card-body stack" method="post" action="/settings/backup/storage">
+      <div class="small dim">{{ t("backup.storage_hint") }}</div>
+
+      {% if config.last_run %}
+      <div class="notice {% if config.last_status == 'ok' %}ok{% else %}err{% endif %} row" style="justify-content: space-between; align-items: center">
+        <div>
+          <strong>{{ t("backup.last_run") }}:</strong> {{ config.last_run|dt }}
+          {% if config.last_filename %} · <code>{{ config.last_filename }}</code>{% endif %}
+          {% if config.last_size %} · {{ config.last_size|bytes }}{% endif %}
+          <div class="small dim" style="margin-top: 4px">{{ config.last_message }}</div>
+        </div>
+      </div>
+      {% endif %}
+
+      <div>
+        <label class="label">{{ t("backup.target_label") }}</label>
+        <div class="row" style="gap: 16px; flex-wrap: wrap">
+          <label class="radio-label">
+            <input type="radio" name="target" value="local" x-model="target">
+            <span><i class="bi bi-hdd"></i> {{ t("backup.target_local") }}</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="target" value="s3" x-model="target">
+            <span><i class="bi bi-cloud"></i> {{ t("backup.target_s3") }}</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="target" value="ftp" x-model="target">
+            <span><i class="bi bi-folder-symlink"></i> {{ t("backup.target_ftp") }}</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="target" value="sftp" x-model="target">
+            <span><i class="bi bi-shield-lock"></i> {{ t("backup.target_sftp") }}</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- LOCAL -->
+      <div x-show="target === 'local'" class="stack">
+        <div>
+          <label class="label">{{ t("backup.local_path") }}</label>
+          <input class="input" type="text" name="local_path" value="{{ config.local_path or './backups' }}" placeholder="./backups">
+          <div class="small dim" style="margin-top: 4px">{{ t("backup.local_path_hint") }}</div>
+        </div>
+      </div>
+
+      <!-- S3 -->
+      <div x-show="target === 's3'" class="stack" style="display: none">
+        <div class="grid grid-2">
+          <div>
+            <label class="label">{{ t("backup.s3_endpoint") }}</label>
+            <input class="input" type="text" name="s3_endpoint" value="{{ config.s3_endpoint or 'https://s3.amazonaws.com' }}" placeholder="https://s3.amazonaws.com">
+          </div>
+          <div>
+            <label class="label">{{ t("backup.s3_bucket") }}</label>
+            <input class="input" type="text" name="s3_bucket" value="{{ config.s3_bucket or '' }}" placeholder="my-deployra-backups">
+          </div>
+        </div>
+        <div class="grid grid-2">
+          <div>
+            <label class="label">{{ t("backup.s3_access_key") }}</label>
+            <input class="input" type="text" name="s3_access_key" value="{{ config.s3_access_key or '' }}" autocomplete="username">
+          </div>
+          <div>
+            <label class="label">{{ t("backup.s3_secret_key") }}</label>
+            <input class="input" type="password" name="s3_secret_key" placeholder="••••••••" autocomplete="current-password">
+          </div>
+        </div>
+        <div class="grid grid-2">
+          <div>
+            <label class="label">{{ t("backup.s3_region") }}</label>
+            <input class="input" type="text" name="s3_region" value="{{ config.s3_region or 'us-east-1' }}" placeholder="us-east-1">
+          </div>
+          <div>
+            <label class="label">{{ t("backup.s3_prefix") }}</label>
+            <input class="input" type="text" name="s3_prefix" value="{{ config.s3_prefix or '' }}" placeholder="deployra/">
+          </div>
+        </div>
+      </div>
+
+      <!-- FTP -->
+      <div x-show="target === 'ftp'" class="stack" style="display: none">
+        <div class="grid grid-2">
+          <div>
+            <label class="label">{{ t("backup.ftp_host") }}</label>
+            <input class="input" type="text" name="ftp_host" value="{{ config.ftp_host or '' }}" placeholder="ftp.example.com">
+          </div>
+          <div>
+            <label class="label">{{ t("backup.ftp_port") }}</label>
+            <input class="input" type="number" name="ftp_port" value="{{ config.ftp_port or 21 }}">
+          </div>
+        </div>
+        <div class="grid grid-2">
+          <div>
+            <label class="label">{{ t("backup.ftp_user") }}</label>
+            <input class="input" type="text" name="ftp_user" value="{{ config.ftp_user or '' }}" placeholder="anonymous" autocomplete="username">
+          </div>
+          <div>
+            <label class="label">{{ t("backup.ftp_password") }}</label>
+            <input class="input" type="password" name="ftp_password" placeholder="••••••••" autocomplete="current-password">
+          </div>
+        </div>
+        <div class="grid grid-2">
+          <div>
+            <label class="label">{{ t("backup.ftp_path") }}</label>
+            <input class="input" type="text" name="ftp_path" value="{{ config.ftp_path or '/' }}" placeholder="/backups">
+          </div>
+          <div style="display: flex; align-items: flex-end; padding-bottom: 8px">
+            <label class="checkbox-label">
+              <input type="checkbox" name="ftp_tls" value="1" {% if config.ftp_tls %}checked{% endif %}>
+              <span>{{ t("backup.ftp_tls") }}</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- SFTP -->
+      <div x-show="target === 'sftp'" class="stack" style="display: none">
+        <div class="grid grid-2">
+          <div>
+            <label class="label">{{ t("backup.sftp_host") }}</label>
+            <input class="input" type="text" name="sftp_host" value="{{ config.sftp_host or '' }}" placeholder="sftp.example.com">
+          </div>
+          <div>
+            <label class="label">{{ t("backup.sftp_port") }}</label>
+            <input class="input" type="number" name="sftp_port" value="{{ config.sftp_port or 22 }}">
+          </div>
+        </div>
+        <div class="grid grid-2">
+          <div>
+            <label class="label">{{ t("backup.sftp_user") }}</label>
+            <input class="input" type="text" name="sftp_user" value="{{ config.sftp_user or 'root' }}" autocomplete="username">
+          </div>
+          <div>
+            <label class="label">{{ t("backup.sftp_password") }}</label>
+            <input class="input" type="password" name="sftp_password" placeholder="••••••••" autocomplete="current-password">
+          </div>
+        </div>
+        <div>
+          <label class="label">{{ t("backup.sftp_path") }}</label>
+          <input class="input" type="text" name="sftp_path" value="{{ config.sftp_path or '/backups' }}" placeholder="/backups">
+        </div>
+      </div>
+
+      <!-- Common Settings -->
+      <div class="grid grid-2" style="border-top: 1px solid var(--border); padding-top: 14px">
+        <div>
+          <label class="label">{{ t("backup.retention") }}</label>
+          <input class="input" type="number" name="retention" min="1" max="100" value="{{ config.retention or 10 }}">
+          <div class="small dim" style="margin-top: 4px">{{ t("backup.retention_hint") }}</div>
+        </div>
+        <div style="display: flex; align-items: center; padding-top: 20px">
+          <label class="checkbox-label">
+            <input type="checkbox" name="secrets_included" value="1" {% if config.secrets_included != false %}checked{% endif %}>
+            <span>{{ t("backup.secrets_included") }}</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="row" style="justify-content: flex-end; gap: 8px">
+        <button type="button" class="btn" hx-post="/settings/backup/storage/test" hx-swap="none"><i class="bi bi-activity"></i> {{ t("backup.test_btn") }}</button>
+        <button type="button" class="btn primary" hx-post="/settings/backup/storage/run" hx-swap="none"><i class="bi bi-play-fill"></i> {{ t("backup.run_now") }}</button>
+        <button type="submit" class="btn primary"><i class="bi bi-check-lg"></i> {{ t("backup.save_btn") }}</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-head"><h3><i class="bi bi-download"></i> {{ t("backup.export") }}</h3></div>
+      <div class="card-body stack">
+        <div class="small dim">{{ t("backup.export_hint") }}</div>
+        <div class="row">
+          <a class="btn primary" href="/settings/backup/export" hx-boost="false"><i class="bi bi-filetype-json"></i> {{ t("backup.download") }}</a>
+          <a class="btn" href="/settings/backup/export?secrets_included=true" hx-boost="false" title="{{ t('backup.with_secrets_hint') }}"><i class="bi bi-key"></i> {{ t("backup.with_secrets") }}</a>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="card">
-    <div class="card-head"><h3><i class="bi bi-upload"></i> {{ t("backup.restore_title") }}</h3></div>
-    <form class="card-body stack" hx-post="/settings/backup/import" hx-encoding="multipart/form-data" hx-swap="none" hx-confirm="{{ t('backup.restore_confirm') }}" data-danger>
-      <input class="input" type="file" name="file" accept=".json" required>
-      <div class="row" style="justify-content: flex-end"><button class="btn danger"><i class="bi bi-arrow-counterclockwise"></i> {{ t("backup.restore") }}</button></div>
-    </form>
+    <div class="card">
+      <div class="card-head"><h3><i class="bi bi-upload"></i> {{ t("backup.restore_title") }}</h3></div>
+      <form class="card-body stack" hx-post="/settings/backup/import" hx-encoding="multipart/form-data" hx-swap="none" hx-confirm="{{ t('backup.restore_confirm') }}" data-danger>
+        <input class="input" type="file" name="file" accept=".json" required>
+        <div class="row" style="justify-content: flex-end"><button class="btn danger"><i class="bi bi-arrow-counterclockwise"></i> {{ t("backup.restore") }}</button></div>
+      </form>
+    </div>
   </div>
 </div>
 {% endblock %}

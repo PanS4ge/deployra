@@ -67,7 +67,8 @@ def test_default_page_passthrough_and_cosmic():
     # 1. Cosmic default page
     state_cosmic = ProxyState(default_page="deployra")
     files_cosmic = nginx_driver.render(state_cosmic, lambda cid: False, ipv6=False)
-    assert "Deployra · Deep Space" in files_cosmic["http/00-default.conf"]
+    assert "orbit-spin" in files_cosmic["http/00-default.conf"]
+    assert "Deployra · Deep Space" not in files_cosmic["http/00-default.conf"]
     assert "return 404" in files_cosmic["http/00-default.conf"]
 
     # 2. Passthrough to custom upstream app

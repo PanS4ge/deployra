@@ -32,7 +32,7 @@ MAX_DOMAINS = 8
 MAX_PATHS = 5
 
 # indeksy w liście statystyk adresu
-REQ, BYTES, ERR4, ERR5, PROBE = range(5)
+REQ, BYTES, ERR4, ERR5, PROBE, ERR404 = range(6)
 
 
 def _day(ts: float) -> str:
@@ -54,14 +54,24 @@ class IpWatch:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS ip_daily (day TEXT NOT NULL, ip TEXT NOT NULL, requests INTEGER, bytes INTEGER, "
-            "err4 INTEGER, err5 INTEGER, probes INTEGER, last REAL, domains TEXT, PRIMARY KEY (day, ip))"
+            "err4 INTEGER, err5 INTEGER, probes INTEGER, last REAL, domains TEXT, err404 INTEGER DEFAULT 0, PRIMARY KEY (day, ip))"
+        )
+        try:
+            self.db.execute("ALTER TABLE ip_daily ADD COLUMN err404 INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        self.db.execute(
+            "CREATE TABLE IF NOT EXISTS ip_404 ("
+            "ip TEXT PRIMARY KEY, count INTEGER NOT NULL DEFAULT 0, "
+            "first_seen REAL NOT NULL, last_seen REAL NOT NULL, "
+            "last_path TEXT, last_domain TEXT)"
         )
         now = time.time()
         self.minute = int(now // 60)
         self.current: dict[str, list[int]] = {}
         self.window: deque[tuple[int, dict[str, list[int]]]] = deque(maxlen=WINDOW_MINUTES)
         self.day = _day(now)
-        self.today: dict[str, list] = {}  # ip → [req, bytes, err4, err5, probes, last, {domena: n}]
+        self.today: dict[str, list] = {}  # ip → [req, bytes, err4, err5, probes, err404, last, {domena: n}]
         self.paths: dict[str, list[str]] = {}
         self.samples: dict[str, list[dict[str, Any]]] = {}
         self._load_today()
@@ -87,27 +97,43 @@ class IpWatch:
             self._roll(ts)
             minute = self.current.get(ip)
             if minute is None:
-                minute = self.current[ip] = [0, 0, 0, 0, 0]
+                minute = self.current[ip] = [0, 0, 0, 0, 0, 0]
                 if len(self.current) > MINUTE_CAP * 2:
                     _prune(self.current, MINUTE_CAP)
-                    minute = self.current.setdefault(ip, [0, 0, 0, 0, 0])
+                    minute = self.current.setdefault(ip, [0, 0, 0, 0, 0, 0])
             stats = self.today.get(ip)
             if stats is None:
-                stats = self.today[ip] = [0, 0, 0, 0, 0, 0.0, {}]
+                stats = self.today[ip] = [0, 0, 0, 0, 0, 0, 0.0, {}]
                 if len(self.today) > DAY_CAP * 2:
                     _prune(self.today, DAY_CAP)
-                    stats = self.today.setdefault(ip, [0, 0, 0, 0, 0, 0.0, {}])
+                    stats = self.today.setdefault(ip, [0, 0, 0, 0, 0, 0, 0.0, {}])
             for row in (minute, stats):
                 row[REQ] += 1
                 row[BYTES] += size
                 if 400 <= status < 500:
                     row[ERR4] += 1
+                    if status == 404:
+                        row[ERR404] += 1
                 elif status >= 500:
                     row[ERR5] += 1
                 if probe:
                     row[PROBE] += 1
-            stats[5] = ts
-            domains = stats[6]
+            if status == 404:
+                try:
+                    self.db.execute(
+                        "INSERT INTO ip_404 (ip, count, first_seen, last_seen, last_path, last_domain) "
+                        "VALUES (?, 1, ?, ?, ?, ?) "
+                        "ON CONFLICT(ip) DO UPDATE SET "
+                        "count = count + 1, "
+                        "last_seen = excluded.last_seen, "
+                        "last_path = excluded.last_path, "
+                        "last_domain = excluded.last_domain",
+                        (ip, ts, ts, path or "/", domain),
+                    )
+                except sqlite3.Error:
+                    pass
+            stats[6] = ts
+            domains = stats[7]
             if domain in domains or len(domains) < MAX_DOMAINS:
                 domains[domain] = domains.get(domain, 0) + 1
             if probe:
@@ -148,15 +174,23 @@ class IpWatch:
         top = sorted(self.today.items(), key=lambda item: item[1][REQ], reverse=True)[:PERSIST_TOP]
         self.db.execute("DELETE FROM ip_daily WHERE day = ?", [self.day])
         self.db.executemany(
-            "INSERT INTO ip_daily (day, ip, requests, bytes, err4, err5, probes, last, domains) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [(self.day, ip, s[REQ], s[BYTES], s[ERR4], s[ERR5], s[PROBE], s[5], json.dumps(s[6])) for ip, s in top],
+            "INSERT INTO ip_daily (day, ip, requests, bytes, err4, err5, probes, last, domains, err404) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [(self.day, ip, s[REQ], s[BYTES], s[ERR4], s[ERR5], s[PROBE], s[6], json.dumps(s[7]), s[ERR404]) for ip, s in top],
         )
 
     def _load_today(self) -> None:
-        for ip, req, size, err4, err5, probes, last, domains in self.db.execute(
-            "SELECT ip, requests, bytes, err4, err5, probes, last, domains FROM ip_daily WHERE day = ?", [self.day]
-        ):
-            self.today[ip] = [req, size, err4, err5, probes, last, json.loads(domains or "{}")]
+        try:
+            rows = self.db.execute(
+                "SELECT ip, requests, bytes, err4, err5, probes, last, domains, COALESCE(err404, 0) FROM ip_daily WHERE day = ?", [self.day]
+            ).fetchall()
+        except sqlite3.OperationalError:
+            rows = [
+                (*row, 0) for row in self.db.execute(
+                    "SELECT ip, requests, bytes, err4, err5, probes, last, domains FROM ip_daily WHERE day = ?", [self.day]
+                ).fetchall()
+            ]
+        for ip, req, size, err4, err5, probes, last, domains, err404 in rows:
+            self.today[ip] = [req, size, err4, err5, probes, err404, last, json.loads(domains or "{}")]
 
     def flush(self) -> None:
         with self._lock:
@@ -165,52 +199,91 @@ class IpWatch:
 
     # --- odczyt ---------------------------------------------------------------------------
 
-    def top(self, days: int = 1, domain: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+    def top(self, days: int = 1, domain: str | None = None, limit: int = 50, filter_404: bool = False) -> list[dict[str, Any]]:
         """Najaktywniejsze adresy z ostatnich `days` dni (dziś z pamięci, wcześniej z bazy)."""
         days = max(1, min(days, self.retention_days))
         merged: dict[str, list] = {}
 
         def add(ip: str, row: list) -> None:
-            domains = row[6]
+            domains = row[7]
             if domain and domain not in domains:
                 return
-            entry = merged.setdefault(ip, [0, 0, 0, 0, 0, 0.0, {}])
-            for i in range(5):
+            entry = merged.setdefault(ip, [0, 0, 0, 0, 0, 0, 0.0, {}])
+            for i in range(6):
                 entry[i] += row[i]
-            entry[5] = max(entry[5], row[5] or 0)
+            entry[6] = max(entry[6], row[6] or 0)
             for name, count in domains.items():
-                entry[6][name] = entry[6].get(name, 0) + count
+                entry[7][name] = entry[7].get(name, 0) + count
 
         with self._lock:
             self._roll(time.time())
             since = _day(time.time() - (days - 1) * 86400)
-            rows = self.db.execute(
-                "SELECT ip, requests, bytes, err4, err5, probes, last, domains FROM ip_daily WHERE day >= ? AND day < ?", [since, self.day]
-            ).fetchall()
-            for ip, req, size, err4, err5, probes, last, domains in rows:
-                add(ip, [req, size, err4, err5, probes, last, json.loads(domains or "{}")])
+            try:
+                rows = self.db.execute(
+                    "SELECT ip, requests, bytes, err4, err5, probes, last, domains, COALESCE(err404, 0) FROM ip_daily WHERE day >= ? AND day < ?", [since, self.day]
+                ).fetchall()
+            except sqlite3.OperationalError:
+                rows = [
+                    (*r, 0) for r in self.db.execute(
+                        "SELECT ip, requests, bytes, err4, err5, probes, last, domains FROM ip_daily WHERE day >= ? AND day < ?", [since, self.day]
+                    ).fetchall()
+                ]
+            for ip, req, size, err4, err5, probes, last, domains, err404 in rows:
+                add(ip, [req, size, err4, err5, probes, err404, last, json.loads(domains or "{}")])
             for ip, row in self.today.items():
                 add(ip, row)
             paths = {ip: list(found) for ip, found in self.paths.items()}
             samples = {ip: list(found) for ip, found in self.samples.items()}
 
         def requests(row: list) -> int:
-            return row[6].get(domain, 0) if domain else row[REQ]
+            return row[7].get(domain, 0) if domain else row[REQ]
+
+        items = list(merged.items())
+        if filter_404:
+            items = [item for item in items if item[1][ERR404] > 0]
+            items.sort(key=lambda item: (item[1][ERR404], requests(item[1])), reverse=True)
+        else:
+            items.sort(key=lambda item: requests(item[1]), reverse=True)
 
         out = []
-        for ip, row in sorted(merged.items(), key=lambda item: requests(item[1]), reverse=True)[:limit]:
+        for ip, row in items[:limit]:
             out.append({
                 "ip": ip, "requests": requests(row), "bytes": row[BYTES], "err4": row[ERR4], "err5": row[ERR5],
-                "probes": row[PROBE], "last": row[5], "paths": paths.get(ip, []),
-                "domains": [name for name, _ in sorted(row[6].items(), key=lambda kv: kv[1], reverse=True)[:3]],
+                "probes": row[PROBE], "err404": row[ERR404], "last": row[6], "paths": paths.get(ip, []),
+                "domains": [name for name, _ in sorted(row[7].items(), key=lambda kv: kv[1], reverse=True)[:3]],
                 "samples": samples.get(ip, []),
             })  # fmt: skip
         return out
 
-    def suspicious(self, rate_limit: int = 600, now: float | None = None) -> list[dict[str, Any]]:
+    def not_found(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Zwraca adresy IP, które trafiły w 404, wraz z liczbą trafień."""
+        with self._lock:
+            rows = self.db.execute(
+                "SELECT ip, count, first_seen, last_seen, last_path, last_domain FROM ip_404 ORDER BY count DESC, last_seen DESC LIMIT ?",
+                [limit],
+            ).fetchall()
+        return [
+            {
+                "ip": r[0],
+                "count": r[1],
+                "first_seen": r[2],
+                "last_seen": r[3],
+                "last_path": r[4],
+                "last_domain": r[5],
+            }
+            for r in rows
+        ]
+
+    def suspicious(
+        self,
+        rate_limit: int = 600,
+        err404_threshold: int = 15,
+        probe_threshold: int = 3,
+        now: float | None = None,
+    ) -> list[dict[str, Any]]:
         """Adresy, które w ostatnich minutach zalewały zapytaniami, skanowały albo szukały dziur.
 
-        Powody to kody (`rate`, `scan`, `probes`) z wartościami — panel tłumaczy je na język użytkownika.
+        Powody to kody (`rate`, `scan`, `probes`, `404`) z wartościami — panel tłumaczy je na język użytkownika.
         """
         now = now or time.time()
         with self._lock:
@@ -221,12 +294,12 @@ class IpWatch:
             peaks: dict[str, int] = {}
             for bucket in buckets:
                 for ip, row in bucket.items():
-                    total = totals.setdefault(ip, [0, 0, 0, 0, 0])
-                    for i in range(5):
+                    total = totals.setdefault(ip, [0, 0, 0, 0, 0, 0])
+                    for i in range(6):
                         total[i] += row[i]
                     peaks[ip] = max(peaks.get(ip, 0), row[REQ])
             paths = {ip: list(found) for ip, found in self.paths.items()}
-            domains = {ip: list(self.today[ip][6])[:3] if ip in self.today else [] for ip in totals}
+            domains = {ip: list(self.today[ip][7])[:3] if ip in self.today else [] for ip in totals}
             samples = {ip: list(found) for ip, found in self.samples.items()}
         out = []
         for ip, row in totals.items():
@@ -235,12 +308,15 @@ class IpWatch:
                 reasons.append({"code": "rate", "value": peaks[ip]})
             if row[REQ] >= 30 and row[ERR4] / row[REQ] >= 0.8:
                 reasons.append({"code": "scan", "value": round(100 * row[ERR4] / row[REQ])})
-            if row[PROBE] >= 3:
+            if row[ERR404] >= err404_threshold:
+                reasons.append({"code": "404", "value": row[ERR404]})
+            if row[PROBE] >= probe_threshold:
                 reasons.append({"code": "probes", "value": row[PROBE]})
             if reasons:
                 out.append({
                     "ip": ip, "reasons": reasons, "severity": "high" if reasons[0]["code"] == "rate" else "medium",
-                    "requests": row[REQ], "peak": peaks[ip], "err4": row[ERR4], "paths": paths.get(ip, []), "domains": domains.get(ip, []),
+                    "requests": row[REQ], "peak": peaks[ip], "err4": row[ERR4], "err404": row[ERR404],
+                    "paths": paths.get(ip, []), "domains": domains.get(ip, []),
                     "samples": samples.get(ip, []),
                 })  # fmt: skip
         out.sort(key=lambda item: (item["severity"] != "high", -item["peak"]))

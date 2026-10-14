@@ -19,8 +19,10 @@
     <div><div class="small muted">{{ t("analytics.requests") }}</div><div style="font-size: 1.5rem; font-weight: 700">{{ short(data.summary.requests) }}</div></div>
     {% if days != 1 %}<div><div class="small muted">{{ t("analytics.transfer") }}</div><div style="font-size: 1.5rem; font-weight: 700">{{ data.summary.bytes | bytes }}</div></div>{% endif %}
   </div>
-  {{ svg }}
-  <div class="row small muted" style="margin-top: 6px; gap: 16px">
+  <div class="chart-wrap">
+    {{ svg }}
+  </div>
+  <div class="chart-legend small muted">
     <span><span class="dot" style="background: #22d3ee"></span> {{ t("analytics.legend_uniques") }}</span>
     {% if days == 1 %}<span><span class="dot" style="background: #8b5cf6"></span> {{ t("analytics.legend_requests") }}</span>{% else %}<span><span class="dot" style="background: #f472b6"></span> {{ t("analytics.legend_returning") }}</span>{% endif %}
   </div>

@@ -49,9 +49,11 @@ class Config:
     sftp_bind: str = field(default_factory=lambda: _env("DEPLOYRA_SFTP_BIND"))  # domyślnie jak API
     max_transfer_mb: int = field(default_factory=lambda: int(_env("DEPLOYRA_MAX_TRANSFER_MB", "51200")))  # paczka przenosin aplikacji
     fake_docker: bool = field(default_factory=lambda: _flag("DEPLOYRA_FAKE_DOCKER", False))  # tryb deweloperski
-    proxmox: bool = field(default_factory=lambda: _flag("DEPLOYRA_PROXMOX", Path("/etc/pve/lxc").is_dir()))
+    proxmox: bool = field(default_factory=lambda: _flag("DEPLOYRA_PROXMOX", Path("/etc/pve/lxc").is_dir() or Path("/etc/pve/qemu-server").is_dir()))
     proc_dir: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_PROC", "/proc")))
     pve_dir: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_PVE_LXC", "/etc/pve/lxc")))
+    pve_qemu_dir: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_PVE_QEMU", "/etc/pve/qemu-server")))
+    proxmox_url: str = field(default_factory=lambda: _env("DEPLOYRA_PROXMOX_URL", ""))
     native_repo: str = field(default_factory=lambda: _env("DEPLOYRA_NATIVE_REPO"))  # instalacja systemd (install-native.sh)
     update_dir_env: str = field(default_factory=lambda: _env("DEPLOYRA_UPDATE_DIR"))
     self_update: bool = field(default_factory=lambda: _flag("DEPLOYRA_SELF_UPDATE", True))  # backend podmienia własny kontener

@@ -3,14 +3,15 @@
 {% if not gateway %}
 <div class="callout warn"><i class="bi bi-diagram-3"></i><div>{{ t("traffic.no_gateway") }} <a href="/tunnel">{{ t("tunnel.connect_title") }}</a></div></div>
 {% else %}
-<div x-data="{ showSamples: false, activeIp: '', activeSamples: [], activePaths: [] }"
+<div class="stack" style="gap: 20px"
+     x-data="{ showSamples: false, activeIp: '', activeSamples: [], activePaths: [] }"
      @view-samples.window="showSamples = true; activeIp = $event.detail.ip; activeSamples = $event.detail.samples; activePaths = $event.detail.paths">
   <div class="card" hx-get="/analytics/chart?all=1&days=7" hx-trigger="load" hx-swap="innerHTML" hx-disinherit="*">
     <div class="card-body small muted">{{ t("dashboard.loading_visits") }}</div>
   </div>
 
   <!-- Panel Banów i Automatycznych Banów (podniesiony wyżej) -->
-  <div class="grid grid-2" style="margin-bottom: 16px">
+  <div class="grid grid-2">
     <div class="card">
       <div class="card-head"><h3><i class="bi bi-slash-circle"></i> {{ t("traffic.bans") }}</h3></div>
       <form class="card-body row" style="gap: 8px; flex-wrap: wrap" hx-post="/traffic/ban" hx-swap="none" hx-on::after-request="if (event.detail.successful) this.reset()">
@@ -35,6 +36,12 @@
         <div class="form-grid">
           <div class="field"><label>{{ t("traffic.rate_limit") }}</label><input class="input" name="rate" type="number" min="60" value="{{ s.rate or 600 }}"></div>
           <div class="field"><label>{{ t("traffic.ban_minutes") }}</label><input class="input" name="minutes" type="number" min="1" value="{{ s.minutes or 60 }}"></div>
+          <div class="field"><label>{{ t("traffic.err404_threshold") }}</label><input class="input" name="err404_threshold" type="number" min="3" value="{{ s.err404_threshold or 15 }}"></div>
+          <div class="field"><label>{{ t("traffic.probe_threshold") }}</label><input class="input" name="probe_threshold" type="number" min="1" value="{{ s.probe_threshold or 5 }}"></div>
+        </div>
+        <div class="row" style="gap: 16px; margin: 4px 0">
+          <label class="check small"><input type="checkbox" name="ban_404" value="1" {{ "checked" if s.ban_404 is not defined or s.ban_404 }}><span class="sw"></span><span>{{ t("traffic.ban_404_label") }}</span></label>
+          <label class="check small"><input type="checkbox" name="ban_probes" value="1" {{ "checked" if s.ban_probes is not defined or s.ban_probes }}><span class="sw"></span><span>{{ t("traffic.ban_probes_label") }}</span></label>
         </div>
         <div class="field">
           <label>{{ t("traffic.allowlist") }}</label>
@@ -50,7 +57,7 @@
   </div>
 
   <!-- Podejrzane adresy -->
-  <div class="card" style="margin-bottom: 16px">
+  <div class="card">
     <div class="card-head"><h3><i class="bi bi-exclamation-triangle"></i> {{ t("traffic.suspicious") }}</h3><span class="spacer"></span><span class="small muted">{{ t("traffic.last_minutes", count=5) }}</span></div>
     <div hx-get="/traffic/suspicious" hx-trigger="load, every 10s [!document.hidden], bans-changed from:body" hx-swap="innerHTML" hx-disinherit="*">
       <div class="card-body small muted">{{ t("common.loading") }}</div>
@@ -58,7 +65,7 @@
   </div>
 
   <!-- Najaktywniejsze adresy -->
-  <div class="card" style="margin-bottom: 16px">
+  <div class="card">
     <div class="card-head">
       <h3><i class="bi bi-bar-chart-line"></i> {{ t("traffic.top") }}</h3>
       <span class="spacer"></span>
@@ -67,6 +74,10 @@
         <select class="select" name="domain" style="width: auto; max-width: 240px">
           <option value="">{{ t("traffic.all_domains") }}</option>
           {% for d in domains %}<option>{{ d }}</option>{% endfor %}
+        </select>
+        <select class="select" name="filter" style="width: auto">
+          <option value="">{{ t("traffic.filter_all") }}</option>
+          <option value="404">{{ t("traffic.filter_404") }}</option>
         </select>
       </form>
     </div>

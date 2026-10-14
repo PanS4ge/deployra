@@ -4,7 +4,7 @@
 {% block content %}
 {% include "proxy/_tabs.html" %}
 <div class="card" x-data="{ q: '', hideDown: (() => { try { return localStorage.getItem('dpl-hide-down') === '1' } catch (e) { return false } })() }"
-     x-effect="try { localStorage.setItem('dpl-hide-down', hideDown ? '1' : '0') } catch (e) {}">
+     x-effect="(() => { try { localStorage.setItem('dpl-hide-down', hideDown ? '1' : '0') } catch (e) {} })()">
   <div class="card-head" style="flex-wrap: wrap">
     <input class="input" style="max-width: 320px" placeholder="{{ t('proxy.search') }}" x-model="q">
     {% if kind == "proxy" and not archived %}

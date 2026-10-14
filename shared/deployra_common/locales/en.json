@@ -81,7 +81,7 @@
     "token_expired": "the token expired — generate a new one in the panel",
     "token_used": "this token was already used by another node",
     "unknown_host": {
-      "text": "This domain is not configured in Deployra.",
+      "text": "This domain is not configured.",
       "title": "Unknown host"
     },
     "unknown_token": "unknown join token",

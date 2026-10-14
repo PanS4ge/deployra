@@ -12,11 +12,20 @@
     <div class="card-head"><h3><i class="bi bi-info-circle"></i> {{ t("sftp.how_to_connect") }}</h3></div>
     <div class="card-body stack small">
       <dl class="kv">
-        <dt>Host</dt><dd class="mono">{{ panel.node_upstream_host(node) or t("sftp.node_address") }}{% if node.transport == "tunnel" %} <span class="muted">{{ t("sftp.in_tunnel") }}</span>{% endif %}</dd>
+        <dt>Host</dt><dd class="mono">{% set detected = (node.info or {}).get("ip") %}{% set up = panel.node_upstream_host(node) %}{{ (detected if (node.proxy_address == 'local' or not up or up == '127.0.0.1') and detected) or (request.url.hostname if (not up or up == '127.0.0.1') and request.url.hostname not in ('127.0.0.1', 'localhost') else up) or t("sftp.node_address") }}{% if node.transport == "tunnel" %} <span class="muted">{{ t("sftp.in_tunnel") }}</span>{% endif %}</dd>
         <dt>Port</dt><dd class="mono">{{ data.port }}</dd>
         <dt>{{ t("sftp.fingerprint") }}</dt><dd>{{ copy_pill(data.fingerprint or "—") }}</dd>
       </dl>
       <div class="dim">{{ t("sftp.chroot_hint") }}</div>
+      {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
+      <form class="row" style="margin-top: 10px; gap: 8px; align-items: flex-end" hx-post="/nodes/{{ node.id }}/sftp/port{{ epq }}" hx-swap="none">
+        <div class="field" style="flex: 1; margin: 0">
+          <label class="small muted">{{ t("sftp.port_config") }}</label>
+          <input class="input mono sm" type="number" name="port" value="{{ data.port }}" min="1" max="65535" required>
+        </div>
+        <button class="btn sm"><i class="bi bi-check2"></i> {{ t("common.save") }}</button>
+      </form>
+      {% endif %}
     </div>
   </div>
   {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
@@ -24,7 +33,7 @@
     <div class="card-head"><h3><i class="bi bi-person-plus"></i> {{ t("sftp.account") }}</h3></div>
     <form class="card-body stack" hx-post="/nodes/{{ node.id }}/sftp" hx-swap="none">
       <div class="form-grid">
-        <div class="field"><label>{{ t("sftp.login") }}</label><input class="input mono" name="username" required pattern="[a-z0-9][a-z0-9_.\-]{1,31}"></div>
+        <div class="field"><label>{{ t("sftp.login") }}</label><input class="input mono" name="username" autocomplete="username" required pattern="[a-z0-9][a-z0-9_.\-]{1,31}"></div>
         <div class="field"><label>{{ t("sftp.site") }}</label>
           <select class="select" name="slug" required>
             {% for a in apps %}<option value="{{ a.slug }}">{{ a.name }} ({{ a.slug }})</option>{% else %}<option value="" disabled selected>{{ t("sftp.create_site_first") }}</option>{% endfor %}

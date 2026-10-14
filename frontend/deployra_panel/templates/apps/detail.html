@@ -132,6 +132,29 @@
           <button class="btn sm danger ghost" title="{{ t('containers.kill') }}" hx-post="/apps/{{ app.id }}/action/kill" hx-swap="none" hx-confirm="{{ t('apps.kill_confirm', name=app.name) }}"><span class="spin"></span><i class="bi bi-slash-circle"></i> {{ t("containers.kill") }}</button>
         </span></div>
       {% endif %}
+      {% if app_profile and app_profile.kind != 'generic' and has(user, P.ALLOW_MODIFY_DOCKERS) %}
+      <div class="row between" style="padding: 8px 10px; background: rgba(255,255,255,0.03); border-radius: 8px">
+        <span class="small row" style="gap: 6px">
+          <i class="bi {{ app_profile.icon }}" style="color: {{ app_profile.color }}"></i>
+          <b>{{ app_profile.title }}</b>
+        </span>
+        <span class="row" style="gap: 6px; flex-wrap: wrap">
+          {% if app_profile.can_dump and spec.endpoint == 'local' %}
+          <a class="btn sm ghost" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}/dump" hx-boost="false" title="Pobierz zrzut bazy (.sql.gz)">
+            <i class="bi bi-file-earmark-arrow-down" style="color: var(--cyan)"></i> Zrzut bazy
+          </a>
+          <button class="btn sm ghost" title="Zapisz zrzut w magazynie kopii (S3/FTP/SFTP)" hx-post="/nodes/{{ node.id }}/containers/app-{{ app.slug }}/backup-dump" hx-swap="none">
+            <span class="spin"></span><i class="bi bi-cloud-arrow-up"></i> Kopia do storage
+          </button>
+          {% endif %}
+          {% for a in app_profile.actions %}
+          <button class="btn sm ghost" title="{{ a.description }}" hx-post="/nodes/{{ node.id }}/containers/app-{{ app.slug }}/action/quick/{{ a.id }}" hx-swap="none">
+            <span class="spin"></span><i class="bi {{ a.icon }}"></i> {{ a.label }}
+          </button>
+          {% endfor %}
+        </span>
+      </div>
+      {% endif %}
       {% if spec.source.kind in ("image", "git") and has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
       <div class="row between"><span class="small dim">{{ t("apps.rollback_hint") }}</span>
         <button class="btn sm" hx-post="/apps/{{ app.id }}/rollback" hx-swap="none" hx-confirm="{{ t('apps.rollback_confirm') }}"><i class="bi bi-skip-backward"></i> Rollback</button></div>

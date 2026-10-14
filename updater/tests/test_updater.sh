@@ -25,7 +25,7 @@ cat >"$T/bin/docker" <<'EOF'
 #!/usr/bin/env bash
 echo "$*" >>"$FAKE_LOG"
 case "$1" in
-  version|rm) exit 0 ;;
+  version|rm|rmi|images) exit 0 ;;
   ps) [ "$2" = "-aq" ] && echo c1; exit 0 ;;
   image) exit 0 ;;
   inspect)

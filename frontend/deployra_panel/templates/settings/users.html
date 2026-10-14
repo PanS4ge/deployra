@@ -33,7 +33,7 @@
       <div class="card-body form-grid">
         <div class="field"><label>{{ t("common.first_name") }}</label><input class="input" name="name" value="{{ u.name or '' }}"></div>
         <div class="field"><label>{{ t("common.last_name") }}</label><input class="input" name="surname" value="{{ u.surname or '' }}"></div>
-        <div class="field"><label>{{ t("common.email") }}</label><input class="input" name="email" type="email" value="{{ u.email }}" required></div>
+        <div class="field"><label>{{ t("common.email") }}</label><input class="input" name="email" type="email" value="{{ u.email }}" autocomplete="username" required></div>
         <div class="field"><label>{{ t("common.password") }}</label><input class="input" name="password" type="password" autocomplete="new-password" placeholder="{{ t('common.leave_empty_to_keep') if u.id else t('users.min_password') }}"></div>
         <div class="field full">
           <label>{{ t("servers.mode") }}</label>

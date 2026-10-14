@@ -115,6 +115,10 @@ class BanSettings(BaseModel):
     auto: bool = False
     rate: int = 600
     minutes: int = 60
+    err404_threshold: int = 15
+    probe_threshold: int = 5
+    ban_404: bool = True
+    ban_probes: bool = True
     allowlist: list[str] = Field(default_factory=list)
 
 
@@ -251,14 +255,26 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
         return items
 
     @router.get("/traffic/top")
-    def traffic_top(days: int = 1, domain: str = "", limit: int = 50) -> dict:
-        items = ctx.ipwatch.top(max(1, min(days, 31)), domain.strip().lower() or None, max(1, min(limit, 200)))
+    def traffic_top(days: int = 1, domain: str = "", limit: int = 50, filter: str = "") -> dict:
+        items = ctx.ipwatch.top(max(1, min(days, 31)), domain.strip().lower() or None, max(1, min(limit, 200)), filter_404=(filter == "404"))
         return {"items": _enrich(items), "geoip": ctx.geoip.status(), "retention_days": ctx.config.ip_retention_days}
+
+    @router.get("/traffic/404")
+    def traffic_not_found(limit: int = 50) -> dict:
+        items = ctx.ipwatch.not_found(max(1, min(limit, 200)))
+        return {"items": _enrich(items)}
 
     @router.get("/traffic/suspicious")
     def traffic_suspicious() -> dict:
         settings = ctx.bans.settings
-        return {"items": _enrich(ctx.ipwatch.suspicious(settings["rate"])), "settings": settings}
+        return {
+            "items": _enrich(ctx.ipwatch.suspicious(
+                settings["rate"],
+                settings.get("err404_threshold", 15),
+                settings.get("probe_threshold", 3),
+            )),
+            "settings": settings,
+        }
 
     @router.get("/bans")
     def bans_list() -> dict:
@@ -281,7 +297,10 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
 
     @router.put("/bans/settings")
     def bans_settings(body: BanSettings) -> dict:
-        return ctx.bans.update_settings(body.auto, body.rate, body.minutes, body.allowlist)
+        return ctx.bans.update_settings(
+            body.auto, body.rate, body.minutes, body.allowlist,
+            body.err404_threshold, body.probe_threshold, body.ban_404, body.ban_probes
+        )
 
     @router.post("/geoip/refresh")
     async def geoip_refresh() -> dict:
@@ -437,17 +456,41 @@ def security_tick(ctx: Context) -> bool:
     """Jeden obrót pętli bezpieczeństwa; zwraca True, gdy lista banów się zmieniła."""
     changed = ctx.bans.expire()
     settings = ctx.bans.settings
-    if settings["auto"]:
+    if settings.get("auto"):
         banned = set(ctx.bans.nets())
-        for item in ctx.ipwatch.suspicious(settings["rate"]):
-            if item["severity"] != "high" or item["ip"] in banned or ctx.bans.allowed(item["ip"]):
+        for item in ctx.ipwatch.suspicious(
+            settings["rate"],
+            settings.get("err404_threshold", 15),
+            settings.get("probe_threshold", 3),
+        ):
+            ip = item["ip"]
+            if ip in banned or ctx.bans.allowed(ip):
                 continue
-            try:
-                ctx.bans.add(item["ip"], settings["minutes"], f"auto · {item['peak']}/min", auto=True)
-            except ValueError:
-                continue  # adres prywatny / chroniony — nie banujemy
-            logger.warning(tr("gw.log.auto_banned", target=item["ip"], peak=item["peak"]))
-            changed = True
+            should_ban = False
+            reason = ""
+            if item["peak"] >= settings["rate"]:
+                should_ban = True
+                reason = f"auto · rate {item['peak']}/min"
+            elif settings.get("ban_404", True) and item.get("err404", 0) >= settings.get("err404_threshold", 15):
+                should_ban = True
+                reason = f"auto · 404 ({item['err404']}x)"
+            elif settings.get("ban_probes", True) and any(r.get("code") == "probes" for r in item.get("reasons", [])):
+                probes_count = next((r.get("value", 0) for r in item.get("reasons", []) if r.get("code") == "probes"), 0)
+                if probes_count >= settings.get("probe_threshold", 5):
+                    should_ban = True
+                    reason = f"auto · probes ({probes_count}x)"
+            elif item["severity"] == "high":
+                should_ban = True
+                reason = f"auto · {item['peak']}/min"
+
+            if should_ban:
+                try:
+                    ctx.bans.add(ip, settings["minutes"], reason, auto=True)
+                    logger.warning(tr("gw.log.auto_banned", target=ip, peak=reason))
+                    changed = True
+                    banned.add(ip)
+                except ValueError:
+                    continue  # adres prywatny / chroniony — nie banujemy
     return changed
 
 

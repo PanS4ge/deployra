@@ -18,7 +18,12 @@
           <button class="btn sm ghost icon" style="margin-left: 4px; padding: 1px 5px; font-size: 0.72rem" title="{{ t('traffic.samples_btn') }}" @click.stop="$dispatch('view-samples', { ip: '{{ item.ip }}', samples: {{ (item.samples or []) | tojson | forceescape }}, paths: {{ (item.paths or []) | tojson | forceescape }} })"><i class="bi bi-clock-history"></i></button>
         </td>
         <td class="right small">{{ item.bytes | bytes }}</td>
-        <td class="right mono small">{{ item.err4 }} / {{ item.err5 }}</td>
+        <td class="right mono small nowrap">
+          {{ item.err4 }} / {{ item.err5 }}
+          {% if item.err404 %}
+          <span class="badge warn" style="margin-left: 4px; font-size: 0.72rem; padding: 1px 5px" title="404: {{ item.err404 }}">404: {{ item.err404 }}</span>
+          {% endif %}
+        </td>
         <td class="small muted trunc" style="max-width: 200px" title="{{ item.domains | join(', ') }}">{{ item.domains | join(", ") }}</td>
         <td class="small nowrap">{{ item.last | ago }}</td>
         <td class="right">{{ ban_button(item) }}</td>

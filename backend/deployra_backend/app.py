@@ -32,7 +32,8 @@ async def ensure_sftp(ctx: Context) -> None:
 
     service = SftpService(ctx.state, ctx.config.sites_dir, ctx.config.data_dir / "ssh_host_ed25519_key")
     try:
-        await service.start(ctx.config.sftp_bind or getattr(ctx, "bind_host", ""), ctx.config.sftp_port)
+        port = ctx.state.get("sftp_port") or ctx.config.sftp_port
+        await service.start(ctx.config.sftp_bind or getattr(ctx, "bind_host", ""), port)
         ctx.sftp = service
     except OSError as exc:
         logger.error(tr("node.log.sftp_failed", error=exc))

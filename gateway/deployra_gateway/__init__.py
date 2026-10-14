@@ -1,4 +1,4 @@
 """Deployra-WG — hub WireGuard + nginx dla ruchu publicznego."""
 
-__version__ = "1.1.15"
+__version__ = "1.1.16"
 NAME = "Deployra-WG"

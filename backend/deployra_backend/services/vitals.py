@@ -18,13 +18,14 @@ def format_bytes(size: float) -> str:
 
 
 class VitalsSampler:
-    def __init__(self, interval: float = 2.0, disk_path: str = "/") -> None:
+    def __init__(self, interval: float = 4.0, disk_path: str = "/") -> None:
         self.interval = interval
         self.disk_path = disk_path
         self._latest: dict[str, Any] = {}
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._last_requested: float = time.time()
         psutil.cpu_percent(None)
         psutil.cpu_percent(None, percpu=True)
 
@@ -39,7 +40,11 @@ class VitalsSampler:
     def _loop(self) -> None:
         while not self._stop.is_set():
             self.sample()
-            self._stop.wait(self.interval)
+            # Tryb oszczędzania energii dla małych urządzeń (np. Raspberry Pi Zero, VPS 512MB):
+            # gdy nikt nie odpytuje o metryki przez >60s, zmniejszamy częstotliwość próbkowania
+            idle = (time.time() - self._last_requested) > 60.0
+            delay = (self.interval * 2.5) if idle else self.interval
+            self._stop.wait(delay)
 
     def sample(self) -> dict[str, Any]:
         mem = psutil.virtual_memory()
@@ -73,6 +78,7 @@ class VitalsSampler:
         return data
 
     def latest(self) -> dict[str, Any]:
+        self._last_requested = time.time()
         with self._lock:
             if self._latest:
                 return dict(self._latest)

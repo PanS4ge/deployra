@@ -168,4 +168,31 @@ def v9(dialect: str) -> list[str]:
     return [f"ALTER TABLE alerts ADD COLUMN ignored_at {r}"]
 
 
-MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [(1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8), (9, v9)]
+def v10(dialect: str) -> list[str]:
+    """Trwała historia zadań w panelu: wdrożenia, aktualizacje, certyfikaty."""
+    t = _types(dialect)
+    s, x, r, tail = t["str"], t["text"], t["real"], t["tail"]
+    return [
+        f"""CREATE TABLE jobs (
+            id VARCHAR(32) PRIMARY KEY, kind {s} NOT NULL, title {s} NOT NULL, status {s} NOT NULL,
+            error {x}, result {x}, lines {x}, created {r} NOT NULL, finished {r}
+        ){tail}""",
+        "CREATE INDEX idx_jobs_created ON jobs (created)",
+    ]
+
+
+def v11(dialect: str) -> list[str]:
+    """Rejestry Docker: prywatne rejestry obrazów (Docker Hub, GHCR, GitLab, Harbor)."""
+    t = _types(dialect)
+    i, s, x, tail = t["id"], t["str"], t["text"], t["tail"]
+    return [
+        f"""CREATE TABLE registries (
+            id {i}, name {s} NOT NULL, url {s} NOT NULL, username {s} NOT NULL,
+            password {x} NOT NULL, created_at {s}
+        ){tail}"""
+    ]
+
+
+MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [
+    (1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8), (9, v9), (10, v10), (11, v11)
+]

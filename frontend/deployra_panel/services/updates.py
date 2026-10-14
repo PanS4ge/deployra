@@ -401,15 +401,39 @@ def finish_pending(panel: Any) -> None:
     if not value:
         return
     target = value.get("target")
+    job_id = value.get("job_id")
+    job = panel.jobs.get(job_id) if job_id else None
+
     if same_version(__version__, target) or is_newer(__version__, target):
         panel.notify(t("upd.notify_done", version=__version__), "ok")
+        if job:
+            job.status = "ok"
+            job.finished = time.time()
+            job.error = None
+            job.log(f"✔ Panel: {t('upd.notify_done', version=__version__)}")
+            if hasattr(panel.jobs, "save_job"):
+                panel.jobs.save_job(job)
         panel.db.set_setting("update_pending", None)
         return
     info = panel.updates.info()
     if info["state"] == "error":
-        panel.notify(t("upd.notify_failed", version=target, error=describe(info)), "err")
+        err_msg = describe(info) or "Błąd aktualizacji"
+        panel.notify(t("upd.notify_failed", version=target, error=err_msg), "err")
+        if job:
+            job.status = "error"
+            job.error = err_msg
+            job.finished = time.time()
+            job.log(f"✖ Panel: {err_msg}")
+            if hasattr(panel.jobs, "save_job"):
+                panel.jobs.save_job(job)
     elif time.time() - float(value.get("started") or 0) > 3600:
         panel.notify(t("upd.notify_unfinished", version=target), "err")
+        if job:
+            job.status = "error"
+            job.error = "Przekroczono limit czasu aktualizacji"
+            job.finished = time.time()
+            if hasattr(panel.jobs, "save_job"):
+                panel.jobs.save_job(job)
     else:
         return  # aktualizacja jeszcze trwa (np. buduje się obraz)
     panel.db.set_setting("update_pending", None)

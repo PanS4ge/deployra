@@ -48,9 +48,12 @@ async def page(request: Request, panel: Panel = Depends(get_panel), user: dict =
 
 
 @router.get("/traffic/top")
-async def top(request: Request, days: int = 1, domain: str = "", panel: Panel = Depends(get_panel), user: dict = PROXY):
-    data, error = await _get(panel, "/api/traffic/top", days=days, domain=domain, limit=50)
-    return render(request, "partials/traffic_top.html", data=data, error=error, days=days, domain=domain)
+async def top(request: Request, days: int = 1, domain: str = "", filter: str = "", panel: Panel = Depends(get_panel), user: dict = PROXY):
+    kwargs = {"days": days, "domain": domain, "limit": 50}
+    if filter:
+        kwargs["filter"] = filter
+    data, error = await _get(panel, "/api/traffic/top", **kwargs)
+    return render(request, "partials/traffic_top.html", data=data, error=error, days=days, domain=domain, filter=filter)
 
 
 @router.get("/traffic/suspicious")
@@ -83,12 +86,28 @@ async def settings(
     auto: str = Form(""),
     rate: int = Form(600),
     minutes: int = Form(60),
+    err404_threshold: int = Form(15),
+    probe_threshold: int = Form(5),
+    ban_404: str = Form(""),
+    ban_probes: str = Form(""),
     allowlist: str = Form(""),
     panel: Panel = Depends(get_panel),
     user: dict = PROXY,
 ):
     entries = [line.strip() for line in allowlist.replace(",", "\n").splitlines() if line.strip()]
-    await _client(panel).put("/api/bans/settings", json={"auto": bool(auto), "rate": rate, "minutes": minutes, "allowlist": entries})
+    await _client(panel).put(
+        "/api/bans/settings",
+        json={
+            "auto": bool(auto),
+            "rate": rate,
+            "minutes": minutes,
+            "err404_threshold": err404_threshold,
+            "probe_threshold": probe_threshold,
+            "ban_404": bool(ban_404),
+            "ban_probes": bool(ban_probes),
+            "allowlist": entries,
+        },
+    )
     return toast(t("msg.settings_saved"))
 
 

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import ipaddress
 import platform
 import random
 import shutil
+import socket
 import subprocess
+import time
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.sse import EventSourceResponse
 from loguru import logger
@@ -64,8 +68,48 @@ def _tool_version(*cmd: str) -> str | None:
         return None
 
 
+_CACHED_IP: tuple[float, str | None] = (0.0, None)
+
+
+def detect_host_ip() -> str | None:
+    global _CACHED_IP
+    now = time.monotonic()
+    if now - _CACHED_IP[0] < 300.0 and _CACHED_IP[1]:
+        return _CACHED_IP[1]
+    ip = None
+    for url in ("https://api.ipify.org", "https://ifconfig.me/ip", "https://icanhazip.com"):
+        try:
+            with httpx.Client(timeout=1.5) as client:
+                res = client.get(url)
+                if res.status_code == 200:
+                    cand = res.text.strip()
+                    ipaddress.ip_address(cand)
+                    ip = cand
+                    break
+        except Exception:
+            pass
+    if not ip:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("1.1.1.1", 80))
+                cand = s.getsockname()[0]
+                if cand and not cand.startswith("127."):
+                    ip = cand
+        except Exception:
+            pass
+    if not ip:
+        try:
+            cand = socket.gethostbyname(platform.node())
+            if cand and not cand.startswith("127."):
+                ip = cand
+        except Exception:
+            pass
+    _CACHED_IP = (now, ip)
+    return ip
+
+
 @router.get("/info")
-def info(ctx: Context = Depends(get_ctx)) -> dict:
+def info(refresh: bool = False, ctx: Context = Depends(get_ctx)) -> dict:
     try:
         docker_version = ctx.docker.api.version()
     except Exception as exc:  # noqa: BLE001 — pokazujemy, że Docker nie działa
@@ -77,6 +121,7 @@ def info(ctx: Context = Depends(get_ctx)) -> dict:
         "node_id": ctx.state.get("node_id"),
         "name": ctx.config.name,
         "hostname": platform.node(),
+        "ip": detect_host_ip(),
         "os": f"{platform.system()} {platform.release()}",
         "python": platform.python_version(),
         "docker": {k: docker_version.get(k) for k in ("Version", "ApiVersion", "Os", "Arch", "KernelVersion", "error")},
@@ -86,13 +131,86 @@ def info(ctx: Context = Depends(get_ctx)) -> dict:
         if wg_conf
         else None,
         "proxmox": ctx.config.proxmox,
-        "endpoints": [ep.public() for ep in ctx.endpoints.list()],
+        "proxmox_url": ctx.state.get("proxmox_url") or ctx.config.proxmox_url or (f"https://{detect_host_ip() or '127.0.0.1'}:8006" if ctx.config.proxmox else None),
+        "endpoints": [ep.public() for ep in ctx.endpoints.list(refresh=refresh)],
         "port_pool": list(ctx.config.port_pool),
         "static_port": ctx.state.get("static_port"),
-        "sftp": {"port": ctx.config.sftp_port, "fingerprint": ctx.sftp.fingerprint() if ctx.sftp else None}
+        "sftp": {"port": ctx.state.get("sftp_port") or ctx.config.sftp_port, "fingerprint": ctx.sftp.fingerprint() if ctx.sftp else None}
         if ctx.config.sftp_enabled
         else None,
         **VitalsSampler.static_info(),
+    }
+
+
+class ProxmoxConfig(BaseModel):
+    url: str
+
+
+@router.get("/proxmox/entities")
+def proxmox_entities_route(ctx: Context = Depends(get_ctx)) -> list[dict]:
+    if not ctx.config.proxmox:
+        return []
+    from ..services import proxmox
+    return proxmox.discover_proxmox_entities(
+        ctx.config.proc_dir, ctx.config.pve_dir, getattr(ctx.config, "pve_qemu_dir", Path("/etc/pve/qemu-server"))
+    )
+
+
+@router.post("/proxmox/{kind}/{vmid}/action/{action}")
+def proxmox_action_route(kind: str, vmid: int, action: str, ctx: Context = Depends(get_ctx)) -> dict:
+    from ..services import proxmox
+    proxmox.execute_proxmox_action(kind, vmid, action)
+    return {"ok": True}
+
+
+@router.post("/proxmox/config")
+def proxmox_config_route(body: ProxmoxConfig, ctx: Context = Depends(get_ctx)) -> dict:
+    ctx.state.update(proxmox_url=body.url.strip())
+    return {"ok": True, "proxmox_url": body.url.strip()}
+
+
+def collect_node_ports(ctx: Context) -> list[dict[str, Any]]:
+    ports: list[dict[str, Any]] = []
+    if ctx.config.sftp_enabled:
+        sftp_port = ctx.state.get("sftp_port") or ctx.config.sftp_port
+        ports.append({"port": sftp_port, "protocol": "tcp", "owner": "SFTP", "kind": "system"})
+    if ctx.config.wg_enabled:
+        ports.append({"port": 51820, "protocol": "udp", "owner": "WireGuard", "kind": "system"})
+    try:
+        for ep in ctx.endpoints.list():
+            try:
+                dk = ctx.docker_for(ep.id)
+                for c in dk.containers.list(all=True):
+                    c_name = c.name
+                    net_settings = getattr(c, "attrs", {}).get("NetworkSettings", {})
+                    port_bindings = net_settings.get("Ports") or {}
+                    for cont_port, bindings in port_bindings.items():
+                        proto = "udp" if "/udp" in cont_port else "tcp"
+                        if bindings:
+                            for b in bindings:
+                                host_p = b.get("HostPort")
+                                if host_p and str(host_p).isdigit():
+                                    ports.append({
+                                        "port": int(host_p),
+                                        "protocol": proto,
+                                        "owner": c_name,
+                                        "kind": "container",
+                                        "endpoint": ep.id,
+                                        "container_port": cont_port,
+                                    })
+            except Exception:
+                pass
+    except Exception:
+        pass
+    ports.sort(key=lambda p: (p["port"], p["protocol"]))
+    return ports
+
+
+@router.get("/ports")
+def node_ports(ctx: Context = Depends(get_ctx)) -> dict:
+    return {
+        "pool": list(ctx.config.port_pool),
+        "used": collect_node_ports(ctx),
     }
 
 

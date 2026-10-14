@@ -24,12 +24,12 @@ RANGES = {"15m": 900, "1h": 3600, "6h": 6 * 3600, "24h": 86400, "7d": 7 * 86400}
 
 
 @router.get("/logs")
-def logs_page(request: Request, q: str = "", range: str = "1h", user: dict = SEE):
-    return render(request, "logs.html", title=t("nav.logs"), q=q, span=range if range in RANGES else "1h", ranges=list(RANGES))
+def logs_page(request: Request, q: str = "", range: str = "1h", source: str = "all", user: dict = SEE):
+    return render(request, "logs.html", title=t("nav.logs"), q=q, span=range if range in RANGES else "1h", ranges=list(RANGES), source=source)
 
 
 @router.get("/logs/search")
-async def logs_search(request: Request, q: str = "", range: str = "1h", panel: Panel = Depends(get_panel), user: dict = SEE):
+async def logs_search(request: Request, q: str = "", range: str = "1h", source: str = "all", panel: Panel = Depends(get_panel), user: dict = SEE):
     try:
         query = logquery.parse(q)
     except ValueError as exc:
@@ -38,7 +38,10 @@ async def logs_search(request: Request, q: str = "", range: str = "1h", panel: P
     since = until - RANGES.get(range, 3600)
     nodes = [n for n in panel.db.fetchall("SELECT * FROM nodes WHERE status = 'paired' ORDER BY name")
              if not query.nodes or n["name"] in query.nodes]  # fmt: skip
-    body = {"must": query.must, "exclude": query.exclude, "since": since, "until": until, "containers": query.containers,
+    containers = list(query.containers)
+    if source == "nginx" and not containers:
+        containers = ["nginx", "deployra-nginx"]
+    body = {"must": query.must, "exclude": query.exclude, "since": since, "until": until, "containers": containers,
             "apps": query.apps, "limit": 200}  # fmt: skip
 
     async def one(node: dict) -> tuple[dict, dict | None, str | None]:
@@ -59,6 +62,11 @@ async def logs_search(request: Request, q: str = "", range: str = "1h", panel: P
         scanned += data["scanned"]
         buckets = [a + b for a, b in zip(buckets, data["buckets"])]
         for hit in data["hits"]:
+            cname = (hit.get("container") or "").lower()
+            if source == "nginx" and "nginx" not in cname:
+                continue
+            if source == "containers" and "nginx" in cname:
+                continue
             hit["node"] = node
             hit["html"] = Markup(logquery.highlight(hit["line"], query.must))
             hits.append(hit)

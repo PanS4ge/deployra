@@ -6,6 +6,7 @@ a procent CPU liczymy z różnicy względem poprzedniego zapytania.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
 from typing import Any
@@ -28,6 +29,7 @@ class UsageSampler:
     def __init__(self) -> None:
         self._prev: dict[str, tuple[int, int]] = {}
         self._lock = threading.Lock()
+        self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="deployra-usage")
 
     def _stats(self, client: Any, cid: str) -> dict:
         try:
@@ -53,17 +55,24 @@ class UsageSampler:
         client = ctx.docker
         known = ctx.state.get("apps", {})
         compose_apps = {slug for slug, info in known.items() if info.get("kind") == "compose"}
-        containers: list[dict[str, Any]] = []
-        for summary in client.api.containers(all=True):
+        raw_containers = client.api.containers(all=True)
+
+        def _sample_one(summary: dict) -> dict[str, Any] | None:
             labels = summary.get("Labels") or {}
             if labels.get(docker_svc.SYSTEM_LABEL) in ONEOFF:
-                continue
+                return None
             slug = labels.get(docker_svc.APP_LABEL)
             project = labels.get("com.docker.compose.project")
             if not slug and project in compose_apps:
                 slug = project
-            entry: dict[str, Any] = {"id": summary["Id"][:12], "name": (summary.get("Names") or ["/?"])[0].lstrip("/"), "app": slug,
-                                     "state": summary.get("State"), "cpu": None, "mem": None}  # fmt: skip
+            entry: dict[str, Any] = {
+                "id": summary["Id"][:12],
+                "name": (summary.get("Names") or ["/?"])[0].lstrip("/"),
+                "app": slug,
+                "state": summary.get("State"),
+                "cpu": None,
+                "mem": None,
+            }
             if summary.get("State") == "running":
                 try:
                     stats = self._stats(client, summary["Id"])
@@ -82,9 +91,17 @@ class UsageSampler:
                     oom_at=state.get("FinishedAt") if state.get("OOMKilled") else None,
                     started_at=state.get("StartedAt"),
                 )
-            containers.append(entry)
+            return entry
+
+        if len(raw_containers) > 1:
+            results = list(self._pool.map(_sample_one, raw_containers))
+        else:
+            results = [_sample_one(c) for c in raw_containers]
+
+        containers = [c for c in results if c is not None]
+
         with self._lock:  # zapominamy kontenery, których już nie ma
-            alive = {c["Id"] for c in client.api.containers()}
+            alive = {c["Id"] for c in raw_containers}
             self._prev = {k: v for k, v in self._prev.items() if k in alive}
         return {"ts": time.time(), "host": ctx.vitals.latest(), "apps": aggregate(containers), "containers": containers}
 
