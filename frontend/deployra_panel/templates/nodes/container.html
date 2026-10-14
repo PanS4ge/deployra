@@ -18,9 +18,13 @@
 {% if ep == "local" and has(user, P.ALLOW_DEPLOYMENT) and not lbl.get("deployra.app") and not lbl.get("deployra.system") and not lbl.get("com.docker.compose.project") %}
 <a class="btn sm" href="/nodes/{{ node.id }}/containers/{{ c.Id[:12] }}/adopt"><i class="bi bi-box-arrow-in-down-right"></i> {{ t("adopt.button") }}</a>
 {% endif %}
+{% if has(user, P.ALLOW_CONTAINER_FILES) and st.Running %}
+<a class="btn sm" href="/nodes/{{ node.id }}/containers/{{ c.Id[:12] }}/files{{ epa }}"><i class="bi bi-folder2-open"></i> {{ t("containers.files") }}</a>
+{% endif %}
 {% if has(user, P.ALLOW_CONTAINER_TERMINAL) and st.Running %}
 <a class="btn sm cool" href="/nodes/{{ node.id }}/containers/{{ c.Id[:12] }}/terminal{{ epa }}" hx-boost="false"><i class="bi bi-terminal"></i> Terminal</a>
 {% endif %}
+<a class="btn sm ghost" href="#logs"><i class="bi bi-journal-text"></i> {{ t("common.logs") }}</a>
 {% endblock %}
 {% block content %}
 {% if st.Running %}
@@ -59,14 +63,15 @@
 </div>
 {% endif %}
 
-<div class="card">
+<div class="card" id="logs">
   <div class="card-head">
     <h3><i class="bi bi-journal-text"></i> {{ t("containers.live_logs") }}</h3>
     <span class="spacer"></span>
+    <a class="btn sm ghost" href="/logs?source=containers&q={{ name }}"><i class="bi bi-search"></i> {{ t("logs.search") if t("logs.search") else "Szukaj w historii logów" }}</a>
     <span class="small muted">{{ t("containers.logs_hint") }}</span>
   </div>
   <div class="card-body" hx-ext="sse" sse-connect="/nodes/{{ node.id }}/containers/{{ c.Id }}/logs/stream{{ epa }}">
-    <pre class="log" sse-swap="line" hx-swap="beforeend"></pre>
+    <pre class="log" sse-swap="line" hx-swap="beforeend">{% if initial_logs %}{{ initial_logs }}{% endif %}</pre>
   </div>
 </div>
 

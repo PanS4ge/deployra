@@ -193,6 +193,19 @@ def v11(dialect: str) -> list[str]:
     ]
 
 
+def v12(dialect: str) -> list[str]:
+    """Tokeny API / MCP: klucze dostępu dla agentów AI i narzędzi zewnętrznych."""
+    t = _types(dialect)
+    i, s, x, n, r, tail = t["id"], t["str"], t["text"], t["int"], t["real"], t["tail"]
+    return [
+        f"""CREATE TABLE api_tokens (
+            id {i}, name {s} NOT NULL, token_hash {s} NOT NULL UNIQUE, prefix {s} NOT NULL,
+            user_id {n} NOT NULL, permissions {s} NOT NULL DEFAULT '', created_at {s}, last_used_at {r}
+        ){tail}""",
+        "CREATE INDEX idx_api_tokens_hash ON api_tokens (token_hash)",
+    ]
+
+
 MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [
-    (1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8), (9, v9), (10, v10), (11, v11)
+    (1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8), (9, v9), (10, v10), (11, v11), (12, v12)
 ]

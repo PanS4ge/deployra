@@ -29,6 +29,11 @@ def client(config):
         yield c
 
 
+@pytest.fixture
+def panel(client):
+    return client.app.state.panel
+
+
 def csrf_of(client: TestClient) -> str:
     page = client.get("/settings").text
     return re.search(r'name="csrf-token" content="([^"]+)"', page).group(1)

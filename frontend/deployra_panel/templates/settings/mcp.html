@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% from "_macros.html" import copy_pill %}
+{% block crumbs %}<div class="crumbs"><a href="/settings">{{ t("nav.settings") }}</a> /</div>{% endblock %}
+{% block content %}
+{% include "settings/_tabs.html" %}
+
+{% if new_token %}
+<div class="callout ok" style="margin-bottom: 20px">
+  <i class="bi bi-key-fill" style="font-size: 1.5rem"></i>
+  <div style="flex: 1">
+    <b>{{ t("mcp.new_token_title") }}</b>
+    <div class="small muted" style="margin: 4px 0 8px 0">{{ t("mcp.new_token_desc") }}</div>
+    {{ copy_pill(new_token) }}
+  </div>
+</div>
+{% endif %}
+
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-head">
+      <h3><i class="bi bi-robot"></i> {{ t("mcp.server_status") }}</h3>
+      <span class="badge ok"><i class="bi bi-check-circle-fill"></i> {{ t("common.active") }}</span>
+    </div>
+    <div class="card-body stack">
+      <div class="small muted">{{ t("mcp.server_intro") }}</div>
+      <dl class="kv small">
+        <dt>{{ t("mcp.proto_ver") }}</dt><dd class="mono">2024-11-05 (JSON-RPC 2.0)</dd>
+        <dt>{{ t("mcp.sse_url") }}</dt><dd class="mono trunc">{{ base_url }}/mcp/sse</dd>
+        <dt>{{ t("mcp.http_url") }}</dt><dd class="mono trunc">{{ base_url }}/mcp</dd>
+        <dt>{{ t("mcp.tools_count") }}</dt><dd><b>{{ tools | length }}</b> {{ t("mcp.tools_available") }}</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h3><i class="bi bi-plus-circle"></i> {{ t("mcp.new_token") }}</h3>
+    </div>
+    <div class="card-body">
+      <form class="stack" method="post" action="/settings/mcp/tokens" hx-boost="false">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="field">
+          <label>{{ t("mcp.token_name_label") }}</label>
+          <input class="input" name="name" placeholder="np. Claude Desktop, Cursor, Antigravity" required maxlength="60">
+        </div>
+        <button class="btn primary" type="submit">
+          <i class="bi bi-key"></i> {{ t("mcp.create_token_btn") }}
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top: 16px" x-data="{ client: 'claude' }">
+  <div class="card-head">
+    <h3><i class="bi bi-cpu"></i> {{ t("mcp.client_config") }}</h3>
+    <div class="row" style="gap: 6px">
+      <button class="btn sm" :class="client === 'claude' ? 'primary' : 'ghost'" @click="client = 'claude'">Claude Desktop</button>
+      <button class="btn sm" :class="client === 'cursor' ? 'primary' : 'ghost'" @click="client = 'cursor'">Cursor / Windsurf</button>
+      <button class="btn sm" :class="client === 'sse' ? 'primary' : 'ghost'" @click="client = 'sse'">SSE / Direct HTTP</button>
+    </div>
+  </div>
+  <div class="card-body stack">
+    <div x-show="client === 'claude'" class="stack">
+      <div class="small muted">{{ t("mcp.claude_hint") }} (<code>%APPDATA%\Claude\claude_desktop_config.json</code> lub <code>~/Library/Application Support/Claude/...</code>):</div>
+      <pre class="log" style="max-height: 200px; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 6px; font-size: 0.82rem">{
+  "mcpServers": {
+    "deployra": {
+      "command": "python",
+      "args": [
+        "-m",
+        "deployra_panel.mcp_cli",
+        "--url",
+        "{{ base_url }}",
+        "--token",
+        "{{ new_token or 'TWÓJ_TOKEN_DPL_MCP' }}"
+      ]
+    }
+  }
+}</pre>
+    </div>
+
+    <div x-show="client === 'cursor'" class="stack">
+      <div class="small muted">{{ t("mcp.cursor_hint") }} (w <code>.cursor/mcp.json</code> projektu lub ustawieniach Cursor MCP):</div>
+      <pre class="log" style="max-height: 200px; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 6px; font-size: 0.82rem">{
+  "mcpServers": {
+    "deployra": {
+      "command": "python",
+      "args": ["-m", "deployra_panel.mcp_cli", "--url", "{{ base_url }}", "--token", "{{ new_token or 'TWÓJ_TOKEN_DPL_MCP' }}"]
+    }
+  }
+}</pre>
+    </div>
+
+    <div x-show="client === 'sse'" class="stack">
+      <div class="small muted">{{ t("mcp.sse_hint") }}:</div>
+      <pre class="log" style="max-height: 200px; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 6px; font-size: 0.82rem">{
+  "mcpServers": {
+    "deployra": {
+      "url": "{{ base_url }}/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer {{ new_token or 'TWÓJ_TOKEN_DPL_MCP' }}"
+      }
+    }
+  }
+}</pre>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top: 16px">
+  <div class="card-head">
+    <h3><i class="bi bi-shield-check"></i> {{ t("mcp.tokens_title") }}</h3>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>{{ t("common.name") }}</th>
+          <th>{{ t("mcp.token_prefix") }}</th>
+          <th>{{ t("common.user") }}</th>
+          <th>{{ t("mcp.last_used") }}</th>
+          <th>{{ t("common.created_at") }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tk in tokens %}
+        <tr>
+          <td><b>{{ tk.name }}</b></td>
+          <td class="mono small">{{ tk.prefix }}</td>
+          <td>{{ tk.user_email or "—" }}</td>
+          <td class="small muted">{% if tk.last_used_at %}{{ tk.last_used_at | ago }}{% else %}{{ t("mcp.never_used") }}{% endif %}</td>
+          <td class="small muted">{{ tk.created_at }}</td>
+          <td>
+            <form method="post" action="/settings/mcp/tokens/{{ tk.id }}/delete" hx-boost="false" onsubmit="return confirm('{{ t('mcp.delete_confirm', name=tk.name) }}')">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <button class="btn icon sm ghost danger" title="{{ t('common.delete') }}"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="muted">{{ t("mcp.no_tokens") }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" style="margin-top: 16px">
+  <div class="card-head">
+    <h3><i class="bi bi-tools"></i> {{ t("mcp.tools_title") }}</h3>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>{{ t("common.name") }}</th>
+          <th>{{ t("common.description") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t_item in tools %}
+        <tr>
+          <td class="mono small" style="color: var(--violet-2)"><b>{{ t_item.name }}</b></td>
+          <td class="small">{{ t_item.description }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

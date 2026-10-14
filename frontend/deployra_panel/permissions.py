@@ -30,6 +30,9 @@ class Permission(Enum):
     ALLOW_CONTAINER_TERMINAL = "L"
     ALLOW_TUNNEL = "M"
     ALLOW_IMPORT = "N"
+    ALLOW_MCP = "O"
+    ALLOW_CONTAINER_FILES = "P"
+    ALLOW_CONTAINER_FILES_WRITE = "Q"
 
 
 class _Labels:
@@ -47,6 +50,95 @@ class _Labels:
 LABELS = _Labels()
 
 
+GROUPS_SPEC = [
+    {
+        "id": "admin",
+        "icon": "bi-shield-lock",
+        "permissions": [
+            Permission.FULL_ACCESS,
+            Permission.ALLOW_SETTINGS,
+            Permission.ALLOW_RISKY_SETTINGS,
+            Permission.ALLOW_MCP,
+        ],
+    },
+    {
+        "id": "users",
+        "icon": "bi-people",
+        "permissions": [
+            Permission.ALLOW_CREATING_USERS_SETTING,
+            Permission.ALLOW_MODIFYING_USERS,
+            Permission.ALLOW_DELETING_USERS,
+            Permission.ALLOW_RISKY_PERMISSIONS,
+        ],
+    },
+    {
+        "id": "apps",
+        "icon": "bi-rocket-takeoff",
+        "permissions": [
+            Permission.ALLOW_DEPLOYMENT,
+            Permission.ALLOW_DEPLOYMENT_MODIFICATIONS,
+            Permission.ALLOW_DEPLOYMENT_DELETE,
+        ],
+    },
+    {
+        "id": "containers",
+        "icon": "bi-box",
+        "permissions": [
+            Permission.ALLOW_ADD_DOCKERS,
+            Permission.ALLOW_MODIFY_DOCKERS,
+            Permission.ALLOW_DELETE_DOCKERS,
+            Permission.ALLOW_PULL_IMAGES,
+            Permission.ALLOW_SEEKING_CONTAINER,
+        ],
+    },
+    {
+        "id": "files_terminal",
+        "icon": "bi-folder2-open",
+        "permissions": [
+            Permission.ALLOW_CONTAINER_FILES,
+            Permission.ALLOW_CONTAINER_FILES_WRITE,
+            Permission.ALLOW_CONTAINER_TERMINAL,
+        ],
+    },
+    {
+        "id": "storage_network",
+        "icon": "bi-hdd-network",
+        "permissions": [
+            Permission.ALLOW_CREATING_VOLUMES,
+            Permission.ALLOW_DELETING_VOLUMES,
+            Permission.ALLOW_CREATING_NETWORKS,
+            Permission.ALLOW_DELETING_NETWORKS,
+        ],
+    },
+    {
+        "id": "gateway_proxy",
+        "icon": "bi-signpost-split",
+        "permissions": [
+            Permission.ALLOW_PROXY,
+            Permission.ALLOW_PROXY_ADVANCED,
+            Permission.ALLOW_TUNNEL,
+            Permission.ALLOW_IMPORT,
+        ],
+    },
+]
+
+
+class _Groups:
+    def __iter__(self):
+        from .i18n import t
+
+        for g in GROUPS_SPEC:
+            yield {
+                "id": g["id"],
+                "icon": g["icon"],
+                "title": t(f"perm_group.{g['id']}"),
+                "permissions": [(p, LABELS[p]) for p in g["permissions"]],
+            }
+
+
+GROUPS = _Groups()
+
+
 RISKY = {
     Permission.FULL_ACCESS,
     Permission.ALLOW_DEPLOYMENT_DELETE,
@@ -58,6 +150,8 @@ RISKY = {
     Permission.ALLOW_RISKY_SETTINGS,
     Permission.ALLOW_PROXY_ADVANCED,
     Permission.ALLOW_CONTAINER_TERMINAL,
+    Permission.ALLOW_CONTAINER_FILES_WRITE,
+    Permission.ALLOW_MCP,
     Permission.ALLOW_TUNNEL,
 }
 

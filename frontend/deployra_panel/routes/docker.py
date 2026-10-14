@@ -191,8 +191,14 @@ async def container(request: Request, cid: str, node: dict = Depends(node_or_404
         except (ValueError, IndexError):
             pass
     profile = container_profiles.detect_profile(cfg.get("Image", ""), env, ports)
+    initial_logs = ""
+    try:
+        logs_res = await _client(panel, node).get(_p(f"/api/containers/{cid}/logs", ep), params={"tail": 100})
+        initial_logs = "\n".join(logs_res.get("lines", []))
+    except Exception:
+        pass
     return render(request, "nodes/container.html", title=name, node=node, tab="containers", c=info, name=name,
-                  profile=profile, raw=json.dumps(info, indent=2, ensure_ascii=False))  # fmt: skip
+                  profile=profile, initial_logs=initial_logs, raw=json.dumps(info, indent=2, ensure_ascii=False))  # fmt: skip
 
 
 @router.post("/nodes/{node_id}/containers/{cid}/action/quick/{action_id}")
@@ -550,3 +556,230 @@ def extract_compose_host_ports(compose_text: str) -> list[int]:
         return host_ports
     except Exception:
         return []
+
+
+# --- Menedżer plików kontenera ------------------------------------------------
+
+
+@router.get("/nodes/{node_id}/containers/{cid}/files")
+async def container_files(
+    request: Request,
+    node_id: int,
+    cid: str,
+    path: str = "/",
+    node: dict = Depends(node_or_404),
+    ep: str = Depends(ep_param),
+    panel: Panel = Depends(get_panel),
+    user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES)),
+):
+    client = _client(panel, node)
+    info = await client.get(_p(f"/api/containers/{cid}", ep))
+    c_name = info.get("Name", "").lstrip("/") or cid[:12]
+
+    try:
+        data = await client.get(_p(f"/api/containers/{cid}/files", ep), params={"path": path})
+    except Exception as exc:
+        err = getattr(exc, "detail", str(exc))
+        data = {"path": path, "items": [], "error": err}
+
+    cur_path = data.get("path") or path
+    parts = [p for p in cur_path.strip("/").split("/") if p]
+    crumbs = []
+    acc = ""
+    for p in parts:
+        acc += "/" + p
+        crumbs.append({"name": p, "path": acc})
+
+    ctx = {
+        "node": node,
+        "cid": cid,
+        "c_name": c_name,
+        "ep": ep,
+        "epa": "" if ep == "local" else f"?ep={ep}",
+        "cur_path": cur_path,
+        "crumbs": crumbs,
+        "items": data.get("items", []),
+        "error": data.get("error"),
+        "P": Permission,
+    }
+
+    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
+        return render(request, "nodes/_container_files_table.html", **ctx)
+
+    return render(
+        request,
+        "nodes/container_files.html",
+        title=f"{t('containers.files')}: {c_name}",
+        tab="containers",
+        **ctx,
+    )
+
+
+@router.get("/nodes/{node_id}/containers/{cid}/files/read")
+async def container_file_read(
+    request: Request,
+    node_id: int,
+    cid: str,
+    path: str,
+    node: dict = Depends(node_or_404),
+    ep: str = Depends(ep_param),
+    panel: Panel = Depends(get_panel),
+    user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES)),
+):
+    client = _client(panel, node)
+    try:
+        data = await client.get(_p(f"/api/containers/{cid}/files/read", ep), params={"path": path})
+        return Response(content=json.dumps(data, ensure_ascii=False), media_type="application/json")
+    except Exception as exc:
+        raise HTTPException(400, getattr(exc, "detail", str(exc)))
+
+
+@router.get("/nodes/{node_id}/containers/{cid}/files/download")
+async def container_file_download(
+    request: Request,
+    node_id: int,
+    cid: str,
+    path: str,
+    node: dict = Depends(node_or_404),
+    ep: str = Depends(ep_param),
+    panel: Panel = Depends(get_panel),
+    user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES)),
+):
+    import os
+
+    client = _client(panel, node)
+    res = await client.request("GET", _p(f"/api/containers/{cid}/files/download", ep), params={"path": path})
+    if res.status_code != 200:
+        raise HTTPException(res.status_code, "Nie udało się pobrać pliku")
+    fn = res.headers.get("content-disposition", "").split("filename=")[-1].strip('"') or os.path.basename(path)
+    return Response(
+        content=res.content,
+        media_type=res.headers.get("content-type", "application/octet-stream"),
+        headers={"Content-Disposition": f'attachment; filename="{fn}"'},
+    )
+
+
+@router.post("/nodes/{node_id}/containers/{cid}/files/write")
+async def container_file_write(
+    request: Request,
+    node_id: int,
+    cid: str,
+    node: dict = Depends(node_or_404),
+    ep: str = Depends(ep_param),
+    panel: Panel = Depends(get_panel),
+    user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES_WRITE)),
+):
+    form = await request.form()
+    path = str(form.get("path") or "").strip()
+    content = str(form.get("content") or "")
+    if not path:
+        return toast(t("common.required_field"), "err", status=400)
+
+    client = _client(panel, node)
+    try:
+        await client.post(_p(f"/api/containers/{cid}/files/write", ep), json={"path": path, "content": content})
+        return toast(t("containers.file_saved"))
+    except Exception as exc:
+        return toast(getattr(exc, "detail", str(exc)), "err", status=400)
+
+
+@router.post("/nodes/{node_id}/containers/{cid}/files/upload")
+async def container_file_upload(
+    request: Request,
+    node_id: int,
+    cid: str,
+    node: dict = Depends(node_or_404),
+    ep: str = Depends(ep_param),
+    panel: Panel = Depends(get_panel),
+    user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES_WRITE)),
+):
+    form = await request.form()
+    dir_path = str(form.get("dir_path") or "/").strip()
+    files = form.getlist("files")
+    client = _client(panel, node)
+
+    file_payload = []
+    for f in files:
+        if not hasattr(f, "filename") or not f.filename:
+            continue
+        raw = await f.read()
+        file_payload.append(("files", (f.filename, raw, getattr(f, "content_type", "application/octet-stream"))))
+
+    if not file_payload:
+        return toast(t("common.required_field"), "err", status=400)
+
+    try:
+        await client.request(
+            "POST",
+            _p(f"/api/containers/{cid}/files/upload", ep),
+            data={"dir_path": dir_path},
+            files=file_payload,
+        )
+        epa = "" if ep == "local" else f"&ep={ep}"
+        return redirect(
+            request,
+            f"/nodes/{node['id']}/containers/{cid}/files?path={dir_path}{epa}",
+            t("containers.files_uploaded", count=len(file_payload)),
+        )
+    except Exception as exc:
+        return toast(getattr(exc, "detail", str(exc)), "err", status=400)
+
+
+@router.post("/nodes/{node_id}/containers/{cid}/files/delete")
+async def container_file_delete(
+    request: Request,
+    node_id: int,
+    cid: str,
+    node: dict = Depends(node_or_404),
+    ep: str = Depends(ep_param),
+    panel: Panel = Depends(get_panel),
+    user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES_WRITE)),
+):
+    form = await request.form()
+    path = str(form.get("path") or "").strip()
+    dir_path = str(form.get("dir_path") or "/").strip()
+    if not path:
+        return toast(t("common.required_field"), "err", status=400)
+
+    client = _client(panel, node)
+    try:
+        await client.delete(_p(f"/api/containers/{cid}/files", ep), params={"path": path})
+        epa = "" if ep == "local" else f"&ep={ep}"
+        return redirect(
+            request,
+            f"/nodes/{node['id']}/containers/{cid}/files?path={dir_path}{epa}",
+            t("containers.file_deleted", path=path),
+        )
+    except Exception as exc:
+        return toast(getattr(exc, "detail", str(exc)), "err", status=400)
+
+
+@router.post("/nodes/{node_id}/containers/{cid}/files/mkdir")
+async def container_file_mkdir(
+    request: Request,
+    node_id: int,
+    cid: str,
+    node: dict = Depends(node_or_404),
+    ep: str = Depends(ep_param),
+    panel: Panel = Depends(get_panel),
+    user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES_WRITE)),
+):
+    form = await request.form()
+    name = str(form.get("name") or "").strip()
+    dir_path = str(form.get("dir_path") or "/").strip()
+    if not name:
+        return toast(t("common.required_field"), "err", status=400)
+
+    target_path = f"{dir_path.rstrip('/')}/{name.strip('/')}"
+    client = _client(panel, node)
+    try:
+        await client.post(_p(f"/api/containers/{cid}/files/mkdir", ep), json={"path": target_path})
+        epa = "" if ep == "local" else f"&ep={ep}"
+        return redirect(
+            request,
+            f"/nodes/{node['id']}/containers/{cid}/files?path={dir_path}{epa}",
+            t("containers.folder_created"),
+        )
+    except Exception as exc:
+        return toast(getattr(exc, "detail", str(exc)), "err", status=400)
+

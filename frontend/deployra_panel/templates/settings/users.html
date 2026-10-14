@@ -43,13 +43,28 @@
           </select>
         </div>
         <div class="field full">
-          <label>{{ t("users.permissions") }} {% if u.id == user.id %}<span class="muted">{{ t("users.own_permissions") }}</span>{% endif %}</label>
-          <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px">
-            {% for perm, label in labels.items() %}
-            <label class="check small" title="{{ t('users.risky') if perm in risky }}">
-              <input type="checkbox" name="perm_{{ perm.name }}" value="1" {{ "checked" if perm in perms }} {{ "disabled" if not grantable(user, perm) or u.id == user.id or (u.undeletable and perm == P.FULL_ACCESS) }}>
-              <span class="sw"></span><span style="{{ 'color: #fda4af' if perm in risky }}">{{ label }}</span>
-            </label>
+          <div class="row between" style="margin-bottom: 8px">
+            <label style="margin: 0; font-weight: 600">{{ t("users.permissions") }}</label>
+            {% if u.id == user.id %}<span class="muted small">{{ t("users.own_permissions") }}</span>{% endif %}
+          </div>
+          <div class="col" style="gap: 12px">
+            {% for grp in groups %}
+            <div style="background: var(--bg-card, rgba(255,255,255,0.03)); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px">
+              <div class="row" style="gap: 8px; font-weight: 600; font-size: 0.85rem; margin-bottom: 10px; color: var(--primary)">
+                <i class="bi {{ grp.icon }}"></i>
+                <span>{{ grp.title }}</span>
+              </div>
+              <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px">
+                {% for perm, label in grp.permissions %}
+                <label class="check small" title="{{ t('users.risky') if perm in risky }}" style="align-items: center">
+                  <input type="checkbox" name="perm_{{ perm.name }}" value="1" {{ "checked" if perm in perms }} {{ "disabled" if not grantable(user, perm) or u.id == user.id or (u.undeletable and perm == P.FULL_ACCESS) }}>
+                  <span class="sw"></span>
+                  <span style="{{ 'color: #fda4af' if perm in risky }}">{{ label }}</span>
+                  {% if perm in risky %}<span class="badge red sm" style="font-size: 0.65rem; padding: 1px 5px; margin-left: 4px; display: inline-block">{{ t('users.risky') }}</span>{% endif %}
+                </label>
+                {% endfor %}
+              </div>
+            </div>
             {% endfor %}
           </div>
         </div>

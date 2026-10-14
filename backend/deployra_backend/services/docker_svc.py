@@ -442,3 +442,198 @@ def run_quick_action(client: Any, cid: str, action_id: str) -> tuple[int, str | 
     out_str = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
     return exit_code, out_str, False, ""
 
+
+# --- Menedżer plików kontenera ------------------------------------------------
+
+
+def list_container_files(client: Any, cid: str, path: str = "/") -> dict:
+    """Listuje zawartość katalogu w kontenerze (typ, rozmiar, nazwa)."""
+    clean_path = "/" + path.strip("/")
+    target_dir = clean_path.rstrip("/") or "/"
+
+    cmd = [
+        "sh",
+        "-c",
+        'TARGET="$1"; cd "$TARGET" 2>/dev/null || exit 2; '
+        'for f in .* *; do '
+        '[ "$f" = "." ] || [ "$f" = ".." ] && continue; '
+        '[ ! -e "$f" ] && [ ! -L "$f" ] && continue; '
+        'if [ -d "$f" ]; then T="dir"; S=0; '
+        'elif [ -L "$f" ]; then T="link"; S=0; '
+        'else T="file"; S=$(wc -c < "$f" 2>/dev/null || echo 0); fi; '
+        'printf "%s\t%s\t%s\\n" "$T" "$S" "$f"; '
+        "done",
+        "--",
+        target_dir,
+    ]
+    try:
+        exec_res = client.api.exec_create(cid, cmd)
+        exec_id = exec_res["Id"]
+        output = client.api.exec_start(exec_id)
+        exit_code = (client.api.exec_inspect(exec_id) or {}).get("ExitCode", 0)
+    except Exception as exc:
+        raise RuntimeError(f"Błąd uruchomienia powłoki w kontenerze: {exc}")
+
+    if exit_code != 0:
+        raise FileNotFoundError(f"Katalog nie istnieje lub brak uprawnień: {target_dir}")
+
+    out_text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
+    items = []
+    for line in out_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split("\t", 2)
+        if len(parts) == 3:
+            t_kind, s_str, name = parts
+            try:
+                size = int(s_str.strip())
+            except ValueError:
+                size = 0
+            items.append({
+                "name": name,
+                "path": f"{target_dir.rstrip('/')}/{name}",
+                "type": t_kind,
+                "is_dir": t_kind == "dir",
+                "size": size,
+            })
+
+    items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
+    return {
+        "path": target_dir,
+        "items": items,
+    }
+
+
+def read_container_file(client: Any, cid: str, path: str, max_bytes: int = 2 * 1024 * 1024) -> dict:
+    """Odczytuje zawartość pliku z kontenera przez Docker API (tar stream)."""
+    import io
+    import os
+    import tarfile
+
+    clean_path = "/" + path.strip("/")
+    try:
+        strm, stat = client.api.get_archive(cid, clean_path)
+    except Exception as exc:
+        raise FileNotFoundError(f"Nie można odczytać pliku {clean_path}: {exc}")
+
+    tar_bytes = io.BytesIO()
+    for chunk in strm:
+        tar_bytes.write(chunk)
+    tar_bytes.seek(0)
+
+    try:
+        with tarfile.open(fileobj=tar_bytes, mode="r") as tar:
+            member = tar.next()
+            if not member:
+                raise FileNotFoundError("Puste archiwum pliku")
+            if member.isdir():
+                raise IsADirectoryError(f"{clean_path} jest katalogiem, nie plikiem")
+            f = tar.extractfile(member)
+            if f is None:
+                raise FileNotFoundError("Nie można wyodrębnić pliku")
+            raw_content = f.read(max_bytes + 1)
+    except Exception as exc:
+        raise RuntimeError(f"Błąd rozpakowywania pliku: {exc}")
+
+    is_truncated = len(raw_content) > max_bytes
+    if is_truncated:
+        raw_content = raw_content[:max_bytes]
+
+    is_binary = b"\x00" in raw_content[:4096]
+    text_content = "" if is_binary else raw_content.decode("utf-8", errors="replace")
+
+    return {
+        "path": clean_path,
+        "name": stat.get("name") or os.path.basename(clean_path),
+        "size": stat.get("size", len(raw_content)),
+        "is_binary": is_binary,
+        "truncated": is_truncated,
+        "content": text_content,
+    }
+
+
+def get_container_file_bytes(client: Any, cid: str, path: str) -> tuple[str, bytes]:
+    """Pobiera surowe bajty pliku do pobrania jako załącznik."""
+    import io
+    import os
+    import tarfile
+
+    clean_path = "/" + path.strip("/")
+    strm, stat = client.api.get_archive(cid, clean_path)
+    tar_bytes = io.BytesIO()
+    for chunk in strm:
+        tar_bytes.write(chunk)
+    tar_bytes.seek(0)
+
+    with tarfile.open(fileobj=tar_bytes, mode="r") as tar:
+        member = tar.next()
+        if not member or member.isdir():
+            raise FileNotFoundError(f"{clean_path} nie jest plikiem")
+        f = tar.extractfile(member)
+        if f is None:
+            raise FileNotFoundError("Nie można odczytać pliku")
+        data = f.read()
+
+    name = stat.get("name") or os.path.basename(clean_path)
+    return name, data
+
+
+def write_container_file(client: Any, cid: str, path: str, content: str | bytes) -> dict:
+    """Zapisuje lub podmienia plik w kontenerze przez Docker put_archive."""
+    import io
+    import os
+    import tarfile
+    import time
+
+    clean_path = "/" + path.strip("/")
+    raw_bytes = content.encode("utf-8") if isinstance(content, str) else content
+
+    dir_path, filename = os.path.split(clean_path)
+    if not dir_path:
+        dir_path = "/"
+
+    tar_stream = io.BytesIO()
+    with tarfile.open(fileobj=tar_stream, mode="w") as tar:
+        ti = tarfile.TarInfo(name=filename)
+        ti.size = len(raw_bytes)
+        ti.mtime = int(time.time())
+        ti.mode = 0o644
+        tar.addfile(ti, io.BytesIO(raw_bytes))
+    tar_stream.seek(0)
+
+    client.api.put_archive(cid, dir_path, tar_stream.getvalue())
+    return {"ok": True, "path": clean_path, "size": len(raw_bytes)}
+
+
+def delete_container_file(client: Any, cid: str, path: str) -> dict:
+    """Usuwa plik lub katalog w kontenerze."""
+    clean_path = "/" + path.strip("/")
+    if clean_path in ("/", "/bin", "/boot", "/dev", "/etc", "/lib", "/lib64", "/proc", "/root", "/sys", "/usr", "/var"):
+        raise ValueError(f"Nie można usunąć chronionego katalogu systemowego: {clean_path}")
+
+    cmd = ["rm", "-rf", clean_path]
+    exec_res = client.api.exec_create(cid, cmd)
+    exec_id = exec_res["Id"]
+    output = client.api.exec_start(exec_id)
+    exit_code = (client.api.exec_inspect(exec_id) or {}).get("ExitCode", 0)
+    if exit_code != 0:
+        out_str = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
+        raise RuntimeError(f"Błąd usuwania {clean_path}: {out_str}")
+    return {"ok": True, "path": clean_path}
+
+
+def mkdir_container(client: Any, cid: str, path: str) -> dict:
+    """Tworzy katalog w kontenerze."""
+    clean_path = "/" + path.strip("/")
+    cmd = ["mkdir", "-p", clean_path]
+    exec_res = client.api.exec_create(cid, cmd)
+    exec_id = exec_res["Id"]
+    output = client.api.exec_start(exec_id)
+    exit_code = (client.api.exec_inspect(exec_id) or {}).get("ExitCode", 0)
+    if exit_code != 0:
+        out_str = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
+        raise RuntimeError(f"Błąd tworzenia katalogu {clean_path}: {out_str}")
+    return {"ok": True, "path": clean_path}
+
+

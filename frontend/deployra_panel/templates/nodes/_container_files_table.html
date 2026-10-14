@@ -1,0 +1,126 @@
+{% set parent_path = cur_path.rpartition('/')[0] or '/' if cur_path != '/' else '' %}
+<div class="card" id="files-table-container">
+  <div class="card-head row between" style="gap: 10px; flex-wrap: wrap; background: rgba(255,255,255,0.02); padding: 10px 14px; border-bottom: 1px solid var(--border)">
+    <div class="row" style="gap: 6px; align-items: center; flex-wrap: wrap">
+      {% if cur_path != '/' %}
+      <button class="btn sm ghost" hx-get="/nodes/{{ node.id }}/containers/{{ cid }}/files?path={{ parent_path }}{{ epa }}" hx-target="#files-browser" hx-push-url="true" title="Katalog wyżej">
+        <i class="bi bi-arrow-up"></i> ..
+      </button>
+      {% endif %}
+      <a class="badge {{ 'primary' if cur_path == '/' else 'ghost' }}" style="cursor: pointer; text-decoration: none" hx-get="/nodes/{{ node.id }}/containers/{{ cid }}/files?path=/{{ epa }}" hx-target="#files-browser" hx-push-url="true">
+        <i class="bi bi-hdd"></i> /
+      </a>
+      {% for cr in crumbs %}
+      <span class="muted">/</span>
+      <a class="badge {{ 'primary' if loop.last else 'ghost' }}" style="cursor: pointer; text-decoration: none" hx-get="/nodes/{{ node.id }}/containers/{{ cid }}/files?path={{ cr.path }}{{ epa }}" hx-target="#files-browser" hx-push-url="true">
+        {{ cr.name }}
+      </a>
+      {% endfor %}
+    </div>
+    <div class="small muted mono" style="background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: var(--radius); word-break: break-all">
+      {{ cur_path }}
+    </div>
+  </div>
+
+  {% if error %}
+  <div class="card-body">
+    <div class="callout err"><i class="bi bi-exclamation-triangle"></i> {{ error }}</div>
+  </div>
+  {% else %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>{{ t("common.name") }}</th>
+          <th style="width: 140px">{{ t("common.size") if t("common.size") != "common.size" else "Rozmiar" }}</th>
+          <th style="width: 140px; text-align: right">Akcje</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if cur_path != '/' %}
+        <tr>
+          <td>
+            <a href="#" class="row" style="gap: 8px; align-items: center; text-decoration: none; color: inherit" hx-get="/nodes/{{ node.id }}/containers/{{ cid }}/files?path={{ parent_path }}{{ epa }}" hx-target="#files-browser" hx-push-url="true">
+              <i class="bi bi-folder2" style="color: var(--amber, #f59e0b); font-size: 1.1rem"></i>
+              <span class="muted">.. (katalog wyżej)</span>
+            </a>
+          </td>
+          <td><span class="muted">—</span></td>
+          <td></td>
+        </tr>
+        {% endif %}
+
+        {% for item in items %}
+        <tr>
+          <td>
+            {% if item.is_dir %}
+            <a href="#" class="row" style="gap: 8px; align-items: center; text-decoration: none; color: inherit; font-weight: 500" hx-get="/nodes/{{ node.id }}/containers/{{ cid }}/files?path={{ item.path }}{{ epa }}" hx-target="#files-browser" hx-push-url="true">
+              <i class="bi bi-folder-fill" style="color: var(--amber, #f59e0b); font-size: 1.15rem"></i>
+              <span class="trunc" style="max-width: 450px">{{ item.name }}</span>
+            </a>
+            {% else %}
+            <div class="row" style="gap: 8px; align-items: center">
+              {% if item.name.endswith(('.py', '.js', '.ts', '.html', '.css', '.json', '.yml', '.yaml', '.sh', '.sql', '.conf', '.env', '.md')) %}
+              <i class="bi bi-file-earmark-code" style="color: var(--primary); font-size: 1.15rem"></i>
+              {% elif item.name.endswith(('.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico')) %}
+              <i class="bi bi-file-earmark-image" style="color: #10b981; font-size: 1.15rem"></i>
+              {% elif item.name.endswith(('.zip', '.tar', '.gz', '.bz2', '.xz')) %}
+              <i class="bi bi-file-earmark-zip" style="color: #8b5cf6; font-size: 1.15rem"></i>
+              {% else %}
+              <i class="bi bi-file-earmark-text" style="color: var(--text-dim); font-size: 1.15rem"></i>
+              {% endif %}
+              <span class="mono trunc" style="max-width: 450px">{{ item.name }}</span>
+            </div>
+            {% endif %}
+          </td>
+          <td class="small muted mono">
+            {% if item.is_dir %}
+            <span>—</span>
+            {% elif item.size > 1048576 %}
+            <span>{{ (item.size / 1048576) | round(2) }} MB</span>
+            {% elif item.size > 1024 %}
+            <span>{{ (item.size / 1024) | round(1) }} KB</span>
+            {% else %}
+            <span>{{ item.size }} B</span>
+            {% endif %}
+          </td>
+          <td style="text-align: right">
+            <div class="actions" style="justify-content: flex-end">
+              {% if item.is_dir %}
+              <button class="btn icon sm ghost" hx-get="/nodes/{{ node.id }}/containers/{{ cid }}/files?path={{ item.path }}{{ epa }}" hx-target="#files-browser" hx-push-url="true" title="Otwórz">
+                <i class="bi bi-folder2-open"></i>
+              </button>
+              {% if has(user, P.ALLOW_CONTAINER_FILES_WRITE) %}
+              <button class="btn icon sm ghost danger" hx-post="/nodes/{{ node.id }}/containers/{{ cid }}/files/delete{{ epa }}" hx-vals='{"path": "{{ item.path }}", "dir_path": "{{ cur_path }}"}' hx-target="#files-browser" hx-confirm="{{ t('containers.delete_file_confirm', path=item.name) }}" title="{{ t('common.delete') }}">
+                <i class="bi bi-trash"></i>
+              </button>
+              {% endif %}
+              {% else %}
+              <button class="btn icon sm" @click="openFile('{{ item.path }}')" title="{{ t('containers.edit_file') }}">
+                <i class="bi bi-pencil-square"></i>
+              </button>
+              <a class="btn icon sm ghost" href="/nodes/{{ node.id }}/containers/{{ cid }}/files/download?path={{ item.path }}{{ epa }}" download title="Pobierz">
+                <i class="bi bi-download"></i>
+              </a>
+              {% if has(user, P.ALLOW_CONTAINER_FILES_WRITE) %}
+              <button class="btn icon sm ghost danger" hx-post="/nodes/{{ node.id }}/containers/{{ cid }}/files/delete{{ epa }}" hx-vals='{"path": "{{ item.path }}", "dir_path": "{{ cur_path }}"}' hx-target="#files-browser" hx-confirm="{{ t('containers.delete_file_confirm', path=item.name) }}" title="{{ t('common.delete') }}">
+                <i class="bi bi-trash"></i>
+              </button>
+              {% endif %}
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="3" class="muted small" style="text-align: center; padding: 32px">
+            <i class="bi bi-folder2" style="font-size: 2rem; display: block; margin-bottom: 6px; opacity: 0.4"></i>
+            {{ t("containers.empty_dir") }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>

@@ -96,6 +96,8 @@ class FakeAPI:
         self.on_oneoff: Any = None  # testy: podgląd/emulacja jednorazowych kontenerów (instalacja, tar wolumenów)
         self.crash_images: set[str] = set()
         self._cpu = 0
+        self._files: dict[str, bytes] = {}
+        self._exec_commands: dict[str, Any] = {}
         if demo:
             for name, image, ports, labels in (
                 ("app-blog", "ghost:5-alpine", {"2368/tcp": 20001}, {"deployra.app": "blog"}),
@@ -241,13 +243,48 @@ class FakeAPI:
         if tty:
             raise NotFound("terminal nie działa w trybie atrapy Dockera")
         self._find(cid)
-        return {"Id": f"exec-{next(self._ids)}"}
+        eid = f"exec-{next(self._ids)}"
+        self._exec_commands[eid] = cmd
+        return {"Id": eid}
 
     def exec_start(self, exec_id: str, **_: Any) -> bytes:
+        cmd = self._exec_commands.get(exec_id, [])
+        cmd_str = " ".join(cmd) if isinstance(cmd, list) else str(cmd)
+        if "TARGET" in cmd_str or "printf" in cmd_str:
+            return b"dir\t0\tvar\ndir\t0\tetc\nfile\t120\tindex.html\nfile\t45\tconfig.json\n"
         return b"nginx: configuration file /etc/nginx/nginx.conf test is successful\n"
 
     def exec_inspect(self, exec_id: str) -> dict:
         return {"ExitCode": 0}
+
+    def get_archive(self, cid: str, path: str):
+        import io
+        import os
+        import tarfile
+
+        self._find(cid)
+        fn = os.path.basename(path.strip("/")) or "file.txt"
+        data = self._files.get(path, b"Sample file content for " + fn.encode())
+        strm = io.BytesIO()
+        with tarfile.open(fileobj=strm, mode="w") as tar:
+            ti = tarfile.TarInfo(name=fn)
+            ti.size = len(data)
+            ti.mode = 0o644
+            tar.addfile(ti, io.BytesIO(data))
+        strm.seek(0)
+        return [strm.getvalue()], {"name": fn, "size": len(data), "mode": 0o644}
+
+    def put_archive(self, cid: str, path: str, data: bytes):
+        import io
+        import tarfile
+
+        self._find(cid)
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r") as tar:
+            for member in tar:
+                f = tar.extractfile(member)
+                if f:
+                    self._files[f"{path.rstrip('/')}/{member.name}"] = f.read()
+        return True
 
     # --- obrazy, sieci, wolumeny ----------------------------------------------------------
 

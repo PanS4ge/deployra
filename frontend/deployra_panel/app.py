@@ -27,7 +27,7 @@ from .services import access
 from .web import is_htmx, render, toast
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-PUBLIC_PREFIXES = ("/static/", "/hooks/", "/healthz", "/login", "/setup", "/language", "/favicon.ico")
+PUBLIC_PREFIXES = ("/static/", "/hooks/", "/healthz", "/login", "/setup", "/language", "/favicon.ico", "/mcp")
 
 
 def create_app(config: Config | None = None, panel: Panel | None = None) -> FastAPI:
@@ -70,11 +70,28 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
     async def session_middleware(request: Request, call_next):
         request.state.user = None
         request.state.csrf = ""
+        request.state.is_token_auth = False
         path = request.url.path
         cookie_lang, accept = request.cookies.get(i18n.LANG_COOKIE), request.headers.get("accept-language")
         i18n_core.current.set(i18n.resolve(None, cookie_lang, panel.default_language, accept))
         if path.startswith("/static/") or path.startswith("/hooks/") or path == "/healthz" or path == "/favicon.ico":
             return await call_next(request)
+
+        # Sprawdzenie autoryzacji przez token API / MCP (nagłówek Bearer lub ?token= dla /mcp)
+        auth = request.headers.get("Authorization", "")
+        raw_token = ""
+        if auth.startswith("Bearer "):
+            raw_token = auth.removeprefix("Bearer ").strip()
+        elif request.query_params.get("token") and path.startswith("/mcp"):
+            raw_token = request.query_params.get("token", "").strip()
+
+        if raw_token:
+            from .services.tokens import verify_token
+            api_user = await run_in_threadpool(verify_token, panel, raw_token)
+            if api_user:
+                request.state.user = api_user
+                request.state.is_token_auth = True
+                return await call_next(request)
 
         has_users = await run_in_threadpool(panel.has_users)
         if not has_users and not path.startswith("/setup"):
@@ -86,7 +103,7 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
             request.state.user = session
             i18n_core.current.set(i18n.resolve(session, cookie_lang, panel.default_language, accept))
             request.state.csrf = session["csrf"]
-            if request.method not in SAFE_METHODS:
+            if request.method not in SAFE_METHODS and not getattr(request.state, "is_token_auth", False):
                 token = request.headers.get("X-CSRF-Token", "")
                 if not hmac.compare_digest(token, session["csrf"]):
                     return JSONResponse({"detail": i18n.t("msg.csrf")}, status_code=403)

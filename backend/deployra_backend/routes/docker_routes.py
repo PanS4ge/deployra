@@ -8,7 +8,7 @@ import socket
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel
 
@@ -130,6 +130,97 @@ def container_stats(cid: str, client: Any = Depends(dk)) -> dict:
 async def container_stats_stream(cid: str, info: dict = Depends(_container), client: Any = Depends(dk)):
     async for sample in docker_svc.stats_stream(client, cid):
         yield ServerSentEvent(data=sample, event="stats")
+
+
+class FileWriteRequest(BaseModel):
+    path: str
+    content: str
+
+
+class MkdirRequest(BaseModel):
+    path: str
+
+
+@router.get("/containers/{cid}/files")
+def container_files_list(cid: str, path: str = "/", client: Any = Depends(dk)) -> dict:
+    try:
+        return docker_svc.list_container_files(client, cid, path)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.get("/containers/{cid}/files/read")
+def container_files_read(cid: str, path: str, client: Any = Depends(dk)) -> dict:
+    try:
+        return docker_svc.read_container_file(client, cid, path)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except IsADirectoryError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.get("/containers/{cid}/files/download")
+def container_files_download(cid: str, path: str, client: Any = Depends(dk)) -> Response:
+    try:
+        filename, data = docker_svc.get_container_file_bytes(client, cid, path)
+        return Response(
+            content=data,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/containers/{cid}/files/write")
+def container_files_write(cid: str, body: FileWriteRequest, client: Any = Depends(dk)) -> dict:
+    try:
+        return docker_svc.write_container_file(client, cid, body.path, body.content)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/containers/{cid}/files/upload")
+async def container_files_upload(
+    cid: str,
+    dir_path: str = Form("/"),
+    files: list[UploadFile] = File(...),
+    client: Any = Depends(dk),
+) -> dict:
+    uploaded = []
+    clean_dir = "/" + dir_path.strip("/")
+    for f in files:
+        if not f.filename:
+            continue
+        content = await f.read()
+        target_path = f"{clean_dir.rstrip('/')}/{f.filename}"
+        docker_svc.write_container_file(client, cid, target_path, content)
+        uploaded.append({"name": f.filename, "size": len(content)})
+    return {"ok": True, "dir": clean_dir, "uploaded": uploaded}
+
+
+@router.delete("/containers/{cid}/files")
+def container_files_delete(cid: str, path: str, client: Any = Depends(dk)) -> dict:
+    try:
+        return docker_svc.delete_container_file(client, cid, path)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/containers/{cid}/files/mkdir")
+def container_files_mkdir(cid: str, body: MkdirRequest, client: Any = Depends(dk)) -> dict:
+    try:
+        return docker_svc.mkdir_container(client, cid, body.path)
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 @router.get("/containers/{cid}/logs")

@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block crumbs %}
+<div class="crumbs">
+  <a href="/nodes">{{ t("nav.nodes") }}</a> /
+  <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /
+  <a href="/nodes/{{ node.id }}/containers{{ epa }}">{{ t("containers.crumb") }}</a> /
+  <a href="/nodes/{{ node.id }}/containers/{{ cid }}{{ epa }}">{{ c_name }}</a> /
+  <span>{{ t("containers.files") }}</span>
+</div>
+{% endblock %}
+
+{% block heading %}
+<div class="row" style="gap: 10px; align-items: center">
+  <i class="bi bi-folder2-open" style="color: var(--primary)"></i>
+  <span>{{ t("containers.files") }}: {{ c_name }}</span>
+</div>
+{% endblock %}
+
+{% block actions %}
+<a class="btn ghost sm" href="/nodes/{{ node.id }}/containers/{{ cid }}{{ epa }}">
+  <i class="bi bi-arrow-left"></i> {{ c_name }}
+</a>
+{% if has(user, P.ALLOW_CONTAINER_FILES_WRITE) %}
+<button class="btn sm" @click="showUpload = true">
+  <i class="bi bi-upload"></i> {{ t("containers.upload_file") }}
+</button>
+<button class="btn sm" @click="showMkdir = true">
+  <i class="bi bi-folder-plus"></i> {{ t("containers.new_folder") }}
+</button>
+{% endif %}
+<button class="btn sm ghost icon" hx-get="/nodes/{{ node.id }}/containers/{{ cid }}/files?path={{ cur_path }}{{ epa }}" hx-target="#files-browser" title="Odśwież">
+  <i class="bi bi-arrow-clockwise"></i>
+</button>
+{% endblock %}
+
+{% block content %}
+<div x-data="{
+  showEditor: false,
+  showUpload: false,
+  showMkdir: false,
+  filePath: '',
+  fileName: '',
+  fileContent: '',
+  isBinary: false,
+  isTruncated: false,
+  fileSize: 0,
+  loading: false,
+  saving: false,
+  async openFile(path) {
+    this.loading = true;
+    this.filePath = path;
+    this.fileName = path.split('/').pop();
+    this.showEditor = true;
+    try {
+      const res = await fetch(`/nodes/{{ node.id }}/containers/{{ cid }}/files/read?path=${encodeURIComponent(path)}{{ epa }}`);
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText);
+      }
+      const data = await res.json();
+      this.fileContent = data.content || '';
+      this.isBinary = !!data.is_binary;
+      this.isTruncated = !!data.truncated;
+      this.fileSize = data.size || 0;
+    } catch (err) {
+      alert('Błąd odczytu pliku: ' + err.message);
+      this.showEditor = false;
+    } finally {
+      this.loading = false;
+    }
+  },
+  async saveFile() {
+    if (this.isBinary) return;
+    this.saving = true;
+    try {
+      const form = new URLSearchParams();
+      form.append('path', this.filePath);
+      form.append('content', this.fileContent);
+      const res = await fetch(`/nodes/{{ node.id }}/containers/{{ cid }}/files/write{{ epa }}`, {
+        method: 'POST',
+        body: form,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRF-Token': document.querySelector('meta[name=csrf-token]')?.content || ''
+        }
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText);
+      }
+      this.showEditor = false;
+      // Odśwież widok
+      htmx.ajax('GET', `/nodes/{{ node.id }}/containers/{{ cid }}/files?path=${encodeURIComponent('{{ cur_path }}')}{{ epa }}`, { target: '#files-browser' });
+    } catch (err) {
+      alert('Błąd zapisu: ' + err.message);
+    } finally {
+      this.saving = false;
+    }
+  }
+}">
+
+  <!-- Główna przeglądarka plików -->
+  <div id="files-browser">
+    {% include "nodes/_container_files_table.html" %}
+  </div>
+
+  <!-- Modal: Edytor / Podgląd pliku -->
+  <div class="modal-backdrop" x-show="showEditor" x-cloak @keydown.escape.window="showEditor = false">
+    <div class="card modal wide" style="max-width: 900px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column" @click.outside="showEditor = false">
+      <div class="card-head row between" style="border-bottom: 1px solid var(--border)">
+        <div class="row" style="gap: 8px; align-items: center">
+          <i class="bi bi-file-earmark-code" style="color: var(--primary); font-size: 1.2rem"></i>
+          <div>
+            <h3 style="margin: 0; font-size: 1rem" x-text="fileName"></h3>
+            <div class="small muted mono" x-text="filePath"></div>
+          </div>
+        </div>
+        <div class="row" style="gap: 6px; align-items: center">
+          <span class="badge" x-text="(fileSize > 1048576 ? (fileSize / 1048576).toFixed(2) + ' MB' : (fileSize > 1024 ? (fileSize / 1024).toFixed(1) + ' KB' : fileSize + ' B'))"></span>
+          <button type="button" class="btn icon sm ghost" @click="showEditor = false"><i class="bi bi-x-lg"></i></button>
+        </div>
+      </div>
+
+      <div class="card-body" style="flex: 1; min-height: 0; overflow-y: auto; padding: 12px">
+        <template x-if="loading">
+          <div class="muted small" style="text-align: center; padding: 60px">
+            <span class="spin" style="width: 24px; height: 24px; margin-bottom: 8px; display: inline-block"></span>
+            <div>Ładowanie zawartości pliku…</div>
+          </div>
+        </template>
+
+        <template x-if="!loading && isBinary">
+          <div class="callout warn" style="margin: 20px 0">
+            <i class="bi bi-file-earmark-binary" style="font-size: 1.5rem"></i>
+            <div>
+              <b>{{ t("containers.binary_file_hint") }}</b>
+              <div class="small muted" style="margin-top: 4px">Ten plik zawiera dane binarne. Pobierz go na swój komputer, aby wyświetlić lub zmodyfikować.</div>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="!loading && isTruncated">
+          <div class="callout warn" style="margin-bottom: 10px">
+            <i class="bi bi-exclamation-triangle"></i>
+            <div>Plik jest bardzo duży (&gt; 2 MB). Wyświetlono pierwsze 2 MB zawartości.</div>
+          </div>
+        </template>
+
+        <template x-if="!loading && !isBinary">
+          <textarea
+            class="input mono"
+            x-model="fileContent"
+            style="width: 100%; height: 55vh; min-height: 350px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.85rem; line-height: 1.5; background: #0b1120; color: #f1f5f9; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; resize: vertical; tab-size: 2"
+            spellcheck="false"
+            {% if not has(user, P.ALLOW_CONTAINER_FILES_WRITE) %}readonly{% endif %}
+          ></textarea>
+        </template>
+      </div>
+
+      <div class="card-body row between" style="border-top: 1px solid var(--border); padding: 10px 14px">
+        <div>
+          <a class="btn ghost sm" :href="`/nodes/{{ node.id }}/containers/{{ cid }}/files/download?path=${encodeURIComponent(filePath)}{{ epa }}`" download>
+            <i class="bi bi-download"></i> Pobierz plik
+          </a>
+        </div>
+        <div class="row" style="gap: 8px">
+          <button type="button" class="btn ghost sm" @click="showEditor = false">{{ t("common.cancel") }}</button>
+          {% if has(user, P.ALLOW_CONTAINER_FILES_WRITE) %}
+          <button class="btn primary sm" :disabled="isBinary || saving" @click="saveFile()">
+            <span class="spin" x-show="saving"></span>
+            <i class="bi bi-check2" x-show="!saving"></i>
+            <span>{{ t("common.save") }}</span>
+          </button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Wgrywanie pliku (Upload) -->
+  {% if has(user, P.ALLOW_CONTAINER_FILES_WRITE) %}
+  <div class="modal-backdrop" x-show="showUpload" x-cloak @keydown.escape.window="showUpload = false">
+    <form class="card modal" style="max-width: 480px" action="/nodes/{{ node.id }}/containers/{{ cid }}/files/upload{{ epa }}" method="post" enctype="multipart/form-data" @click.outside="showUpload = false">
+      <input type="hidden" name="csrf" value="{{ csrf_token(request) if csrf_token else '' }}">
+      <input type="hidden" name="dir_path" value="{{ cur_path }}">
+      <div class="card-head">
+        <h3><i class="bi bi-upload"></i> {{ t("containers.upload_file") }}</h3>
+      </div>
+      <div class="card-body form-grid">
+        <div class="field full">
+          <label>Katalog docelowy</label>
+          <div class="mono small muted" style="background: rgba(0,0,0,0.2); padding: 6px 10px; border-radius: var(--radius)">{{ cur_path }}</div>
+        </div>
+        <div class="field full">
+          <label>Wybierz pliki z dysku</label>
+          <input class="input" type="file" name="files" multiple required style="padding: 8px">
+        </div>
+      </div>
+      <div class="card-body row" style="justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border)">
+        <button type="button" class="btn ghost sm" @click="showUpload = false">{{ t("common.cancel") }}</button>
+        <button class="btn primary sm"><i class="bi bi-upload"></i> Wgraj</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal: Nowy folder (mkdir) -->
+  <div class="modal-backdrop" x-show="showMkdir" x-cloak @keydown.escape.window="showMkdir = false">
+    <form class="card modal" style="max-width: 420px" hx-post="/nodes/{{ node.id }}/containers/{{ cid }}/files/mkdir{{ epa }}" hx-target="#files-browser" @htmx:after-request="showMkdir = false" @click.outside="showMkdir = false">
+      <input type="hidden" name="dir_path" value="{{ cur_path }}">
+      <div class="card-head">
+        <h3><i class="bi bi-folder-plus"></i> {{ t("containers.new_folder") }}</h3>
+      </div>
+      <div class="card-body form-grid">
+        <div class="field full">
+          <label>Katalog nadrzędny</label>
+          <div class="mono small muted" style="background: rgba(0,0,0,0.2); padding: 6px 10px; border-radius: var(--radius)">{{ cur_path }}</div>
+        </div>
+        <div class="field full">
+          <label>{{ t("containers.folder_name") }}</label>
+          <input class="input" name="name" placeholder="np. config albo dist" required autofocus>
+        </div>
+      </div>
+      <div class="card-body row" style="justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border)">
+        <button type="button" class="btn ghost sm" @click="showMkdir = false">{{ t("common.cancel") }}</button>
+        <button class="btn primary sm"><i class="bi bi-check2"></i> {{ t("common.save") }}</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

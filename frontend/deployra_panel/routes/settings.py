@@ -18,7 +18,7 @@ from ..context import Panel, get_panel
 from ..db import now
 from ..i18n import catalog, t
 from ..deps import current_user, require
-from ..permissions import LABELS, RISKY, Permission, encode, grantable, has, parse
+from ..permissions import GROUPS, LABELS, RISKY, Permission, encode, grantable, has, parse
 from ..security import SESSION_COOKIE
 from ..services import cloudflared, dns
 from ..web import redirect, render, toast
@@ -124,7 +124,7 @@ async def disable_tunnel(request: Request, panel: Panel = Depends(get_panel), us
 def users_page(request: Request, panel: Panel = Depends(get_panel)):
     rows = panel.db.all("users")
     return render(request, "settings/users.html", title=t("nav.users"), tab="users", users=rows, labels=LABELS, risky=RISKY,
-                  parse=parse, grantable=grantable)  # fmt: skip
+                  parse=parse, grantable=grantable, groups=GROUPS)  # fmt: skip
 
 
 @router.post("/settings/users/save")
@@ -412,6 +412,41 @@ def delete_registry_route(request: Request, reg_id: int, panel: Panel = Depends(
 
     registries.delete_registry(panel, reg_id)
     return redirect(request, "/settings/registries", t("msg.registry_deleted"))
+
+
+# --- Serwer MCP & Tokeny API ----------------------------------------------------------------------
+
+
+@router.get("/settings/mcp")
+def mcp_page(request: Request, new_token: str = "", panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
+    from ..services import tokens
+    from ..services.mcp_server import registry
+
+    token_list = tokens.list_tokens(panel)
+    base_url = str(request.base_url).rstrip("/")
+    tools = registry.list_tools(user)
+    return render(
+        request, "settings/mcp.html", title=t("settings.tab_mcp"), tab="mcp",
+        tokens=token_list, new_token=new_token, base_url=base_url, tools=tools,
+    )
+
+
+@router.post("/settings/mcp/tokens")
+async def create_mcp_token_route(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
+    from ..services import tokens
+
+    form = await request.form()
+    name = str(form.get("name") or "Agent AI").strip()[:60]
+    raw_token, _ = tokens.create_token(panel, name, user["id"])
+    return redirect(request, f"/settings/mcp?new_token={raw_token}", t("mcp.token_created"))
+
+
+@router.post("/settings/mcp/tokens/{token_id}/delete")
+def delete_mcp_token_route(request: Request, token_id: int, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
+    from ..services import tokens
+
+    tokens.delete_token(panel, token_id)
+    return redirect(request, "/settings/mcp", t("mcp.token_deleted"))
 
 
 # --- strefa ryzyka ---------------------------------------------------------------------------------

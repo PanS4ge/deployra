@@ -3,6 +3,9 @@
 {% block crumbs %}<div class="crumbs"><a href="/apps">{{ t("nav.apps") }}</a> /</div>{% endblock %}
 {% block actions %}
 {{ status_badge(app.status) }}
+{% if spec.source.kind in ("image", "git", "runtime") and spec.endpoint == "local" %}
+<a class="btn ghost" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}#logs" title="{{ t('apps.logs') }}"><i class="bi bi-journal-text"></i> {{ t("apps.logs") }}</a>
+{% endif %}
 {% if has(user, P.ALLOW_DEPLOYMENT) %}<button class="btn primary" hx-post="/apps/{{ app.id }}/deploy" hx-swap="none"><span class="spin"></span><i class="bi bi-rocket-takeoff"></i> {{ t("apps.redeploy") }}</button>{% endif %}
 {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}<a class="btn" href="/apps/{{ app.id }}/edit"><i class="bi bi-sliders"></i> {{ t("nav.settings") }}</a>{% endif %}
 {% endblock %}
