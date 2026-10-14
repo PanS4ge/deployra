@@ -5,6 +5,7 @@
 {{ status_badge(app.status) }}
 {% if spec.source.kind in ("image", "git", "runtime") and spec.endpoint == "local" %}
 <a class="btn ghost" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}#logs" title="{{ t('apps.logs') }}"><i class="bi bi-journal-text"></i> {{ t("apps.logs") }}</a>
+<a class="btn ghost" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}/files" title="Pliki w kontenerze"><i class="bi bi-folder2-open"></i> Pliki</a>
 {% endif %}
 {% if has(user, P.ALLOW_DEPLOYMENT) %}<button class="btn primary" hx-post="/apps/{{ app.id }}/deploy" hx-swap="none"><span class="spin"></span><i class="bi bi-rocket-takeoff"></i> {{ t("apps.redeploy") }}</button>{% endif %}
 {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}<a class="btn" href="/apps/{{ app.id }}/edit"><i class="bi bi-sliders"></i> {{ t("nav.settings") }}</a>{% endif %}
@@ -164,7 +165,10 @@
       {% endif %}
       <div class="row between"><span class="small dim">{{ t("apps.containers_hint") }}</span>
         <span class="row" style="gap: 6px">
-          {% if spec.source.kind in ("image", "git", "runtime") and spec.endpoint == "local" %}<a class="btn sm" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}"><i class="bi bi-journal-text"></i> {{ t("apps.logs") }}</a>{% endif %}
+          {% if spec.source.kind in ("image", "git", "runtime") and spec.endpoint == "local" %}
+          <a class="btn sm" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}#logs"><i class="bi bi-journal-text"></i> {{ t("apps.logs") }}</a>
+          <a class="btn sm" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}/files"><i class="bi bi-folder2-open"></i> Pliki</a>
+          {% endif %}
           <a class="btn sm" href="/nodes/{{ node.id }}/containers{{ '' if spec.endpoint == 'local' else '?ep=' ~ spec.endpoint }}"><i class="bi bi-box"></i> {{ t("nodes.tab_containers") }}</a>
         </span></div>
       {% if has(user, P.ALLOW_DEPLOYMENT_DELETE) %}
