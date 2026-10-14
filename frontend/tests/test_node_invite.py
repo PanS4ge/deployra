@@ -94,3 +94,45 @@ def test_pure_gateway_node_invite_restrictions(admin):
     assert "Brak aktywnej bramki z obs" in (res.headers.get("HX-Trigger", "") + res.text)
 
 
+def test_direct_node_add_has_snippets_and_gateway_selection(admin, monkeypatch):
+    panel = admin.app.state.panel
+    panel.db.execute("DELETE FROM gateway")
+    panel.db.insert("gateway", name="Oracle-Proxy", role="proxy", wg_enabled=0,
+                    bootstrap_url="http://138.2.182.146:51821", api_url="http://127.0.0.1:2751",
+                    secret=panel.sealer.seal(b"o" * 32), public_host="138.2.182.146")
+    gw_cezary = panel.db.insert("gateway", name="Cezary-WG", role="proxy", wg_enabled=0,
+                                bootstrap_url="http://cezary.example.com:51822", api_url="http://10.8.0.1:2752",
+                                secret=panel.sealer.seal(b"c" * 32), public_host="10.8.0.1")
+
+    # 1. Strona /nodes/add zawiera gotowe polecenia dla trybu ręcznego
+    page = admin.get("/nodes/add", headers={"HX-Request": ""}).text
+    assert "docker logs deployra-backend" in page
+    assert "docker run -d --name deployra-backend" in page
+    assert "name=\"gateway_id\"" in page
+    assert "Cezary-WG" in page
+
+    # 2. Rejestracja węzła bezpośredniego z wyborem bramki
+    async def mock_pair(panel, node, code=None):
+        panel.db.update("nodes", node["id"], status="paired")
+        return panel.node(node["id"])
+
+    monkeypatch.setattr(sync, "pair_node", mock_pair)
+    res = admin.post("/nodes/direct", data={
+        "name": "vps-dell",
+        "url": "http://10.8.0.15:2750",
+        "code": "DPLR-1234-5678-9012",
+        "gateway_id": str(gw_cezary),
+    })
+    assert res.status_code == 204  # HTMX redirect
+    node = panel.db.fetchone("SELECT * FROM nodes WHERE name = 'vps-dell'")
+    assert node is not None
+    assert node["gateway_id"] == gw_cezary
+    assert node["transport"] == "direct"
+
+    # 3. Zmiana bramki w ustawieniach węzła
+    res = admin.post(f"/nodes/{node['id']}/gateway", data={"gateway_id": "1"})
+    assert res.status_code == 204
+    node = panel.db.get("nodes", node["id"])
+    assert node["gateway_id"] == 1
+
+

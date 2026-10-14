@@ -46,13 +46,23 @@ def add_page(request: Request, panel: Panel = Depends(get_panel), user: dict = D
     wg_gateways = panel.wg_gateways()
     has_wg = bool(wg_gateways)
     gateway = wg_gateways[0] if wg_gateways else panel.gateway()
+    gateways = panel.gateways()
+    images = panel.db.setting("image_prefix") or sync.DEFAULT_IMAGES
+    direct_snippets = {
+        "run": sync.direct_docker_run_snippet("vps-2", images),
+        "run_host": sync.direct_docker_run_snippet("vps-2", images, host_network=True),
+        "compose": sync.direct_compose_snippet("vps-2", images),
+    }
     return render(
         request, "nodes/add.html",
         title=t("nodes.add"),
         gateway=gateway,
+        gateways=gateways,
         wg_gateways=wg_gateways,
         has_wg=has_wg,
         target=sync.node_target(gateway) if (gateway and has_wg) else None,
+        direct_snippets=direct_snippets,
+        images=images,
     )
 
 
@@ -87,10 +97,11 @@ async def add_direct(
     url: str = Form(...),
     code: str = Form(...),
     proxy_address: str = Form(""),
+    gateway_id: int | None = Form(None),
     panel: Panel = Depends(get_panel),
     user: dict = Depends(require(Permission.ALLOW_ADD_DOCKERS)),
 ):
-    node = await sync.add_direct_node(panel, name, url, code, proxy_address)
+    node = await sync.add_direct_node(panel, name, url, code, proxy_address, gateway_id=gateway_id)
     return redirect(request, f"/nodes/{node['id']}", t("msg.node_paired", name=node["name"]))
 
 
@@ -211,6 +222,23 @@ def address(request: Request, proxy_address: str = Form(""), node: dict = Depend
             user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
     panel.db.update("nodes", node["id"], proxy_address=proxy_address.strip() or LOCAL_UPSTREAM)
     return redirect(request, f"/nodes/{node['id']}/settings", t("msg.address_saved"))
+
+
+@router.post("/nodes/{node_id}/gateway")
+async def node_gateway(
+    request: Request,
+    gateway_id: int | None = Form(None),
+    node: dict = Depends(node_or_404),
+    panel: Panel = Depends(get_panel),
+    user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS)),
+):
+    panel.db.update("nodes", node["id"], gateway_id=gateway_id)
+    from ..services import proxy_state
+    try:
+        await proxy_state.push(panel)
+    except Exception:
+        pass
+    return redirect(request, f"/nodes/{node['id']}/settings", t("msg.gateway_saved"))
 
 
 @router.post("/nodes/{node_id}/subnets")

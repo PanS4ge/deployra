@@ -21,6 +21,25 @@
       <div class="hint small muted">{{ t("nodes.node_address_hint") }}</div>
     </form>
   </div>
+  {% if gateways %}
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-hdd-network"></i> {{ t("nodes.select_gateway") }}</h3></div>
+    <form class="card-body stack" hx-post="/nodes/{{ node.id }}/gateway" hx-swap="none">
+      <div class="row">
+        <select class="select" name="gateway_id" style="flex: 1">
+          <option value="">{{ t("nodes.gateway_auto_or_default") }}</option>
+          {% for gw in gateways %}
+          <option value="{{ gw.id }}" {% if node.gateway_id == gw.id %}selected{% endif %}>
+            {{ gw.name }} ({{ gw.public_host or gw.api_url }}){% if gw.public_host and gw.public_host.startswith('10.8.') %} — WireGuard (10.8.0.x){% elif gw.role == 'hub' or gw.wg_enabled %} — WireGuard Hub{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        <button class="btn">{{ t("common.save") }}</button>
+      </div>
+      <div class="hint small muted">{{ t("nodes.select_gateway_direct_hint") }}</div>
+    </form>
+  </div>
+  {% endif %}
   {% if node.transport == "tunnel" %}
   <div class="card">
     <div class="card-head"><h3><i class="bi bi-router"></i> {{ t("nodes.lan_behind") }}</h3></div>

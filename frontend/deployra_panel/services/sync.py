@@ -385,11 +385,11 @@ async def pair_node(panel: Any, node: dict, code: str | None = None) -> dict:
     return panel.node(node["id"])
 
 
-async def add_direct_node(panel: Any, name: str, url: str, code: str, proxy_address: str) -> dict:
+async def add_direct_node(panel: Any, name: str, url: str, code: str, proxy_address: str, gateway_id: int | None = None) -> dict:
     base = _base_url(url, 2750)
     node_id = panel.db.insert(
         "nodes", name=name.strip()[:60] or urlparse(base).hostname, transport="direct", api_url=base, status="pending",
-        proxy_address=proxy_address.strip() or urlparse(base).hostname, created_at=now(),
+        proxy_address=proxy_address.strip() or urlparse(base).hostname, gateway_id=gateway_id, created_at=now(),
     )  # fmt: skip
     try:
         return await pair_node(panel, panel.node(node_id), code)
@@ -465,6 +465,43 @@ def docker_run_snippet(gateway: dict, token: str, name: str, images: str = DEFAU
         f"  {images}-backend:latest",
     ]
     return " \\\n".join(lines) + "\n"
+
+
+def direct_docker_run_snippet(name: str = "vps-2", images: str = DEFAULT_IMAGES, host_network: bool = False) -> str:
+    """Gotowe polecenie docker run dla węzła w trybie bezpośrednim / z własnym IP (np. w WireGuard VPN)."""
+    images = (images or DEFAULT_IMAGES).strip().rstrip("-")
+    net_arg = "--network host" if host_network else "-p 2750:2750"
+    lines = [
+        "docker run -d --name deployra-backend --restart unless-stopped",
+        f"  {net_arg} --memory 192m",
+        "  --label deployra.system=backend --log-opt max-size=5m --log-opt max-file=2",
+        f'  -e DEPLOYRA_NAME="{name}" -e DEPLOYRA_LANG="{i18n_lang()}"',
+        "  -v /var/run/docker.sock:/var/run/docker.sock -v /var/lib/deployra:/var/lib/deployra -v /srv/deployra:/srv/deployra",
+        f"  {images}-backend:latest",
+    ]
+    return " \\\n".join(lines) + "\n"
+
+
+def direct_compose_snippet(name: str = "vps-2", images: str = DEFAULT_IMAGES) -> str:
+    """Gotowy compose węzła w trybie bezpośrednim — dla Portainera lub compose.yml."""
+    images = (images or DEFAULT_IMAGES).strip().rstrip("-")
+    return f"""services:
+  deployra-backend:
+    image: {images}-backend:latest
+    container_name: deployra-backend
+    ports:
+      - "2750:2750"
+    environment:
+      DEPLOYRA_NAME: "{name}"
+      DEPLOYRA_LANG: "{i18n_lang()}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/deployra:/var/lib/deployra
+      - /srv/deployra:/srv/deployra
+    restart: unless-stopped
+    mem_limit: 192m
+    logging: {{ driver: json-file, options: {{ max-size: 5m, max-file: "2" }} }}
+"""
 
 
 def native_snippet(gateway: dict, token: str, name: str, repo: str = "PanS4ge/deployra") -> str:

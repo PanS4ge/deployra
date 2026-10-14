@@ -70,13 +70,25 @@ def build_state(panel: Any, gateway_id: int | None = None) -> ProxyState:
     nodes = {n["id"]: n for n in db.all("nodes")}
     site_rows = db.all("sites")
     if gateway_id is not None:
-        site_rows = [s for s in site_rows if not s.get("gateway_id") or s.get("gateway_id") == gateway_id]
+        def site_belongs_to_gw(s: dict) -> bool:
+            if s.get("gateway_id"):
+                return s["gateway_id"] == gateway_id
+            tg = s.get("target") or {}
+            if tg.get("type") == "node" and tg.get("node_id"):
+                n = nodes.get(int(tg["node_id"]))
+                if n and n.get("gateway_id"):
+                    return n["gateway_id"] == gateway_id
+            return True
+
+        site_rows = [s for s in site_rows if site_belongs_to_gw(s)]
     sites = [s for s in (site_model(panel, row, nodes) for row in site_rows) if s]
     streams = []
     for row in db.all("streams"):
         host = row["upstream_host"]
         if row.get("node_id"):
             node = nodes.get(row["node_id"])
+            if gateway_id is not None and node and node.get("gateway_id") and node["gateway_id"] != gateway_id:
+                continue
             host = panel.node_upstream_host(node) if node else None
         if not host:
             continue

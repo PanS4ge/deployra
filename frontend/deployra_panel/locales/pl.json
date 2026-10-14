@@ -825,7 +825,8 @@
     "saved_domains": "Zapisano — przestawiam domeny bez restartu kontenera",
     "saved_plain": "Zapisano",
     "sftp_port_saved": "Zmieniono port SFTP na {port}",
-    "address_saved": "Zapisano adres węzła"
+    "address_saved": "Zapisano adres węzła",
+    "gateway_saved": "Zapisano bramkę węzła"
   },
   "nav": {
     "apps": "Aplikacje",
@@ -882,6 +883,12 @@
     "loading_vitals": "Ładowanie zasobów…",
     "no_wg_banner_desc": "Żadna z podłączonych bramek nie obsługuje WireGuarda (masz podłączoną czystą bramkę proxy bez WG lub brak bramek). Rejestracja i tunelowanie węzłów wymaga bramki z WireGuardem.",
     "no_wg_banner_title": "Brak aktywnej bramki z WireGuardem",
+    "select_gateway": "Bramka proxy (kierowanie ruchem)",
+    "select_gateway_direct_hint": "Wybierz bramkę, przez którą będzie kierowany ruch do aplikacji na tym węźle (np. Cezary dla maszyn w sieci WireGuard 10.8.0.x).",
+    "gateway_auto_or_default": "Domyślna (automatycznie)",
+    "direct_step1_title": "Uruchom węzeł na swoim serwerze za pomocą gotowej komendy:",
+    "direct_step2_title": "Odczytaj kod parowania z logów kontenera:",
+    "direct_step3_title": "Wprowadź dane węzła i sparuj z panelem:",
     "select_wg_gateway": "Bramka WireGuard (rejestracja i tunel)",
     "select_wg_gateway_hint": "Wybierz, która bramka obsłuży tunel VPN dla tego węzła.",
     "step_1_desc": "Nazwij swój serwer niżej.",

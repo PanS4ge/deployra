@@ -537,8 +537,8 @@ async def wg_port_save(request: Request, port: int = Form(...), redirect_url: st
 
 
 @router.get("/nodes/{node_id}/settings")
-def node_settings(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param)):
-    return render(request, "nodes/settings.html", title=f"{node['name']} · {t('nav.settings').lower()}", node=node, tab="settings")
+def node_settings(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel)):
+    return render(request, "nodes/settings.html", title=f"{node['name']} · {t('nav.settings').lower()}", node=node, tab="settings", gateways=panel.gateways())
 
 
 # --- pomocnicze -------------------------------------------------------------------------------

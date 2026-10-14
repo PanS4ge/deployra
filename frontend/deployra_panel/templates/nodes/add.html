@@ -76,16 +76,72 @@
     {% endif %}
   </div>
 
-  <div class="card glow" x-show="mode === 'direct'" x-cloak>
+  <div class="card glow" x-show="mode === 'direct'" x-cloak x-data="{ directTab: 'run' }">
     <div class="card-head"><h2><i class="bi bi-globe"></i> {{ t("nodes.new_direct") }}</h2></div>
-    <form class="card-body stack" hx-post="/nodes/direct" hx-swap="none">
+
+    <div class="card-body stack" style="gap: 12px; border-bottom: 1px solid var(--border); padding-bottom: 16px">
+      <div class="small">
+        <b><span class="badge violet sm">1</span> {{ t("nodes.direct_step1_title") }}</b>
+      </div>
+
+      <nav class="tabs" style="margin: 0; padding: 0 4px">
+        <a href="#" :class="directTab === 'run' && 'active'" @click.prevent="directTab = 'run'"><i class="bi bi-play-circle"></i> docker run</a>
+        <a href="#" :class="directTab === 'host' && 'active'" @click.prevent="directTab = 'host'"><i class="bi bi-hdd-network"></i> docker run (--net host)</a>
+        <a href="#" :class="directTab === 'compose' && 'active'" @click.prevent="directTab = 'compose'"><i class="bi bi-file-earmark-code"></i> Compose</a>
+      </nav>
+
+      {% if direct_snippets %}
+      <div class="snippet" x-show="directTab === 'run'">
+        <pre class="code-block">{{ direct_snippets.run }}</pre>
+        <button type="button" class="btn sm" data-copy="{{ direct_snippets.run }}"><i class="bi bi-clipboard"></i> {{ t("common.copy") }}</button>
+      </div>
+
+      <div class="snippet" x-show="directTab === 'host'" x-cloak>
+        <pre class="code-block">{{ direct_snippets.run_host }}</pre>
+        <button type="button" class="btn sm" data-copy="{{ direct_snippets.run_host }}"><i class="bi bi-clipboard"></i> {{ t("common.copy") }}</button>
+      </div>
+
+      <div class="snippet" x-show="directTab === 'compose'" x-cloak>
+        <pre class="code-block">{{ direct_snippets.compose }}</pre>
+        <button type="button" class="btn sm" data-copy="{{ direct_snippets.compose }}"><i class="bi bi-clipboard"></i> {{ t("common.copy") }}</button>
+      </div>
+      {% endif %}
+
+      <div class="small" style="margin-top: 6px">
+        <b><span class="badge violet sm">2</span> {{ t("nodes.direct_step2_title") }}</b>
+      </div>
+      <div class="snippet">
+        <pre class="code-block">docker logs deployra-backend</pre>
+        <button type="button" class="btn sm" data-copy="docker logs deployra-backend"><i class="bi bi-clipboard"></i> {{ t("common.copy") }}</button>
+      </div>
+      <div class="hint small muted"><i class="bi bi-info-circle"></i> {{ t("nodes.pairing_code_hint") }}</div>
+    </div>
+
+    <form class="card-body stack" hx-post="/nodes/direct" hx-swap="none" style="margin-top: 4px">
+      <div class="small">
+        <b><span class="badge ok sm">3</span> {{ t("nodes.direct_step3_title") }}</b>
+      </div>
       <div class="field"><label>{{ t("common.name") }}</label><input class="input" name="name" placeholder="vps-2" maxlength="60"></div>
-      <div class="field"><label>{{ t("nodes.api_address") }}</label><input class="input" name="url" placeholder="http://203.0.113.5:2750" required></div>
+      <div class="field"><label>{{ t("nodes.api_address") }}</label><input class="input" name="url" placeholder="http://10.8.0.x:2750 lub http://203.0.113.5:2750" required></div>
       <div class="field">
         <label>{{ t("nodes.pairing_code") }}</label>
         <input class="input mono" name="code" placeholder="DPLR-XXXX-XXXX-XXXX" required autocomplete="off">
         <div class="hint">{{ t("nodes.pairing_code_hint") }}</div>
       </div>
+      {% if gateways %}
+      <div class="field">
+        <label><i class="bi bi-hdd-network"></i> {{ t("nodes.select_gateway") }}</label>
+        <select class="select" name="gateway_id">
+          <option value="">{{ t("nodes.gateway_auto_or_default") }}</option>
+          {% for gw in gateways %}
+          <option value="{{ gw.id }}">
+            {{ gw.name }} ({{ gw.public_host or gw.api_url }}){% if gw.public_host and gw.public_host.startswith('10.8.') %} — WireGuard (10.8.0.x){% elif gw.role == 'hub' or gw.wg_enabled %} — WireGuard Hub{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        <div class="hint">{{ t("nodes.select_gateway_direct_hint") }}</div>
+      </div>
+      {% endif %}
       <div class="field">
         <label>{{ t("nodes.proxy_address") }}</label>
         <input class="input" name="proxy_address" placeholder="{{ t('nodes.proxy_address_placeholder') }}">

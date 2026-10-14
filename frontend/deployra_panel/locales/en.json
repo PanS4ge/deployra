@@ -825,7 +825,8 @@
     "saved_domains": "Saved — switching the domains without restarting the container",
     "saved_plain": "Saved",
     "sftp_port_saved": "SFTP port changed to {port}",
-    "address_saved": "Node address saved"
+    "address_saved": "Node address saved",
+    "gateway_saved": "Node gateway saved"
   },
   "nav": {
     "apps": "Apps",
@@ -882,6 +883,12 @@
     "loading_vitals": "Loading resources…",
     "no_wg_banner_desc": "None of the connected gateways support WireGuard (you have a pure proxy gateway without WG or no gateways). Tunnel registration requires a gateway with WireGuard.",
     "no_wg_banner_title": "No active gateway with WireGuard",
+    "select_gateway": "Proxy gateway (traffic routing)",
+    "select_gateway_direct_hint": "Select the gateway that will route traffic to apps on this node (e.g. Cezary for machines in WireGuard network 10.8.0.x).",
+    "gateway_auto_or_default": "Default (automatic)",
+    "direct_step1_title": "Run node container on your server using the command below:",
+    "direct_step2_title": "Read pairing code from container logs:",
+    "direct_step3_title": "Enter node details and pair with panel:",
     "select_wg_gateway": "WireGuard Gateway (registration and tunnel)",
     "select_wg_gateway_hint": "Select which gateway will handle the VPN tunnel for this node.",
     "step_1_desc": "Name your server below.",
