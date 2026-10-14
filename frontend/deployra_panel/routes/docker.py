@@ -465,7 +465,7 @@ async def sftp_delete(request: Request, username: str, node: dict = Depends(node
 
 
 @router.post("/nodes/{node_id}/sftp/port")
-async def sftp_port_save(request: Request, port: int = Form(...), node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
+async def sftp_port_save(request: Request, port: int = Form(...), redirect_url: str = Form(None), node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
                          user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
     if not (1 <= port <= 65535):
         raise HTTPException(400, "Port musi być z zakresu 1-65535")
@@ -479,7 +479,24 @@ async def sftp_port_save(request: Request, port: int = Form(...), node: dict = D
     except Exception:
         pass
     await _client(panel, node).post(_p("/api/sftp/config", ep), json={"port": port})
-    return redirect(request, f"/nodes/{node['id']}/sftp{_q(ep)}", t("msg.sftp_port_saved", port=port))
+    target = redirect_url or f"/nodes/{node['id']}/sftp{_q(ep)}"
+    return redirect(request, target, t("msg.sftp_port_saved", port=port))
+
+
+@router.post("/nodes/{node_id}/wg/port")
+async def wg_port_save(request: Request, port: int = Form(...), redirect_url: str = Form(None), node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
+                       user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
+    if not (1 <= port <= 65535):
+        raise HTTPException(400, "Port musi być z zakresu 1-65535")
+    try:
+        await _client(panel, node).post(_p("/api/wg/config", ep), json={"port": port})
+    except Exception:
+        pass
+    gw = panel.gateway()
+    if gw:
+        panel.db.update("gateway", gw["id"], wg_port=port)
+    target = redirect_url or f"/nodes/{node['id']}/ports"
+    return redirect(request, target, f"Zmieniono port WireGuard na {port}")
 
 
 # --- ustawienia węzła ------------------------------------------------------------------------

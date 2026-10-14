@@ -260,6 +260,28 @@ async def update_sftp_config(body: SftpPortConfig, ctx: Context = Depends(get_ct
     return {"ok": True, "port": body.port}
 
 
+class WgPortConfig(BaseModel):
+    port: int
+
+
+@router.post("/wg/config")
+async def update_wg_config(body: WgPortConfig, ctx: Context = Depends(get_ctx)) -> dict:
+    if not (1 <= body.port <= 65535):
+        raise HTTPException(400, "Port musi być z zakresu 1-65535")
+    ctx.state.update(wg_port=body.port)
+    wg_conf = ctx.state.get("wg")
+    if wg_conf and isinstance(wg_conf, dict):
+        wg_conf["listen_port"] = body.port
+        ctx.state.update(wg=wg_conf)
+        from ..services import wg_spoke
+
+        try:
+            wg_spoke.bring_up(wg_conf, ctx.config.wg_iface)
+        except Exception:
+            pass
+    return {"ok": True, "port": body.port}
+
+
 @router.put("/sftp/{username}")
 async def set_sftp_user(username: str, body: SftpUser, ctx: Context = Depends(get_ctx)) -> dict:
     static_sites.ensure_site_dir(ctx.config.sites_dir, body.slug)

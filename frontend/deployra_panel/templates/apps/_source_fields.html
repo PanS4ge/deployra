@@ -1,7 +1,62 @@
 {# Pola zależne od rodzaju źródła — wspólne dla kreatora i edycji. `spec` może być None. #}
 {% set src = spec.source if spec else None %}
-<div class="form-grid" x-show="kind === 'image'">
-  <div class="field"><label>{{ t("containers.image") }}</label><input class="input mono" name="image" value="{{ src.image if src and src.image else '' }}" placeholder="ghcr.io/user/app:latest" :required="kind === 'image'"></div>
+<div class="form-grid" x-show="kind === 'image'" x-data="{
+  search: '',
+  loading: false,
+  results: [],
+  open: false,
+  async doSearch(q) {
+    if (!q || q.length < 2) { this.results = []; this.open = false; return; }
+    this.loading = true;
+    try {
+      const res = await fetch('/apps/docker-search?q=' + encodeURIComponent(q));
+      if (res.ok) {
+        this.results = await res.json();
+        this.open = this.results.length > 0;
+      }
+    } catch (e) { this.results = []; }
+    this.loading = false;
+  },
+  pickImage(item) {
+    const root = $el.closest('.form-grid');
+    const imgInput = root.querySelector('input[name=image]');
+    if (imgInput) {
+      imgInput.value = item.name + ':latest';
+      imgInput.dispatchEvent(new Event('input'));
+    }
+    const portInput = root.querySelector('input[name=container_port]');
+    if (portInput && item.port && !portInput.value) {
+      portInput.value = item.port;
+      portInput.dispatchEvent(new Event('input'));
+    }
+    this.open = false;
+  }
+}">
+  <div class="field" style="position: relative">
+    <div class="row between" style="margin-bottom: 4px">
+      <label>{{ t("containers.image") }}</label>
+      <span class="small muted" style="cursor: pointer; font-size: 0.78rem" @click="open = !open"><i class="bi bi-search"></i> Szukaj w Docker Hub</span>
+    </div>
+    <div class="row" style="gap: 6px">
+      <input class="input mono" name="image" value="{{ src.image if src and src.image else '' }}" placeholder="ghcr.io/user/app:latest" :required="kind === 'image'" style="flex: 1" @input.debounce.300ms="doSearch($event.target.value)" @focus="if(results.length) open = true">
+      <button type="button" class="btn ghost sm" @click="doSearch($el.previousElementSibling.value)" title="Szukaj w rejestrze Docker Hub"><i class="bi" :class="loading ? 'bi-arrow-repeat spin' : 'bi-search'"></i></button>
+    </div>
+    <div class="card" x-show="open" @click.away="open = false" x-cloak style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 60; max-height: 260px; overflow-y: auto; background: var(--surface-solid, #101222); border: 1px solid var(--border); box-shadow: 0 12px 30px rgba(0,0,0,0.6)">
+      <template x-for="r in results" :key="r.name">
+        <div class="choice" style="border: none; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 8px 12px; cursor: pointer; text-align: left; border-radius: 0" @click="pickImage(r)">
+          <div style="flex: 1; min-width: 0">
+            <div class="row" style="gap: 6px">
+              <b class="mono" x-text="r.name" style="color: var(--violet-2)"></b>
+              <span class="badge ok" x-show="r.is_official" style="font-size: 0.65rem; padding: 1px 5px">OFICJALNY</span>
+              <span class="muted small" x-show="r.stars"><i class="bi bi-star-fill" style="color: #fbbf24; font-size: 0.7rem"></i> <span x-text="r.stars"></span></span>
+              <span class="badge info" x-show="r.port" style="font-size: 0.65rem" x-text="'port ' + r.port"></span>
+            </div>
+            <div class="small muted trunc" x-text="r.description" style="margin-top: 2px"></div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
   <div class="field"><label>{{ t("apps.listen_port") }}</label><input class="input" name="container_port" type="number" min="1" max="65535" value="{{ spec.container_port if spec and spec.container_port else '' }}" placeholder="80" :disabled="kind !== 'image'" :required="kind === 'image'"></div>
   <div class="field full"><label>{{ t("apps.start_command") }} <span class="muted small">({{ t("apps.optional") }})</span></label><input class="input mono" name="command" value="{{ src.command | shjoin if src and src.command else '' }}" placeholder="CMD" :disabled="kind !== 'image'"></div>
 </div>

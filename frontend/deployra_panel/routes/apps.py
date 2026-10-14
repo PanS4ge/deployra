@@ -10,6 +10,7 @@ import shlex
 import tempfile
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from pydantic import ValidationError
 
@@ -170,6 +171,57 @@ def apps(request: Request, panel: Panel = Depends(get_panel)):
 
     stats = uptime.stats_for(panel, [("app", a["id"]) for a in rows])
     return render(request, "apps/list.html", title=t("nav.apps"), apps=rows, stats=stats)
+
+
+COMMON_PORTS = {
+    "nginx": 80, "httpd": 80, "apache2": 80, "caddy": 80, "redis": 6379, "postgres": 5432, "mysql": 3306,
+    "mariadb": 3306, "mongo": 27017, "mongodb": 27017, "node": 3000, "python": 8000, "traefik": 80,
+    "vaultwarden/server": 80, "uptime-kuma": 3001, "louislam/uptime-kuma": 3001, "gitea/gitea": 3000,
+    "gitlab/gitlab-ce": 80, "grafana/grafana": 3000, "prom/prometheus": 9090, "portainer/portainer-ce": 9000,
+    "it-tools": 80, "adguard/adguardhome": 3000, "pihole/pihole": 80, "nextcloud": 80, "wordpress": 80,
+    "ghost": 2368, "rabbitmq": 5672, "memcached": 11211,
+}
+
+
+@router.get("/apps/docker-search")
+async def docker_hub_search(q: str = "") -> list[dict]:
+    query = q.strip().lower()
+    if not query:
+        return []
+    results = []
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(
+                f"https://hub.docker.com/v2/search/repositories/?query={query}&page_size=8",
+                headers={"Accept": "application/json", "User-Agent": "Deployra/1.2"},
+            )
+            if resp.status_code == 200:
+                data = resp.json().get("results", [])
+                for item in data:
+                    repo = item.get("repo_name", "")
+                    short_name = repo.split("/")[-1] if "/" in repo else repo
+                    port = COMMON_PORTS.get(repo) or COMMON_PORTS.get(short_name) or 80
+                    results.append({
+                        "name": repo,
+                        "description": item.get("short_description", "")[:120],
+                        "stars": item.get("star_count", 0),
+                        "is_official": item.get("is_official", False),
+                        "port": port,
+                    })
+    except Exception:
+        pass
+
+    if not results:
+        for name, port in COMMON_PORTS.items():
+            if query in name:
+                results.append({
+                    "name": name,
+                    "description": f"Standardowy obraz {name}",
+                    "stars": 1000,
+                    "is_official": "/" not in name,
+                    "port": port,
+                })
+    return results[:8]
 
 
 @router.get("/apps/new")

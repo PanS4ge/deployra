@@ -38,8 +38,34 @@
       <li>{{ t("invite.step_run") }}</li>
       <li>{{ t("invite.step_wait") }}</li>
     </ol>
-    <dl class="kv small">
-      <dt>{{ t("invite.gateway") }}</dt><dd class="mono">{{ target }}</dd>
+    <dl class="kv small" x-data="{ editHost: false, hostVal: '{{ target.split(':')[0] }}', portVal: '{{ target.split(':')[1] if ':' in target else '51821' }}', wgVal: '51820' }">
+      <dt>{{ t("invite.gateway") }}</dt>
+      <dd>
+        <span class="mono bold" style="color: var(--violet-2)">{{ target }}</span>
+        <button type="button" class="btn xs ghost" style="margin-left: 8px" @click="editHost = !editHost" title="Zmień adres IP bramki jeśli jest nieaktywny"><i class="bi bi-pencil"></i> Zmień IP / porty bramki</button>
+        <div x-show="editHost" x-cloak style="margin-top: 10px; padding: 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; max-width: 440px">
+          <form class="stack" style="gap: 8px" hx-post="/tunnel/gateway/quick-host" hx-swap="none" @submit="setTimeout(() => window.location.reload(), 600)">
+            <div>
+              <label class="label small muted">Publiczny adres IP lub domena bramki:</label>
+              <input class="input sm mono" name="host" x-model="hostVal" placeholder="np. 1.2.3.4 lub vps.domena.pl" style="width: 100%" required>
+            </div>
+            <div class="row" style="gap: 8px">
+              <div style="flex: 1">
+                <label class="label small muted">Port rejestracji:</label>
+                <input class="input sm mono" name="port" x-model="portVal" type="number" placeholder="51821" required>
+              </div>
+              <div style="flex: 1">
+                <label class="label small muted">Port WireGuard:</label>
+                <input class="input sm mono" name="wg_port" x-model="wgVal" type="number" placeholder="51820" required>
+              </div>
+            </div>
+            <div class="row" style="gap: 8px; margin-top: 4px">
+              <button class="btn sm primary"><i class="bi bi-check"></i> Zapisz i odśwież</button>
+              <button type="button" class="btn sm ghost" @click="editHost = false"><i class="bi bi-x"></i> Anuluj</button>
+            </div>
+          </form>
+        </div>
+      </dd>
       <dt>{{ t("invite.needs_title") }}</dt><dd>{{ t("invite.needs") }}</dd>
     </dl>
   </div>

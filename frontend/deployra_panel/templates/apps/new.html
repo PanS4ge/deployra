@@ -57,21 +57,59 @@
 
   {# 2. gdzie #}
   <div class="card" x-show="step === 2" x-cloak>
-    <div class="card-head"><h2>{{ t("apps.name_and_place") }}</h2></div>
-    <div class="card-body form-grid">
-      <div class="field"><label>{{ t("common.name") }}</label><input class="input" name="name" x-model="name" @input="sync()" placeholder="{{ t('uptime.name_placeholder') }}" required maxlength="60"></div>
-      <div class="field"><label>{{ t("apps.slug") }}</label><input class="input mono" name="slug" x-model="slug" @input="slugEdited = true; sync()" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" maxlength="40" required></div>
-      <div class="field"><label>{{ t("apps.node") }}</label>
-        <select class="select" name="node_id" x-model="node" @change="firstEp()">
-          {% for n in nodes %}<option value="{{ n.id }}">{{ n.name }}{{ (" (" ~ t("nodes.via_tunnel") ~ ")") if n.transport == "tunnel" }}{% if free[n.id] is not none %} · {{ t("res.free_mb", mb=free[n.id]) }}{% endif %}</option>{% endfor %}
-        </select>
+    <div class="card-head"><h2><i class="bi bi-geo-alt"></i> {{ t("apps.name_and_place") }}</h2></div>
+    <div class="card-body stack" style="gap: 20px">
+      <!-- Sekcja 1: Nazwa i identyfikator -->
+      <div>
+        <div class="small bold" style="margin-bottom: 8px; color: var(--violet-2)"><i class="bi bi-tag"></i> 1. Nazwa i identyfikator aplikacji</div>
+        <div class="form-grid">
+          <div class="field"><label>{{ t("common.name") }}</label><input class="input" name="name" x-model="name" @input="sync()" placeholder="{{ t('uptime.name_placeholder') }}" required maxlength="60"></div>
+          <div class="field">
+            <label>{{ t("apps.slug") }}</label>
+            <input class="input mono" name="slug" x-model="slug" @input="slugEdited = true; sync()" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" maxlength="40" required>
+            <div class="hint small muted">Używane w nazwie kontenera (<code>app-<span x-text="slug || 'nazwa'"></span></code>) i subdomenie.</div>
+          </div>
+        </div>
       </div>
-      <div class="field" x-show="(eps[node] || []).length > 1">
-        <label>Docker (Proxmox)</label>
-        <select class="select" name="endpoint" x-model="endpoint">
-          <template x-for="e in (eps[node] || [])" :key="e.id"><option :value="e.id" x-text="e.id === 'local' ? 'Host' : (e.name + ' · CT ' + e.vmid + (e.ip ? ' · ' + e.ip : ''))"></option></template>
-        </select>
-        <div class="hint" x-show="endpoint !== 'local' && static" style="color: var(--warn)">{{ t("apps.static_host_only") }}</div>
+
+      <!-- Sekcja 2: Wybór węzła docelowego -->
+      <div style="border-top: 1px solid var(--border); padding-top: 16px">
+        <div class="small bold" style="margin-bottom: 8px; color: var(--violet-2)"><i class="bi bi-hdd-network"></i> 2. Wybierz węzeł docelowy</div>
+        <div class="grid grid-auto" style="gap: 10px; margin-bottom: 12px">
+          {% for n in nodes %}
+          <div class="choice" :class="node == {{ n.id }} && 'on'" @click="node = {{ n.id }}; firstEp()" style="cursor: pointer; padding: 12px">
+            <i class="bi bi-hdd-network" :style="node == {{ n.id }} ? 'color: var(--violet-2)' : ''"></i>
+            <div style="flex: 1; min-width: 0">
+              <div class="row between">
+                <b>{{ n.name }}</b>
+                <span class="badge {{ 'violet' if n.transport == 'tunnel' else 'info' }}" style="font-size: 0.65rem">
+                  {{ t("nodes.via_tunnel") if n.transport == "tunnel" else "Bezpośrednio" }}
+                </span>
+              </div>
+              <div class="small muted" style="margin-top: 2px">
+                {% if free[n.id] is not none %}Wolny RAM: {{ t("res.free_mb", mb=free[n.id]) }}{% else %}Online{% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="node_id" :value="node">
+
+        <!-- Endpoint Proxmox LXC jeśli węzeł ma więcej niż host -->
+        <div class="callout" x-show="(eps[node] || []).length > 1" style="margin-top: 10px; background: rgba(139, 92, 246, 0.08); border-color: rgba(139, 92, 246, 0.3)">
+          <i class="bi bi-boxes" style="color: var(--violet-2); font-size: 1.2rem"></i>
+          <div style="flex: 1">
+            <b>Środowisko docelowe w Proxmoxie:</b>
+            <div class="field" style="margin-top: 6px">
+              <select class="select" name="endpoint" x-model="endpoint" style="max-width: 380px">
+                <template x-for="e in (eps[node] || [])" :key="e.id">
+                  <option :value="e.id" x-text="e.id === 'local' ? 'Host główny Dockera' : ('Kontener Proxmox: ' + e.name + ' (CT ' + e.vmid + (e.ip ? ' · ' + e.ip : '') + ')')"></option>
+                </template>
+              </select>
+            </div>
+            <div class="hint" x-show="endpoint !== 'local' && static" style="color: var(--warn); margin-top: 4px">{{ t("apps.static_host_only") }}</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>

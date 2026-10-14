@@ -175,7 +175,9 @@ def collect_node_ports(ctx: Context) -> list[dict[str, Any]]:
         sftp_port = ctx.state.get("sftp_port") or ctx.config.sftp_port
         ports.append({"port": sftp_port, "protocol": "tcp", "owner": "SFTP", "kind": "system"})
     if ctx.config.wg_enabled:
-        ports.append({"port": 51820, "protocol": "udp", "owner": "WireGuard", "kind": "system"})
+        wg_conf = ctx.state.get("wg") or {}
+        wg_port = ctx.state.get("wg_port") or (wg_conf.get("listen_port") if isinstance(wg_conf, dict) else None) or 51820
+        ports.append({"port": wg_port, "protocol": "udp", "owner": "WireGuard", "kind": "system"})
     try:
         for ep in ctx.endpoints.list():
             try:

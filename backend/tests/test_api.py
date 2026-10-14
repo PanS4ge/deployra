@@ -132,3 +132,17 @@ def test_sftp_port_config_and_info_ip(api, ctx):
 
     bad = api.request("POST", "/api/sftp/config", json={"port": 999999})
     assert bad.status_code == 400
+
+
+def test_wg_port_config(api, ctx):
+    res = api.request("POST", "/api/wg/config", json={"port": 51825})
+    assert res.status_code == 200
+    assert res.json()["port"] == 51825
+    assert ctx.state.get("wg_port") == 51825
+
+    ports = api.request("GET", "/api/ports").json()
+    wg_port = next((p for p in ports["used"] if p["owner"] == "WireGuard"), None)
+    assert wg_port and wg_port["port"] == 51825
+
+    bad = api.request("POST", "/api/wg/config", json={"port": 70000})
+    assert bad.status_code == 400

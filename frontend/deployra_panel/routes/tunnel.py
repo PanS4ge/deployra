@@ -126,3 +126,46 @@ async def edge_unlink(request: Request, panel: Panel = Depends(get_panel), user:
 async def unlink(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_TUNNEL))):
     await sync.unlink_gateway(panel)
     return redirect(request, "/tunnel", t("msg.gateway_unlinked"), "warn")
+
+
+@router.post("/tunnel/gateway/config")
+async def gateway_config(
+    request: Request,
+    public_host: str = Form(...),
+    wg_port: int = Form(51820),
+    bootstrap_port: int = Form(51821),
+    panel: Panel = Depends(get_panel),
+    user: dict = Depends(require(Permission.ALLOW_TUNNEL)),
+):
+    gw = panel.gateway()
+    if not gw:
+        return toast(t("msg.no_gateway"), "err", status=400)
+    host = public_host.strip().lower()
+    if not host or any(c.isspace() or c in "/:@" for c in host.strip("[]")):
+        return toast(t("edge.bad_host"), "err", status=400)
+    bootstrap = f"http://{host}:{bootstrap_port}"
+    panel.db.update("gateway", gw["id"], public_host=host, wg_port=max(1, min(wg_port, 65535)), bootstrap_url=bootstrap)
+    return redirect(request, "/tunnel", "Zapisano adres publiczny bramki oraz porty.")
+
+
+@router.post("/tunnel/gateway/quick-host")
+async def quick_gateway_host(
+    request: Request,
+    host: str = Form(...),
+    port: int = Form(51821),
+    wg_port: int = Form(51820),
+    panel: Panel = Depends(get_panel),
+    user: dict = Depends(require(Permission.ALLOW_TUNNEL)),
+):
+    gw = panel.gateway()
+    if not gw:
+        return toast(t("msg.no_gateway"), "err", status=400)
+    clean_host = host.strip().lower()
+    if not clean_host or any(c.isspace() or c in "/:@" for c in clean_host.strip("[]")):
+        return toast("Niepoprawny adres IP / domena", "err", status=400)
+    bootstrap = f"http://{clean_host}:{port}"
+    fields = {"public_host": clean_host, "bootstrap_url": bootstrap}
+    if wg_port and 1 <= wg_port <= 65535:
+        fields["wg_port"] = wg_port
+    panel.db.update("gateway", gw["id"], **fields)
+    return toast(f"Zapisano nowy adres bramki: {clean_host}:{port} (WireGuard: {fields.get('wg_port', 51820)})")

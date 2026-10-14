@@ -64,6 +64,34 @@
           <td style="text-align: right">
             {% if p.kind == 'container' %}
             <a class="btn sm ghost" href="/nodes/{{ node.id }}/containers/{{ p.owner }}" title="Przejdź do kontenera"><i class="bi bi-box-arrow-up-right"></i></a>
+            {% elif p.owner == 'SFTP' %}
+            <div x-data="{ open: false, port: {{ p.port }} }" style="position: relative; display: inline-block">
+              <button type="button" class="btn sm ghost" @click="open = !open" title="Zmień port SFTP"><i class="bi bi-pencil-square"></i> Zmień port</button>
+              <div x-show="open" @click.outside="open = false" x-cloak style="position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--bg-card); border: 1px solid var(--border); padding: 12px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 50; text-align: left; min-width: 220px">
+                <form method="post" action="/nodes/{{ node.id }}/sftp/port">
+                  <input type="hidden" name="redirect_url" value="/nodes/{{ node.id }}/ports">
+                  <div class="small bold" style="margin-bottom: 6px">Nowy port SFTP</div>
+                  <div style="display: flex; gap: 6px">
+                    <input class="input sm mono" type="number" name="port" x-model="port" style="width: 110px" required min="1" max="65535">
+                    <button class="btn sm primary" type="submit"><i class="bi bi-check"></i> Zapisz</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+            {% elif p.owner == 'WireGuard' %}
+            <div x-data="{ open: false, port: {{ p.port }} }" style="position: relative; display: inline-block">
+              <button type="button" class="btn sm ghost" @click="open = !open" title="Zmień port WireGuard"><i class="bi bi-pencil-square"></i> Zmień port</button>
+              <div x-show="open" @click.outside="open = false" x-cloak style="position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--bg-card); border: 1px solid var(--border); padding: 12px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 50; text-align: left; min-width: 220px">
+                <form method="post" action="/nodes/{{ node.id }}/wg/port">
+                  <input type="hidden" name="redirect_url" value="/nodes/{{ node.id }}/ports">
+                  <div class="small bold" style="margin-bottom: 6px">Nowy port WireGuard</div>
+                  <div style="display: flex; gap: 6px">
+                    <input class="input sm mono" type="number" name="port" x-model="port" style="width: 110px" required min="1" max="65535">
+                    <button class="btn sm primary" type="submit"><i class="bi bi-check"></i> Zapisz</button>
+                  </div>
+                </form>
+              </div>
+            </div>
             {% endif %}
           </td>
         </tr>
