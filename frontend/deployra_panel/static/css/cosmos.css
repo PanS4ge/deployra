@@ -159,6 +159,15 @@ h3 { font-size: 1.02rem; }
   .topbar .btn .nowrap { display: none; }
   .stat .value { font-size: 1.5rem; }
 }
+/* ---------- Układ kaskadowy (Masonry) ---------- */
+.masonry-2 { column-count: 2; column-gap: 18px; }
+.masonry-2 > * { break-inside: avoid; -webkit-column-break-inside: avoid; page-break-inside: avoid; margin-bottom: 18px; display: block; }
+@media (max-width: 900px) { .masonry-2 { column-count: 1; } }
+@supports (grid-template-rows: masonry) {
+  .masonry-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: masonry; gap: 18px; column-count: auto; }
+  .masonry-2 > * { margin-bottom: 0; }
+  @media (max-width: 900px) { .masonry-2 { grid-template-columns: 1fr; } }
+}
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .row.between { justify-content: space-between; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
