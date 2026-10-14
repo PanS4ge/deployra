@@ -1,6 +1,12 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge, copy_pill, uptime_badge, heartbeat %}
+{% from "_macros.html" import status_badge, copy_pill, uptime_badge, heartbeat, app_icon %}
 {% block crumbs %}<div class="crumbs"><a href="/apps">{{ t("nav.apps") }}</a> /</div>{% endblock %}
+{% block heading %}
+<span class="row align-center" style="gap: 10px; display: inline-flex">
+  {{ app_icon(app, 28) }}
+  <span>{{ title }}</span>
+</span>
+{% endblock %}
 {% block actions %}
 {{ status_badge(app.status) }}
 {% if spec.source.kind in ("image", "git", "runtime") %}

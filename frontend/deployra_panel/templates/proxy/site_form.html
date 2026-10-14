@@ -46,6 +46,18 @@
         <label class="check"><input type="checkbox" name="dns" value="1" {{ "checked" if site.dns }} {{ "disabled" if not has_cf }}><span class="sw"></span><span>{{ t("site.manage_dns") }}</span></label>
       </div>
       <div class="hint small muted" x-show="ingress === 'cloudflare'">{{ t("site.cf_hint") }}</div>
+      {% if gateways and gateways|length > 1 %}
+      <div class="field" style="margin-top: 8px">
+        <label class="small bold"><i class="bi bi-hdd-network"></i> {{ t("proxy.select_gateway") }}</label>
+        <select class="select" name="gateway_id">
+          <option value="">{{ t("proxy.all_gateways") }}</option>
+          {% for gw in gateways %}
+          <option value="{{ gw.id }}" {% if site.gateway_id == gw.id %}selected{% endif %}>{{ gw.name }} ({{ gw.public_host }})</option>
+          {% endfor %}
+        </select>
+        <div class="hint">{{ t("proxy.select_gateway_hint") }}</div>
+      </div>
+      {% endif %}
     </div>
   </div>
 

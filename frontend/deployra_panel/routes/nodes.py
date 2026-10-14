@@ -43,8 +43,17 @@ async def refresh(request: Request, quiet: bool = False, panel: Panel = Depends(
 
 @router.get("/nodes/add")
 def add_page(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_ADD_DOCKERS))):
-    gateway = panel.gateway()
-    return render(request, "nodes/add.html", title=t("nodes.add"), gateway=gateway, target=sync.node_target(gateway) if gateway else None)
+    wg_gateways = panel.wg_gateways()
+    has_wg = bool(wg_gateways)
+    gateway = wg_gateways[0] if wg_gateways else panel.gateway()
+    return render(
+        request, "nodes/add.html",
+        title=t("nodes.add"),
+        gateway=gateway,
+        wg_gateways=wg_gateways,
+        has_wg=has_wg,
+        target=sync.node_target(gateway) if (gateway and has_wg) else None,
+    )
 
 
 @router.post("/nodes/invite")
@@ -53,15 +62,16 @@ async def invite(
     name: str = Form(...),
     lan_subnets: str = Form(""),
     ttl: int = Form(60),
+    gateway_id: int | None = Form(None),
     panel: Panel = Depends(get_panel),
     user: dict = Depends(require(Permission.ALLOW_ADD_DOCKERS)),
 ):
     subnets = [s for s in lan_subnets.replace(",", "\n").splitlines() if s.strip()]
-    node_id, token = await sync.invite_node(panel, name, subnets, max(5, min(ttl, 7 * 24 * 60)))
+    node_id, token = await sync.invite_node(panel, name, subnets, max(5, min(ttl, 7 * 24 * 60)), gateway_id=gateway_id)
     from ..services import updates
 
-    gateway = panel.gateway()
     node = panel.node(node_id)
+    gateway = panel.gateway_by_id(node.get("gateway_id")) or panel.gateway()
     images = panel.db.setting("image_prefix") or sync.DEFAULT_IMAGES
     args = (gateway, token, node["name"])
     snippets = {"compose": sync.compose_snippet(*args, images), "shell": sync.shell_snippet(*args, images),
@@ -85,8 +95,45 @@ async def add_direct(
 
 
 @router.get("/nodes/{node_id}")
-def node_page(request: Request, node: dict = Depends(node_or_404)):
-    return render(request, "nodes/overview.html", title=node["name"], node=node, tab="overview")
+async def node_page(request: Request, node: dict = Depends(node_or_404), panel: Panel = Depends(get_panel)):
+    gateway = panel.gateway_by_id(node.get("gateway_id")) or panel.gateway()
+    has_wg = bool(gateway and gateway.get("wg_enabled", 1) and gateway.get("role") != "proxy")
+    target = sync.node_target(gateway) if (gateway and has_wg) else None
+    token = request.query_params.get("token")
+    snippets = None
+    if node["status"] != "paired" and node.get("transport") == "tunnel" and gateway and has_wg:
+        if token:
+            from ..services import updates
+            images = panel.db.setting("image_prefix") or sync.DEFAULT_IMAGES
+            args = (gateway, token, node["name"])
+            snippets = {
+                "compose": sync.compose_snippet(*args, images),
+                "shell": sync.shell_snippet(*args, images),
+                "run": sync.docker_run_snippet(*args, images),
+                "native": sync.native_snippet(*args, updates.source(panel) or "PanS4ge/deployra"),
+            }
+        else:
+            expires = float(node.get("token_expires") or 0)
+            if expires < time.time() or request.query_params.get("reinvite") == "1":
+                try:
+                    token, snippets = await sync.reinvite_node(panel, node)
+                except Exception:
+                    pass
+    return render(request, "nodes/overview.html", title=node["name"], node=node, tab="overview",
+                  gateway=gateway, has_wg=has_wg, target=target, snippets=snippets, token=token)
+
+
+@router.post("/nodes/{node_id}/reinvite")
+async def reinvite(
+    request: Request,
+    node: dict = Depends(node_or_404),
+    panel: Panel = Depends(get_panel),
+    user: dict = Depends(require(Permission.ALLOW_ADD_DOCKERS)),
+):
+    if node["status"] == "paired":
+        return redirect(request, f"/nodes/{node['id']}", t("msg.node_already_paired", default="Węzeł jest już sparowany."))
+    token, _ = await sync.reinvite_node(panel, node)
+    return redirect(request, f"/nodes/{node['id']}?token={token}")
 
 
 @router.get("/nodes/{node_id}/vitals")

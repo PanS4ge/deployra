@@ -1,0 +1,60 @@
+# ─── Deployra Gateway Pure: czysta bramka Nginx bez WireGuarda ──────────────────────────────
+# Samodzielny plik do wklejenia jako stack (Portainer → Stacks → Add stack → Web editor) albo do
+# `docker compose -f gateway-pure.yml up -d`. Nie potrzebuje repozytorium ani innych plików.
+#
+# Działa jako czysty reverse-proxy Nginx z certyfikatami SSL (Let's Encrypt / lego).
+# Łączy się bezpośrednio z publicznymi adresami IP węzłów lub z maszynami w sieci lokalnej.
+# NIE wymaga WireGuarda, /dev/net/tun ani uprawnień NET_ADMIN.
+#
+# Porty na firewallu VPS:
+#   - 80/tcp, 443/tcp (ruch HTTP/HTTPS domen)
+#   - 51821/tcp (rejestracja/parowanie z panelem Deployry)
+#   - 2751/tcp (API zarządzania konfiguracją, jeśli panel stoi na innej maszynie)
+#
+# Kod synchronizacji dla panelu: docker logs deployra-gateway
+services:
+  deployra-gateway:
+    image: ghcr.io/pans4ge/deployra-wg:latest
+    container_name: deployra-gateway
+    network_mode: host
+    environment:
+      DEPLOYRA_ROLE: "proxy"                               # czysta bramka — bez WireGuarda
+      DEPLOYRA_PUBLIC_HOST: "vps.example.com"              # ← publiczny adres albo IP tej maszyny
+      DEPLOYRA_BOOTSTRAP_PORT: "51821"                     # ← TCP dołączania
+      DEPLOYRA_API_PORT: "2751"
+      DEPLOYRA_LANG: "pl"
+    volumes:
+      - gateway-data:/var/lib/deployra-wg
+      - nginx-conf:/etc/nginx/deployra
+      - certs:/etc/deployra/certs
+      - acme:/var/www/acme
+    restart: unless-stopped
+    mem_limit: 128m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: deployra-nginx
+    network_mode: host
+    depends_on: [deployra-gateway]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until [ -f /etc/nginx/deployra/base/nginx.conf ]; do echo "czekam na konfigurację od deployra-gateway…"; sleep 2; done
+        ln -sf /etc/nginx/deployra/base/nginx.conf /etc/nginx/nginx.conf
+        sh /etc/nginx/deployra/base/deployra-reloader.sh
+        exec /docker-entrypoint.sh nginx -g 'daemon off;'
+    volumes:
+      - nginx-conf:/etc/nginx/deployra
+      - certs:/etc/deployra/certs:ro
+      - acme:/var/www/acme:ro
+    restart: unless-stopped
+    mem_limit: 96m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+volumes:
+  gateway-data:
+  nginx-conf:
+  certs:
+  acme:

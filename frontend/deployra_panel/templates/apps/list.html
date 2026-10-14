@@ -1,15 +1,14 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge, empty, uptime_badge, heartbeat %}
+{% from "_macros.html" import status_badge, empty, uptime_badge, heartbeat, app_icon %}
 {% block actions %}{% if has(user, P.ALLOW_DEPLOYMENT) %}<a class="btn primary" href="/apps/new"><i class="bi bi-rocket-takeoff"></i> {{ t("apps.new") }}</a>{% endif %}{% endblock %}
 {% block content %}
-{% set icons = {"image": "box", "compose": "layers", "static": "file-earmark-code", "git": "git"} %}
 {% if apps %}
 <div class="grid grid-auto">
   {% for a in apps %}{% set s = stats.get(("app", a.id)) %}
   <div class="card link" onclick="location.href='/apps/{{ a.id }}'">
-    <div class="card-head">
-      <i class="bi bi-{{ icons.get(a.kind, 'box') }}" style="font-size: 1.3rem; color: var(--violet-2)"></i>
-      <h3 class="trunc">{{ a.name }}</h3>
+    <div class="card-head" style="align-items: center; gap: 10px">
+      {{ app_icon(a, 24) }}
+      <h3 class="trunc" style="flex: 1">{{ a.name }}</h3>
       {{ status_badge(a.status) }}
     </div>
     <div class="card-body stack" style="gap: 8px">

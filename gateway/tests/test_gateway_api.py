@@ -13,6 +13,8 @@ from deployra_common.hmac_auth import sign
 from deployra_common.schemas import CertRequest
 from deployra_gateway import certs
 from deployra_gateway.app import create_api_app, create_bootstrap_app
+from deployra_gateway.config import Config
+from deployra_gateway.context import Context
 
 
 def _signed(client, secret, method, path, body=None):
@@ -190,3 +192,33 @@ def test_check_batch(ctx):
     assert results["2"]["status"] == 503 and not results["2"]["ok"]
     assert results["3"]["status"] is None and not results["3"]["ok"]
     assert not results["4"]["ok"]
+
+
+def test_pure_gateway_without_wireguard(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEPLOYRA_DATA", str(tmp_path / "data"))
+    monkeypatch.setenv("DEPLOYRA_NGINX_DIR", str(tmp_path / "nginx"))
+    monkeypatch.setenv("DEPLOYRA_CERTS_DIR", str(tmp_path / "certs"))
+    monkeypatch.setenv("DEPLOYRA_ACME_DIR", str(tmp_path / "acme"))
+    monkeypatch.setenv("DEPLOYRA_PUBLIC_HOST", "proxy.example.com")
+    monkeypatch.setenv("DEPLOYRA_ROLE", "proxy")
+    monkeypatch.setenv("DEPLOYRA_NGINX_RELOAD", "off")
+    monkeypatch.setenv("DEPLOYRA_IPV6", "on")
+    pure_ctx = Context(Config())
+    assert pure_ctx.config.pure is True
+    assert pure_ctx.config.wg_enabled is False
+    info = pure_ctx.public_info()
+    assert info["role"] == "proxy"
+    assert info["wg_enabled"] is False
+    assert info["hub_address"] is None
+    assert info["wg_port"] is None
+    assert info["api_url"] == "http://proxy.example.com:2751"
+
+    boot = TestClient(create_bootstrap_app(pure_ctx))
+    secret, data = _pair(boot, pure_ctx, with_wg=True)
+    assert data["tunnel"] is None  # brak tunelu dla czystej bramki
+    assert data["gateway"]["role"] == "proxy"
+
+    # Próba rejestracji tokena na czystej bramce rzuca błąd
+    with pytest.raises(LookupError):
+        pure_ctx.register_token("token1", "s" * 20, "node", [], 60)
+

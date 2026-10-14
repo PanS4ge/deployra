@@ -64,7 +64,28 @@ class Panel:
 
     def gateway(self) -> dict[str, Any] | None:
         """Bramka z hubem WireGuard (do niej dołączają węzły i panel)."""
-        return self.db.fetchone("SELECT * FROM gateway WHERE role = 'hub' ORDER BY id LIMIT 1")
+        return (
+            self.db.fetchone("SELECT * FROM gateway WHERE role = 'hub' AND wg_enabled = 1 ORDER BY id LIMIT 1")
+            or self.db.fetchone("SELECT * FROM gateway WHERE role = 'hub' ORDER BY id LIMIT 1")
+            or self.db.fetchone("SELECT * FROM gateway ORDER BY id LIMIT 1")
+        )
+
+    def gateways(self) -> list[dict[str, Any]]:
+        """Wszystkie skonfigurowane bramki."""
+        return self.db.fetchall("SELECT * FROM gateway ORDER BY id")
+
+    def wg_gateways(self) -> list[dict[str, Any]]:
+        """Bramki obsługujące WireGuard (z hubem VPN)."""
+        return [g for g in self.gateways() if g.get("wg_enabled", 1) and g.get("secret") and g.get("role") != "proxy"]
+
+    def gateway_by_id(self, gw_id: int) -> dict[str, Any] | None:
+        return self.db.get("gateway", gw_id)
+
+    def client_for_gateway(self, gw: dict[str, Any]) -> SignedClient | None:
+        if not gw or not gw.get("secret"):
+            return None
+        key = gw.get("role") if gw.get("role") in ("hub", "edge") else f"gw-{gw.get('id', 'default')}"
+        return self._client(key, gw["api_url"], self.sealer.unseal_bytes(gw["secret"]))
 
     def edge_row(self) -> dict[str, Any] | None:
         """Bramka brzegowa („widelec”), także jeszcze niesparowana."""
@@ -80,14 +101,14 @@ class Panel:
         gw = self.edge()
         if not gw or not gw.get("secret"):
             return None
-        return self._client(gw["role"], gw["api_url"], self.sealer.unseal_bytes(gw["secret"]))
+        return self.client_for_gateway(gw)
 
-    def hub_client(self) -> SignedClient | None:
+    def hub_client(self, gw: dict[str, Any] | None = None) -> SignedClient | None:
         """Hub WireGuard: peery, tokeny dołączenia, status tunelu."""
-        gw = self.gateway()
-        if not gw or not gw.get("secret"):
+        target = gw or self.gateway()
+        if not target or not target.get("secret"):
             return None
-        return self._client("hub", gw["api_url"], self.sealer.unseal_bytes(gw["secret"]))
+        return self.client_for_gateway(target)
 
     @staticmethod
     def node_url(node: dict[str, Any]) -> str:

@@ -1,0 +1,66 @@
+# ─── Deployra Gateway Pure (Czysta bramka bez WireGuarda) ──────────────────────────────────────
+# Czysty reverse-proxy Nginx z automatycznymi certyfikatami SSL (Let's Encrypt / lego).
+# Działa między publicznie wystawionymi adresami IP, domenami oraz maszynami w istniejącej sieci LAN.
+# NIE wymaga WireGuarda, interfejsów tunelu, uprawnień NET_ADMIN ani urządzenia /dev/net/tun.
+#
+# Uruchomienie:
+#   DEPLOYRA_PUBLIC_HOST=vps.example.com docker compose -f deploy/gateway-pure.compose.yml up -d
+#   docker logs deployra-gateway   # wyświetli kod parowania dla panelu Deployry
+#
+# Porty na firewallu VPS:
+#   - 80/tcp, 443/tcp (ruch HTTP/HTTPS dla aplikacji)
+#   - 51821/tcp (bootstrap/parowanie z panelem)
+#   - 2751/tcp (API zarządzania konfiguracją nginxa, jeśli panel stoi na innej maszynie)
+name: deployra-gateway
+
+services:
+  deployra-gateway:
+    image: ${DEPLOYRA_IMAGES:-ghcr.io/pans4ge/deployra}-wg:${DEPLOYRA_VERSION:-latest}
+    container_name: deployra-gateway
+    network_mode: host
+    environment:
+      DEPLOYRA_ROLE: "proxy"                                    # czysta bramka — bez WireGuarda
+      DEPLOYRA_PUBLIC_HOST: ${DEPLOYRA_PUBLIC_HOST:?ustaw DEPLOYRA_PUBLIC_HOST — publiczny adres IP/domena tego VPS}
+      DEPLOYRA_BOOTSTRAP_PORT: ${DEPLOYRA_BOOTSTRAP_PORT:-51821} # TCP parowania z panelem
+      DEPLOYRA_API_PORT: ${DEPLOYRA_API_PORT:-2751}
+      DEPLOYRA_LANG: ${DEPLOYRA_LANG:-pl}                       # język logów i strony błędów (pl / en)
+      DEPLOYRA_GEOIP: ${DEPLOYRA_GEOIP:-on}                     # kraj i ISP adresów
+      DEPLOYRA_IP_RETENTION_DAYS: ${DEPLOYRA_IP_RETENTION_DAYS:-7}
+      DEPLOYRA_BAN_FIREWALL: ${DEPLOYRA_BAN_FIREWALL:-off}      # bez NET_ADMIN firewall oparty o nginxa
+    volumes:
+      - gateway-data:/var/lib/deployra-wg
+      - nginx-conf:/etc/nginx/deployra
+      - certs:/etc/deployra/certs
+      - acme:/var/www/acme
+      - gw-updates:/run/deployra-update
+    restart: unless-stopped
+    mem_limit: 128m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: deployra-nginx
+    network_mode: host
+    depends_on: [deployra-gateway]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until [ -f /etc/nginx/deployra/base/nginx.conf ]; do echo "czekam na konfigurację od deployra-gateway…"; sleep 2; done
+        ln -sf /etc/nginx/deployra/base/nginx.conf /etc/nginx/nginx.conf
+        sh /etc/nginx/deployra/base/deployra-reloader.sh
+        exec /docker-entrypoint.sh nginx -g 'daemon off;'
+    volumes:
+      - nginx-conf:/etc/nginx/deployra
+      - certs:/etc/deployra/certs:ro
+      - acme:/var/www/acme:ro
+    restart: unless-stopped
+    mem_limit: 96m
+    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
+
+volumes:
+  gateway-data:
+  nginx-conf:
+  certs:
+  acme:
+  gw-updates:

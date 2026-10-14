@@ -12,7 +12,7 @@ def test_add_node_guide_gives_ready_commands(admin, monkeypatch):
     add = admin.get("/nodes/add", headers={"HX-Request": ""}).text
     assert "oracle.example.com:51821" in add  # z którą bramką połączy się węzeł
 
-    async def invite_node(panel, name, subnets, ttl):
+    async def invite_node(panel, name, subnets, ttl, *args, **kwargs):
         node_id = panel.db.insert("nodes", name=name, transport="tunnel", status="pending", token_expires="2026-10-14T10:00:00+00:00")
         return node_id, "dplr1.tajny-token"
 
@@ -41,3 +41,56 @@ def test_add_node_guide_gives_ready_commands(admin, monkeypatch):
     shell = sync.shell_snippet(gateway, "dplr1.x", "proxmox")
     assert shell.startswith("mkdir -p ~/deployra-node") and shell.rstrip().endswith("docker compose up -d")
     assert sync.native_snippet(gateway, "dplr1.x", "proxmox").startswith("apt-get update && apt-get install -y git\ngit clone https://github.com/PanS4ge/deployra.git")
+
+
+def test_unpaired_node_overview_shows_pairing_guide(admin, monkeypatch):
+    panel = admin.app.state.panel
+    panel.db.insert("gateway", name="Deployra-WG", bootstrap_url="http://oracle.example.com:51821", api_url="http://10.66.0.1:2751",
+                    secret=panel.sealer.seal(b"h" * 32), public_host="oracle.example.com", wg_port=51820, subnet="10.66.0.0/24",
+                    hub_address="10.66.0.1", hub_public_key="k", panel_address=None)
+    node_id = panel.db.insert("nodes", name="unpaired-srv", transport="tunnel", status="pending", token_expires=0)
+
+    async def mock_reinvite(panel, node, ttl=120):
+        return "dplr1.nowy-token", {
+            "compose": "services: mock",
+            "shell": "mkdir -p ~/deployra-node && mock",
+            "run": "docker run -d mock",
+            "native": "bash install-native.sh mock",
+        }
+
+    monkeypatch.setattr(sync, "reinvite_node", mock_reinvite)
+
+    # Wejście na stronę niesparowanego węzła automatycznie generuje/pokazuje instrukcję
+    page = admin.get(f"/nodes/{node_id}").text
+    assert "Węzeł nie jest jeszcze sparowany" in page
+    assert "Wygeneruj nowy token dołączenia" in page
+    assert "mkdir -p ~/deployra-node" in page
+    assert "docker run -d mock" in page
+    assert "install-native.sh mock" in page
+    assert "Gotowe — czekamy na połączenie" in page
+
+    # Ręczne kliknięcie reinvite przekierowuje z nowym tokenem (HX-Redirect dla żądań HTMX)
+    res = admin.post(f"/nodes/{node_id}/reinvite")
+    assert res.status_code == 204
+    assert res.headers["HX-Redirect"] == f"/nodes/{node_id}?token=dplr1.nowy-token"
+
+
+def test_pure_gateway_node_invite_restrictions(admin):
+    panel = admin.app.state.panel
+    panel.db.execute("DELETE FROM gateway")
+    # Podłączamy tylko bramkę czystą (proxy bez WireGuard)
+    panel.db.insert("gateway", name="Oracle-Pure", role="proxy", wg_enabled=0,
+                    bootstrap_url="http://oracle.example.com:51821", api_url="http://oracle.example.com:2751",
+                    secret=panel.sealer.seal(b"p" * 32), public_host="oracle.example.com",
+                    wg_port=None, subnet=None, hub_address=None, hub_public_key=None, panel_address=None)
+
+    page = admin.get("/nodes/add", headers={"HX-Request": ""}).text
+    assert "Brak aktywnej bramki z WireGuardem" in page
+    assert "Bezpośrednio (Direct IP)" in page
+
+    # Próba wygenerowania zaproszenia przez tunel rzuca błąd 409 (LookupError zwracany w nagłówku HX-Trigger dla żądań HTMX lub w treści)
+    res = admin.post("/nodes/invite", data={"name": "test-node", "ttl": "60"})
+    assert res.status_code == 409
+    assert "Brak aktywnej bramki z obs" in (res.headers.get("HX-Trigger", "") + res.text)
+
+

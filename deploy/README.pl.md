@@ -9,6 +9,7 @@ Wybierasz go według tego, **co stoi na danym serwerze**.
 |---|---|---|
 | `vps.compose.yml` | VPS z publicznym IP — **najczęstszy wybór** | bramkę Deployra-WG + nginx + panel (dołącza dwa pliki niżej) |
 | `gateway.compose.yml` | VPS z publicznym IP, gdy panel stoi gdzie indziej | tylko bramkę: hub WireGuard, nginx dla ruchu publicznego, certyfikaty |
+| `gateway-pure.compose.yml` | VPS z publicznym IP, gdy ruch idzie po publicznych IP / LAN bez VPN | czystą bramkę: sam nginx dla ruchu publicznego, certyfikaty SSL, bez WireGuarda |
 | `panel.compose.yml` | dowolny serwer (np. w domu), gdy bramka jest na innym VPS | tylko panel Deployry |
 | `panel-node.compose.yml` | jeden serwer (np. w domu) na panel **i** aplikacje, gdy bramka stoi sama na VPS-ie | panel + węzeł; panel sam paruje węzeł |
 | `node.compose.yml` | każdy serwer z Dockerem, na którym mają działać aplikacje (domowy serwer, drugi VPS) | Deployra Backend — węzeł |
@@ -46,7 +47,8 @@ albo uruchamiasz `docker compose -f <plik> up -d`. Zmieniasz tylko linie oznaczo
 | Plik | Co stawia |
 |---|---|
 | `stacks/vps.yml` | bramka + panel na jednym VPS-ie |
-| `stacks/gateway.yml` | sama bramka (też hub na mikr.us albo bramka brzegowa na Oracle) |
+| `stacks/gateway.yml` | sama bramka WireGuard (też hub na mikr.us albo bramka brzegowa na Oracle) |
+| `stacks/gateway-pure.yml` | czysta bramka Nginx bez WireGuarda (dla publicznych IP i sieci LAN) |
 | `stacks/panel-node.yml` | panel + węzeł na jednej maszynie (panel sam paruje węzeł) |
 | `stacks/node.yml` | sam węzeł (token z panelu) |
 

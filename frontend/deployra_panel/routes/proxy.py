@@ -144,6 +144,7 @@ def _form_context(panel: Panel, site: dict | None, kind: str) -> dict:
         "nodes": panel.db.fetchall("SELECT * FROM nodes WHERE status = 'paired' ORDER BY name"),
         "certs": panel.db.all("certificates"),
         "acls": panel.db.all("access_lists"),
+        "gateways": panel.gateways(),
         "has_cf": bool(panel.db.setting("cloudflare_token")),
     }  # fmt: skip
 
@@ -225,6 +226,7 @@ async def save_site(request: Request, panel: Panel = Depends(get_panel), user: d
         values["max_body_mb"] = max(0, min(int(form.get("max_body_mb") or 100), 100_000))
         values["access_list_id"] = int(form.get("access_list_id") or 0) or None
         values["ingress"] = str(form.get("ingress") or "public") if str(form.get("ingress") or "public") in ("public", "cloudflare") else "public"
+        values["gateway_id"] = int(form.get("gateway_id") or 0) or None
         if has(user, Permission.ALLOW_PROXY_ADVANCED):
             values["advanced"] = str(form.get("advanced") or "").replace("\r\n", "\n")
         elif old is None:

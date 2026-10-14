@@ -65,10 +65,13 @@ def site_model(panel: Any, row: dict, nodes: dict[int, dict]) -> Site | None:
         return None
 
 
-def build_state(panel: Any) -> ProxyState:
+def build_state(panel: Any, gateway_id: int | None = None) -> ProxyState:
     db = panel.db
     nodes = {n["id"]: n for n in db.all("nodes")}
-    sites = [s for s in (site_model(panel, row, nodes) for row in db.all("sites")) if s]
+    site_rows = db.all("sites")
+    if gateway_id is not None:
+        site_rows = [s for s in site_rows if not s.get("gateway_id") or s.get("gateway_id") == gateway_id]
+    sites = [s for s in (site_model(panel, row, nodes) for row in site_rows) if s]
     streams = []
     for row in db.all("streams"):
         host = row["upstream_host"]
@@ -134,12 +137,36 @@ def build_state(panel: Any) -> ProxyState:
 
 
 async def push(panel: Any) -> dict:
-    """Wysyła pełny stan do bramki. Zwraca {ok, status, message}."""
-    client = panel.gateway_client()
-    if not client:
-        return {"ok": False, "status": "no-gateway", "message": t("proxy.msg.no_gateway")}
-    state = build_state(panel)
-    result = await client.put("/api/proxy", json=state.model_dump(mode="json"))
+    """Wysyła pełny stan do bramki (lub bramek). Zwraca {ok, status, message}."""
+    gateways = [g for g in panel.gateways() if g.get("secret")]
+    if not gateways:
+        client = panel.gateway_client()
+        if not client:
+            return {"ok": False, "status": "no-gateway", "message": t("proxy.msg.no_gateway")}
+        state = build_state(panel)
+        result = await client.put("/api/proxy", json=state.model_dump(mode="json"))
+    else:
+        results = []
+        edge = panel.edge_row()
+        for gw in gateways:
+            client = panel.client_for_gateway(gw)
+            if not client:
+                continue
+            # Jeśli jest aktywna bramka brzegowa, hub WireGuard nie wystawia hostów publicznych
+            if edge and edge.get("secret") and gw.get("role") == "hub":
+                state = ProxyState()
+            else:
+                state = build_state(panel, gateway_id=gw["id"])
+            try:
+                res = await client.put("/api/proxy", json=state.model_dump(mode="json"))
+                results.append(res)
+            except Exception as exc:
+                logger.warning(f"Błąd wysyłki proxy do bramki #{gw['id']}: {exc}")
+        result = results[0] if results else {"ok": False, "status": "no-gateway", "message": t("proxy.msg.no_gateway")}
+        for r in results:
+            if r.get("status") == "rejected":
+                result = r
+                break
     from .sync import push_edge_routes
 
     await push_edge_routes(panel)

@@ -72,8 +72,35 @@
   {%- if item.banned -%}<span class="badge err">{{ t("traffic.banned_badge") }}</span>
   {%- elif not (item.geo or {}).private -%}
   <button class="btn sm {{ 'danger' if quick else 'ghost' }}" title="{{ t('traffic.ban') }} · 1 h" hx-post="/traffic/ban" hx-vals='{{ {"target": item.ip, "minutes": 60, "reason": why} | tojson }}' hx-swap="none" hx-confirm="{{ t('traffic.ban_confirm', ip=item.ip) }}"><i class="bi bi-slash-circle"></i> 1 h</button>
-  {%- if quick %}
+{%- if quick %}
   <button class="btn sm ghost" title="{{ t('traffic.permanent') }}" hx-post="/traffic/ban" hx-vals='{{ {"target": item.ip, "minutes": 0, "reason": why} | tojson }}' hx-swap="none" hx-confirm="{{ t('traffic.ban_confirm', ip=item.ip) }}">∞</button>
   {%- endif -%}
   {%- endif -%}
 {%- endmacro %}
+
+{% macro app_icon(app, size=24) -%}
+  {%- set domain = (app.domains or [])[0] if (app.domains and app.domains|length > 0) else None -%}
+  {%- set slug = (app.slug or app.name or "") | lower | replace("_", "-") -%}
+  <div class="app-icon-wrap" style="width: {{ size }}px; height: {{ size }}px; display: inline-flex; align-items: center; justify-content: center; flex: none; position: relative;">
+    {% if domain %}
+    <img src="https://icons.duckduckgo.com/ip3/{{ domain }}.ico"
+         alt=""
+         width="{{ size }}"
+         height="{{ size }}"
+         style="width: {{ size }}px; height: {{ size }}px; object-fit: contain; border-radius: 4px;"
+         loading="lazy"
+         onerror="this.onerror=null; this.src='https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/{{ slug }}.png'; this.onerror=function(){ this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-block'; };">
+    <i class="bi bi-box" style="font-size: {{ (size * 0.8) | int }}px; color: var(--violet-2); display: none;"></i>
+    {% else %}
+    <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/{{ slug }}.png"
+         alt=""
+         width="{{ size }}"
+         height="{{ size }}"
+         style="width: {{ size }}px; height: {{ size }}px; object-fit: contain; border-radius: 4px;"
+         loading="lazy"
+         onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-block';">
+    <i class="bi bi-box" style="font-size: {{ (size * 0.8) | int }}px; color: var(--violet-2); display: none;"></i>
+    {% endif %}
+  </div>
+{%- endmacro %}
+

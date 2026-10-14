@@ -73,8 +73,12 @@ async def pair_gateway(panel: Any, address: str, code: str, colocated: bool, api
     info = data["gateway"]
     tunnel = data.get("tunnel") or {}
     api_url = api_override.strip().rstrip("/") or info["api_url"]
+    wg_enabled = 1 if info.get("wg_enabled", True) else 0
+    role = info.get("role", "hub" if wg_enabled else "proxy")
+    name = "Deployra-WG" if wg_enabled else "Deployra-Proxy"
     row = {
-        "name": "Deployra-WG",
+        "name": name,
+        "role": role,
         "bootstrap_url": bootstrap,
         "api_url": api_url,
         "secret": panel.sealer.seal(secret),
@@ -84,7 +88,8 @@ async def pair_gateway(panel: Any, address: str, code: str, colocated: bool, api
         "hub_address": info["hub_address"],
         "hub_public_key": info["hub_public_key"],
         "panel_address": tunnel.get("address"),
-        "panel_wg_private": panel.sealer.seal(wg_private) if wg_private else None,
+        "panel_wg_private": panel.sealer.seal(wg_private) if (wg_private and wg_enabled) else None,
+        "wg_enabled": wg_enabled,
         "info": info,
         "created_at": now(),
     }
@@ -230,9 +235,17 @@ def _check_subnets(values: list[str]) -> list[str]:
     return out
 
 
-async def invite_node(panel: Any, name: str, lan_subnets: list[str], ttl_minutes: int = 60) -> tuple[int, str]:
+async def invite_node(panel: Any, name: str, lan_subnets: list[str], ttl_minutes: int = 60, gateway_id: int | None = None) -> tuple[int, str]:
     """Tworzy węzeł „oczekujący” i token dołączenia. Zwraca (id węzła, token)."""
-    client = panel.hub_client()
+    gw = panel.gateway_by_id(gateway_id) if gateway_id else None
+    if not gw:
+        wg_gws = panel.wg_gateways()
+        gw = wg_gws[0] if wg_gws else panel.gateway()
+    if not gw:
+        raise LookupError(t("sync.link_gateway_first"))
+    if not gw.get("wg_enabled", 1) or gw.get("role") == "proxy":
+        raise LookupError(t("sync.no_wg_gateway"))
+    client = panel.hub_client(gw)
     if not client:
         raise LookupError(t("sync.link_gateway_first"))
     name = name.strip()[:60] or t("tunnel.node")
@@ -244,9 +257,54 @@ async def invite_node(panel: Any, name: str, lan_subnets: list[str], ttl_minutes
     )
     node_id = panel.db.insert(
         "nodes", name=name, transport="tunnel", status="pending", peer_id=token.id, pair_secret=panel.sealer.seal(token.pair_secret),
-        token_expires=time.time() + ttl_minutes * 60, lan_subnets=subnets, created_at=now(),
-    )  # fmt: skip
+        token_expires=time.time() + ttl_minutes * 60, lan_subnets=subnets, gateway_id=gw["id"], created_at=now(),
+    )
     return node_id, token.encode()
+
+
+async def reinvite_node(panel: Any, node: dict, ttl_minutes: int = 120) -> tuple[str, dict[str, str]]:
+    """Generuje nowy token dla istniejącego, niesparowanego węzła i zwraca (token, snippets)."""
+    gw = panel.gateway_by_id(node.get("gateway_id")) if node.get("gateway_id") else None
+    if not gw:
+        wg_gws = panel.wg_gateways()
+        gw = wg_gws[0] if wg_gws else panel.gateway()
+    if not gw:
+        raise LookupError(t("sync.link_gateway_first"))
+    if not gw.get("wg_enabled", 1) or gw.get("role") == "proxy":
+        raise LookupError(t("sync.no_wg_gateway"))
+    client = panel.hub_client(gw)
+    if not client:
+        raise LookupError(t("sync.link_gateway_first"))
+    token = pairing.JoinToken.generate()
+    subnets = node.get("lan_subnets") or []
+    if node.get("peer_id"):
+        try:
+            await client.delete(f"/api/join-tokens/{node['peer_id']}")
+        except Exception:
+            pass
+    await client.post(
+        "/api/join-tokens",
+        json={"id": token.id, "join_secret": token.join_secret, "name": node["name"], "lan_subnets": subnets, "ttl_minutes": ttl_minutes},
+    )
+    panel.db.update(
+        "nodes", node["id"],
+        peer_id=token.id,
+        pair_secret=panel.sealer.seal(token.pair_secret),
+        token_expires=time.time() + ttl_minutes * 60,
+        gateway_id=gw["id"],
+    )
+    gateway = gw
+    images = panel.db.setting("image_prefix") or DEFAULT_IMAGES
+    encoded = token.encode()
+    from ..services import updates
+    args = (gateway, encoded, node["name"])
+    snippets = {
+        "compose": compose_snippet(*args, images),
+        "shell": shell_snippet(*args, images),
+        "run": docker_run_snippet(*args, images),
+        "native": native_snippet(*args, updates.source(panel) or "PanS4ge/deployra"),
+    }
+    return encoded, snippets
 
 
 async def refresh_pending(panel: Any) -> int:

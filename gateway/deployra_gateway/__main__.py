@@ -86,9 +86,9 @@ def main() -> None:
     logger.info(tr("gw.log.nginx_config", status=result.status, message=result.message).rstrip())
 
     if ctx.edge:
-        api_host = config.api_bind or (ctx.edge.address if wg_up else "127.0.0.1")
+        api_host = config.api_bind or (ctx.edge.address if wg_up else ("0.0.0.0" if not config.wg_enabled else "127.0.0.1"))
     else:
-        api_host = config.api_bind or (config.hub_address if wg_up else "127.0.0.1")
+        api_host = config.api_bind or (config.hub_address if wg_up else ("0.0.0.0" if not config.wg_enabled else "127.0.0.1"))
     code = ctx.ensure_pairing_code()
     if ctx.edge and code:
         logger.info(tr("gw.edge.waiting_panel", address=ctx.edge.address))

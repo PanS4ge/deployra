@@ -36,7 +36,8 @@ class Config:
     wg_port: int = field(default_factory=lambda: int(_env("DEPLOYRA_WG_PORT", "51820")))
     wg_subnet: str = field(default_factory=lambda: str(ipaddress.ip_network(_env("DEPLOYRA_WG_SUBNET", "10.66.0.0/24"))))
     wg_iface: str = field(default_factory=lambda: _env("DEPLOYRA_WG_IFACE", "wg0"))
-    wg_enabled: bool = field(default_factory=lambda: _flag("DEPLOYRA_WG", True))
+    pure: bool = field(default_factory=lambda: _flag("DEPLOYRA_PURE", False) or _env("DEPLOYRA_ROLE") in ("proxy", "pure", "standalone"))
+    wg_enabled: bool = field(default_factory=lambda: False if (_flag("DEPLOYRA_PURE", False) or _env("DEPLOYRA_ROLE") in ("proxy", "pure", "standalone")) else _flag("DEPLOYRA_WG", True))
     bootstrap_port: int = field(default_factory=lambda: int(_env("DEPLOYRA_BOOTSTRAP_PORT", "51821")))
     api_port: int = field(default_factory=lambda: int(_env("DEPLOYRA_API_PORT", "2751")))
     api_bind: str = field(default_factory=lambda: _env("DEPLOYRA_API_BIND"))
@@ -76,6 +77,9 @@ class Config:
 
     @property
     def api_url(self) -> str:
+        if self.pure:
+            host = self.public_host or "127.0.0.1"
+            return f"http://{host}:{self.api_port}"
         return f"http://{self.hub_address}:{self.api_port}"
 
     def ensure_dirs(self) -> None:

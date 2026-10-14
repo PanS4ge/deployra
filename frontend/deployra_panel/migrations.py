@@ -206,6 +206,17 @@ def v12(dialect: str) -> list[str]:
     ]
 
 
+def v13(dialect: str) -> list[str]:
+    """Bramka bez WireGuarda (czysty nginx), przypisanie bramki do rejestracji i hostów proxy."""
+    t = _types(dialect)
+    n = t["int"]
+    return [
+        "ALTER TABLE gateway ADD COLUMN wg_enabled INTEGER NOT NULL DEFAULT 1",
+        f"ALTER TABLE sites ADD COLUMN gateway_id {n}",
+        f"ALTER TABLE nodes ADD COLUMN gateway_id {n}",
+    ]
+
+
 MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [
-    (1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8), (9, v9), (10, v10), (11, v11), (12, v12)
+    (1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8), (9, v9), (10, v10), (11, v11), (12, v12), (13, v13)
 ]

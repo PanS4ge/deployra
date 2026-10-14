@@ -9,6 +9,7 @@ Pick it based on **what runs on a given server**.
 |---|---|---|
 | `vps.compose.yml` | a VPS with a public IP — **the most common choice** | gateway Deployra-WG + nginx + panel (includes the two files below) |
 | `gateway.compose.yml` | a VPS with a public IP, when the panel lives elsewhere | just the gateway: WireGuard hub, nginx for public traffic, certificates |
+| `gateway-pure.compose.yml` | a VPS with a public IP, when proxying between public IPs/LANs without VPN | pure gateway: nginx for public traffic, certificates, without WireGuard |
 | `panel.compose.yml` | any server (e.g. at home), when the gateway is on another VPS | just the Deployra panel |
 | `panel-node.compose.yml` | one server (e.g. at home) for the panel **and** apps, with the gateway alone on a VPS | panel + node; the panel pairs the node by itself |
 | `node.compose.yml` | every server with Docker that should run apps (home server, a second VPS) | Deployra Backend — a node |
@@ -46,7 +47,8 @@ or run `docker compose -f <file> up -d`. Only change the lines marked `←`. Ima
 | File | What it starts |
 |---|---|
 | `stacks/vps.yml` | gateway + panel on one VPS |
-| `stacks/gateway.yml` | just the gateway (also a hub on mikr.us or an edge gateway on Oracle) |
+| `stacks/gateway.yml` | just the WireGuard gateway (also a hub on mikr.us or an edge gateway on Oracle) |
+| `stacks/gateway-pure.yml` | pure Nginx gateway without WireGuard (for public IPs and LAN networks) |
 | `stacks/panel-node.yml` | panel + node on one machine (the panel pairs the node by itself) |
 | `stacks/node.yml` | just a node (token from the panel) |
 

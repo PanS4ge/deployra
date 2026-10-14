@@ -106,7 +106,7 @@ class Context:
             self.gate.fail()
             raise PermissionError(tr("gw.bad_code")) from None
         tunnel = None
-        if request.get("wg_public_key") and not self.edge:  # bramka brzegowa nie jest hubem — panel ma tunel z hubem
+        if request.get("wg_public_key") and not self.edge and not self.config.pure:  # bramka brzegowa nie jest hubem — panel ma tunel z hubem
             address = self.hub.add_peer("panel", "panel", str(request.get("name") or "Deployra")[:40], request["wg_public_key"])
             tunnel = self.hub.tunnel_config(address).model_dump()
         private, public = pairing.new_keypair()
@@ -131,17 +131,19 @@ class Context:
         return self.config.api_url
 
     def public_info(self) -> dict:
+        role = "proxy" if self.config.pure else ("edge" if self.edge else "hub")
         return {
-            "role": "edge" if self.edge else "hub",
-            "tunnel_address": self.edge.address if self.edge else self.config.hub_address,
+            "role": role,
+            "tunnel_address": self.edge.address if self.edge else (None if self.config.pure else self.config.hub_address),
             "version": __version__,
             "public_host": self.config.public_host,
-            "wg_port": self.config.wg_port,
+            "wg_port": None if self.config.pure else self.config.wg_port,
             "bootstrap_port": self.config.bootstrap_port,
-            "subnet": self.config.wg_subnet,
-            "hub_address": self.config.hub_address,
-            "hub_public_key": self.hub.public_key,
+            "subnet": None if self.config.pure else self.config.wg_subnet,
+            "hub_address": None if self.config.pure else self.config.hub_address,
+            "hub_public_key": None if self.config.pure else self.hub.public_key,
             "api_url": self.api_url,
+            "wg_enabled": not self.config.pure,
         }
 
     # --- dołączanie węzłów ----------------------------------------------------------
@@ -149,6 +151,8 @@ class Context:
     def register_token(self, token_id: str, join_secret: str, name: str, lan_subnets: list[str], ttl_minutes: int, kind: str = "node") -> dict:
         if self.edge:
             raise LookupError(tr("gw.edge.not_hub"))
+        if self.config.pure:
+            raise LookupError(tr("gw.err.no_wireguard", default="Ta bramka ma wyłączony WireGuard (brak możliwości dołączania przez tunel)."))
         if not token_id.isalnum() or len(token_id) > 32 or len(join_secret) < 16 or kind not in ("node", "edge"):
             raise ValueError(tr("gw.bad_token"))
         for subnet in lan_subnets:
@@ -169,6 +173,8 @@ class Context:
 
     def join_node(self, body: dict) -> dict:
         self.gate.check()
+        if self.config.pure:
+            raise LookupError(tr("gw.err.no_wireguard", default="Ta bramka ma wyłączony WireGuard."))
         token_id = str(body.get("token_id", ""))
         token = self.state.get("join_tokens", {}).get(token_id)
         if not token:
