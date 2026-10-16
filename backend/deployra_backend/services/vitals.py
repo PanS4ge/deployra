@@ -18,18 +18,23 @@ def format_bytes(size: float) -> str:
 
 
 class VitalsSampler:
-    def __init__(self, interval: float = 4.0, disk_path: str = "/") -> None:
+    def __init__(self, interval: float = 4.0, disk_path: str = "/", lite_mode: bool = False) -> None:
         self.interval = interval
         self.disk_path = disk_path
+        self.lite_mode = lite_mode
         self._latest: dict[str, Any] = {}
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._last_requested: float = time.time()
-        psutil.cpu_percent(None)
-        psutil.cpu_percent(None, percpu=True)
+        self._last_sample_time: float = 0.0
+        if not lite_mode:
+            psutil.cpu_percent(None)
+            psutil.cpu_percent(None, percpu=True)
 
     def start(self) -> None:
+        if self.lite_mode:
+            return  # W trybie Lite brak pętli w tle — oszczędność pamięci i CPU
         if self._thread is None:
             self._thread = threading.Thread(target=self._loop, name="vitals", daemon=True)
             self._thread.start()
@@ -58,29 +63,35 @@ class VitalsSampler:
             load = list(psutil.getloadavg())
         except (AttributeError, OSError):
             load = None
-        net = psutil.net_io_counters()
+        try:
+            net = psutil.net_io_counters()
+            net_rx, net_tx = net.bytes_recv, net.bytes_sent
+        except Exception:
+            net_rx, net_tx = 0, 0
         data = {
             "cpu": psutil.cpu_percent(None),
-            "cores": psutil.cpu_percent(None, percpu=True),
+            "cores": [] if self.lite_mode else psutil.cpu_percent(None, percpu=True),
             "ram": mem.percent,
             "ram_total": mem.total,
             "ram_used": mem.total - mem.available,
             "swap": swap.percent,
             "load": load,
             "uptime": int(time.time() - psutil.boot_time()),
-            "net_rx": net.bytes_recv,
-            "net_tx": net.bytes_sent,
+            "net_rx": net_rx,
+            "net_tx": net_tx,
             "ts": time.time(),
             **disk_info,
         }
         with self._lock:
             self._latest = data
+            self._last_sample_time = time.time()
         return data
 
     def latest(self) -> dict[str, Any]:
         self._last_requested = time.time()
+        now = time.time()
         with self._lock:
-            if self._latest:
+            if self._latest and (now - self._last_sample_time < 3.0):
                 return dict(self._latest)
         return self.sample()
 

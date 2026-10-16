@@ -19,6 +19,15 @@ def _flag(name: str, default: bool) -> bool:
     return value.lower() in ("1", "true", "yes", "tak", "on")
 
 
+def _is_low_mem() -> bool:
+    try:
+        import psutil
+
+        return psutil.virtual_memory().total < 512 * 1024 * 1024
+    except Exception:
+        return False
+
+
 def _pool(value: str) -> tuple[int, int]:
     low, _, high = value.partition("-")
     lo, hi = int(low), int(high or low)
@@ -29,6 +38,7 @@ def _pool(value: str) -> tuple[int, int]:
 
 @dataclass
 class Config:
+    lite: bool = field(default_factory=lambda: _flag("DEPLOYRA_LITE", _is_low_mem()))
     data_dir: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_DATA", "/var/lib/deployra")))
     srv_dir: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_SRV", "/srv/deployra")))
     name: str = field(default_factory=lambda: _env("DEPLOYRA_NAME") or socket.gethostname())

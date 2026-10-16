@@ -78,6 +78,11 @@ def main() -> None:
         logger.info(tr("node.log.joined_waiting"))
 
     app = create_app(ctx, bind_host=bind)
+    if config.lite:
+        import gc
+
+        gc.collect()
+        logger.info("Tryb Lite aktywny: oszczędzanie RAM-u i CPU")
     logger.success(tr("node.log.api_listening", address=f"{bind}:{config.api_port}"))
     uvicorn.run(app, host=bind, port=config.api_port, log_level="warning", proxy_headers=False, server_header=False)
 

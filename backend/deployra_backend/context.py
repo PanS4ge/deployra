@@ -44,7 +44,7 @@ class Context:
         self.state = State(config.data_dir / "state.json")
         self.jobs = JobRegistry()
         self.guard = SignatureGuard(self._lookup, NonceCache())
-        self.vitals = VitalsSampler()
+        self.vitals = VitalsSampler(lite_mode=config.lite)
         self.usage = UsageSampler()
         self._docker_factory = docker_factory
         self._docker: Any = None
