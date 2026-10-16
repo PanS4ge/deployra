@@ -1,0 +1,23 @@
+# ==========================================
+# DeployraBridge Configuration
+# ==========================================
+
+# Port used by Deployra HTTP API.
+# On shared hosting (Craftserve, TitanAxe, Pterodactyl, Falix, etc.),
+# set this to an extra allocated port assigned to your server!
+port: 25585
+
+# Bind address (usually 0.0.0.0 to listen on all interfaces)
+host: "0.0.0.0"
+
+# Secret authentication token.
+# Must be passed in request as 'Authorization: Bearer <token>'
+# or 'X-Deployra-Key: <token>' or '?token=<token>'
+# If left empty, a secure token will be automatically generated on first launch!
+token: ""
+
+# Maximum number of recent console log lines to keep in memory for GET /api/logs
+max-log-lines: 150
+
+# Allow remote execution of console commands (POST /api/command)
+enable-remote-commands: true

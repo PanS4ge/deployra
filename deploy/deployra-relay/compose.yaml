@@ -1,0 +1,8 @@
+services:
+  deployra-relay:
+    image: nginx:alpine
+    container_name: deployra-relay
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro

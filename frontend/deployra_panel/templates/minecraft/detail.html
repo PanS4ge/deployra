@@ -1,0 +1,1408 @@
+{% extends "base.html" %}
+{% from "_macros.html" import meter, status_badge %}
+
+{% block crumbs %}
+<div class="crumbs small muted">
+  <a href="/minecraft">Serwery Minecraft</a>
+  <i class="bi bi-chevron-right"></i>
+  <span>{{ server.name }}</span>
+</div>
+{% endblock %}
+
+{% block actions %}
+<a class="btn" href="/minecraft"><i class="bi bi-arrow-left"></i> Wróć</a>
+<button type="button" class="btn" @click="$dispatch('open-macro-modal')">
+  <i class="bi bi-lightning-charge"></i> Makra ({{ (server.macros or default_macros) | length }})
+</button>
+<form method="POST" action="/minecraft/{{ server.id }}/delete" onsubmit="return confirm('Czy na pewno chcesz usunąć ten serwer z Deployry?');" style="display: inline">
+  <button type="submit" class="btn err icon" title="Usuń z panelu"><i class="bi bi-trash"></i></button>
+</form>
+{% endblock %}
+
+{% block content %}
+{% set d = server.data or {} %}
+{% set ram = d.ram or {} %}
+{% set tps = (d.tps and d.tps[0]) or 20.0 %}
+{% set s_macros = server.macros or default_macros %}
+
+<div class="stack" style="gap: 20px" x-data="{
+  tab: '{{ active_tab }}',
+  selectedPlayer: {{ ('\'' + active_player + '\'') if active_player else ('\'' + players_rich[0].name + '\'' if players_rich else 'null') }},
+  cmdInput: '',
+  cmdOutput: '',
+  cmdLoading: false,
+
+  // Macro Manager
+  macroModalOpen: false,
+
+  // File Manager
+  filePath: '/',
+  filesList: [],
+  filesLoading: false,
+  filesMode: '{{ 'ftp' if server.ftp_enabled else 'bridge' }}',
+  fileEditorOpen: false,
+  editFilePath: '',
+  editFileContent: '',
+  editFileSaving: false,
+
+  // PAPI Tester
+  papiPlayer: '{{ players_rich[0].name if players_rich else '' }}',
+  papiInput: '%server_tps%\n%server_ram_used%\n%server_ram_max%\n%player_name%\n%player_ping%\n%player_world%\n%player_x%\n%player_y%\n%player_z%',
+  papiResults: {},
+  papiLoading: false,
+
+  // FTP Diagnostic
+  ftpTesting: false,
+  ftpStatusMsg: '',
+  ftpStatusOk: null,
+
+  execCmd(cmd) {
+    if (!cmd || this.cmdLoading) return;
+    this.cmdLoading = true;
+    const form = new FormData();
+    form.append('command', cmd);
+    fetch('/minecraft/{{ server.id }}/command', { method: 'POST', body: form })
+      .then(r => r.json())
+      .then(res => {
+        this.cmdOutput += '\n> ' + cmd + '\n' + (res.output || 'Brak odpowiedzi');
+        this.$nextTick(() => {
+          const term = document.getElementById('mc-terminal-view');
+          if (term) term.scrollTop = term.scrollHeight;
+        });
+      })
+      .catch(err => {
+        this.cmdOutput += '\n> ' + cmd + '\n[Błąd]: ' + err;
+      })
+      .finally(() => { this.cmdLoading = false; });
+  },
+
+  playerAction(action, value = '') {
+    if (!this.selectedPlayer) return;
+    const form = new FormData();
+    form.append('player', this.selectedPlayer);
+    form.append('action', action);
+    form.append('value', value);
+
+    fetch('/minecraft/{{ server.id }}/players/action', { method: 'POST', body: form })
+      .then(r => r.json())
+      .then(res => {
+        if (res.ok) {
+          alert(res.message || 'Akcja wykonana.');
+          location.reload();
+        } else {
+          alert('Błąd: ' + (res.error || 'Nieznany błąd'));
+        }
+      })
+      .catch(err => alert('Błąd połączenia: ' + err));
+  },
+
+  loadFiles(path = '/') {
+    this.filesLoading = true;
+    this.filePath = path;
+    fetch('/minecraft/{{ server.id }}/files/list?path=' + encodeURIComponent(path))
+      .then(r => r.json())
+      .then(res => {
+        if (res.ok) {
+          this.filesList = res.files || [];
+          this.filesMode = res.mode || this.filesMode;
+        } else {
+          this.filesList = [];
+        }
+      })
+      .catch(() => { this.filesList = []; })
+      .finally(() => { this.filesLoading = false; });
+  },
+
+  openFile(path) {
+    this.filesLoading = true;
+    fetch('/minecraft/{{ server.id }}/files/read?path=' + encodeURIComponent(path))
+      .then(r => r.json())
+      .then(res => {
+        if (res.ok) {
+          this.editFilePath = path;
+          this.editFileContent = res.content || '';
+          this.fileEditorOpen = true;
+        } else {
+          alert('Błąd odczytu: ' + (res.error || 'Nieznany błąd'));
+        }
+      })
+      .catch(err => alert('Błąd: ' + err))
+      .finally(() => { this.filesLoading = false; });
+  },
+
+  saveFile() {
+    this.editFileSaving = true;
+    const form = new FormData();
+    form.append('path', this.editFilePath);
+    form.append('content', this.editFileContent);
+    fetch('/minecraft/{{ server.id }}/files/write', { method: 'POST', body: form })
+      .then(r => r.json())
+      .then(res => {
+        if (res.ok) {
+          alert('Plik ' + this.editFilePath + ' został pomyślnie zapisany!');
+          this.fileEditorOpen = false;
+        } else {
+          alert('Błąd zapisu: ' + (res.error || 'Nieznany błąd'));
+        }
+      })
+      .catch(err => alert('Błąd: ' + err))
+      .finally(() => { this.editFileSaving = false; });
+  },
+
+  deleteFile(path, isDir = false) {
+    if (!confirm('Czy na pewno chcesz bezpowrotnie usunąć ' + (isDir ? 'katalog' : 'plik') + ':\n' + path + '?')) return;
+    const form = new FormData();
+    form.append('path', path);
+    form.append('is_dir', isDir);
+    fetch('/minecraft/{{ server.id }}/files/delete', { method: 'POST', body: form })
+      .then(r => r.json())
+      .then(res => {
+        if (res.ok) {
+          this.loadFiles(this.filePath);
+        } else {
+          alert('Błąd usuwania: ' + (res.error || 'Nieznany błąd'));
+        }
+      })
+      .catch(err => alert('Błąd: ' + err));
+  },
+
+  createFolder() {
+    const name = prompt('Podaj nazwę nowego folderu:');
+    if (!name || !name.trim()) return;
+    const newPath = (this.filePath === '/' ? '/' : this.filePath + '/') + name.trim();
+    const form = new FormData();
+    form.append('path', newPath);
+    fetch('/minecraft/{{ server.id }}/files/mkdir', { method: 'POST', body: form })
+      .then(r => r.json())
+      .then(res => {
+        if (res.ok) {
+          this.loadFiles(this.filePath);
+        } else {
+          alert('Błąd tworzenia folderu: ' + (res.error || 'Nieznany błąd'));
+        }
+      })
+      .catch(err => alert('Błąd: ' + err));
+  },
+
+  uploadFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('path', this.filePath);
+    form.append('file', file);
+    this.filesLoading = true;
+    fetch('/minecraft/{{ server.id }}/files/upload', { method: 'POST', body: form })
+      .then(r => r.json())
+      .then(res => {
+        if (res.ok) {
+          alert(res.message || 'Plik wgrany pomyślnie!');
+          this.loadFiles(this.filePath);
+        } else {
+          alert('Błąd uploadu: ' + (res.error || 'Nieznany błąd'));
+        }
+      })
+      .catch(err => alert('Błąd: ' + err))
+      .finally(() => {
+        e.target.value = '';
+        this.filesLoading = false;
+      });
+  },
+
+  parsePapi() {
+    this.papiLoading = true;
+    const form = new FormData();
+    form.append('player', this.papiPlayer);
+    form.append('placeholders', this.papiInput);
+    fetch('/minecraft/{{ server.id }}/papi/parse', { method: 'POST', body: form })
+      .then(r => r.json())
+      .then(res => {
+        if (res.ok) {
+          this.papiResults = res.results || {};
+        } else {
+          alert('Błąd PAPI: ' + (res.error || 'Nieznany błąd'));
+        }
+      })
+      .catch(err => alert('Błąd połączenia: ' + err))
+      .finally(() => { this.papiLoading = false; });
+  },
+
+  testFtpConn() {
+    this.ftpTesting = true;
+    this.ftpStatusMsg = '';
+    fetch('/minecraft/{{ server.id }}/ftp/test', { method: 'POST' })
+      .then(r => r.json())
+      .then(res => {
+        this.ftpStatusOk = res.ok;
+        this.ftpStatusMsg = res.message;
+      })
+      .catch(err => {
+        this.ftpStatusOk = false;
+        this.ftpStatusMsg = 'Błąd: ' + err;
+      })
+      .finally(() => { this.ftpTesting = false; });
+  }
+}" @open-macro-modal.window="macroModalOpen = true">
+
+  <!-- PODSUMOWANIE STANU SERWERA -->
+  <div class="card">
+    <div class="card-head" style="justify-content: space-between">
+      <div class="row" style="gap: 12px; align-items: center">
+        <div style="width: 44px; height: 44px; border-radius: 10px; background: rgba(76, 175, 80, 0.15); display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: #4caf50;">
+          <i class="bi bi-controller"></i>
+        </div>
+        <div>
+          <h2 style="margin: 0; font-size: 1.25rem;">{{ server.name }}</h2>
+          <div class="small muted mono">{{ server.host }}:{{ server.port }}</div>
+        </div>
+      </div>
+      <div class="row" style="gap: 8px; align-items: center">
+        {% if server.ftp_enabled %}
+        <span class="badge" style="background: rgba(52, 152, 219, 0.15); color: #3498db; border: 1px solid rgba(52, 152, 219, 0.3);">
+          <i class="bi bi-folder2-open"></i> FTP: {{ 'OK' if ftp_ok else 'Aktywny' }}
+        </span>
+        {% endif %}
+        {% if papi.enabled %}
+        <span class="badge" style="background: rgba(155, 89, 182, 0.15); color: #9b59b6; border: 1px solid rgba(155, 89, 182, 0.3);" title="PlaceholderAPI aktywne">
+          <i class="bi bi-code-slash"></i> PAPI v{{ papi.version or '' }}
+        </span>
+        {% endif %}
+        <span class="badge {{ 'ok' if server.online else 'err' }}" style="font-size: 0.95rem; padding: 6px 14px;">
+          <span class="dot {{ 'ok' if server.online else 'err' }}"></span>
+          {{ "ONLINE" if server.online else "OFFLINE" }}
+        </span>
+      </div>
+    </div>
+
+    {% if server.online %}
+    <div class="card-body grid grid-auto" style="gap: 16px; border-top: 1px solid var(--border)">
+      <!-- TPS -->
+      <div class="stack" style="gap: 4px">
+        <div class="row small muted" style="justify-content: space-between">
+          <span>TPS (1m, 5m, 15m)</span>
+          <span class="mono" style="font-weight: 700; color: {{ '#4caf50' if tps >= 19.0 else ('#ff9800' if tps >= 15.0 else '#f44336') }}">
+            {{ tps }}
+          </span>
+        </div>
+        {{ meter(tps / 20.0 * 100) }}
+        <div class="small muted mono" style="font-size: 0.75rem">
+          {% if d.tps %}{{ d.tps | join(', ') }}{% else %}20.0, 20.0, 20.0{% endif %}
+        </div>
+      </div>
+
+      <!-- RAM -->
+      <div class="stack" style="gap: 4px">
+        <div class="row small muted" style="justify-content: space-between">
+          <span>Pamięć RAM</span>
+          <span class="mono">{{ ram.used_mb or 0 }} / {{ ram.max_mb or '—' }} MB</span>
+        </div>
+        {% if ram.max_mb %}
+        {{ meter(ram.used_mb / ram.max_mb * 100) }}
+        {% endif %}
+        <div class="small muted" style="font-size: 0.75rem">Wolne: {{ ram.free_mb or 0 }} MB</div>
+      </div>
+
+      <!-- Gracze -->
+      <div class="stack" style="gap: 4px">
+        <div class="row small muted" style="justify-content: space-between">
+          <span>Gracze online</span>
+          <span class="mono" style="font-weight: 700; color: #4caf50;">{{ d.players_online or 0 }} / {{ d.players_max or 20 }}</span>
+        </div>
+        <div class="small trunc" style="color: var(--text)">
+          {% if d.players %}
+            {{ d.players | join(', ') }}
+          {% else %}
+            <span class="muted">Brak graczy na serwerze</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Wersja i Uptime -->
+      <div class="stack" style="gap: 4px">
+        <div class="small muted">Silnik / Wersja</div>
+        <div class="mono small trunc" style="font-weight: 600;">{{ d.version or 'Minecraft' }}</div>
+        <div class="small muted">Czas pracy: {{ (d.uptime_seconds // 3600) }}h {{ (d.uptime_seconds % 3600 // 60) }}m</div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ZAKŁADKI (TABS) -->
+  <div class="tabs">
+    <button class="tab" :class="{ active: tab === 'console' }" @click="tab = 'console'">
+      <i class="bi bi-terminal"></i> Konsola
+    </button>
+    <button class="tab" :class="{ active: tab === 'players' }" @click="tab = 'players'">
+      <i class="bi bi-people"></i> Gracze ({{ d.players_online or 0 }})
+    </button>
+    <button class="tab" :class="{ active: tab === 'options' }" @click="tab = 'options'">
+      <i class="bi bi-sliders"></i> Opcje (server.properties)
+    </button>
+    <button class="tab" :class="{ active: tab === 'files' }" @click="tab = 'files'; if (filesList.length === 0) loadFiles(filePath)">
+      <i class="bi bi-folder2-open"></i> Pliki (FTP)
+    </button>
+    <button class="tab" :class="{ active: tab === 'papi' }" @click="tab = 'papi'; if (Object.keys(papiResults).length === 0) parsePapi()">
+      <i class="bi bi-code-slash"></i> Placeholdery (PAPI)
+    </button>
+    <button class="tab" :class="{ active: tab === 'logs' }" @click="tab = 'logs'">
+      <i class="bi bi-card-text"></i> Logi serwera
+    </button>
+    <button class="tab" :class="{ active: tab === 'settings' }" @click="tab = 'settings'">
+      <i class="bi bi-gear"></i> Konfiguracja &amp; FTP
+    </button>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- ZAKŁADKA 1: KONSOLA & MAKRA               -->
+  <!-- ========================================== -->
+  <div x-show="tab === 'console'" class="stack" style="gap: 16px">
+
+    <!-- Szybkie akcje administracyjne -->
+    <div class="row" style="gap: 8px; flex-wrap: wrap; align-items: center">
+      <form method="POST" action="/minecraft/{{ server.id }}/action">
+        <input type="hidden" name="action" value="save">
+        <button type="submit" class="btn sm"><i class="bi bi-save"></i> Zapisz świat (save-all)</button>
+      </form>
+      <form method="POST" action="/minecraft/{{ server.id }}/action">
+        <input type="hidden" name="action" value="whitelist_toggle">
+        <button type="submit" class="btn sm">
+          <i class="bi bi-shield-check"></i> Whitelist: {{ 'Wyłącz' if d.whitelist_enabled else 'Włącz' }}
+        </button>
+      </form>
+      <button type="button" class="btn sm" @click="execCmd('tps')">
+        <i class="bi bi-speedometer"></i> Sprawdź TPS
+      </button>
+      <button type="button" class="btn sm" @click="execCmd('list')">
+        <i class="bi bi-list-ul"></i> Lista graczy
+      </button>
+    </div>
+
+    <!-- Pasek Makr -->
+    <div class="card" style="padding: 12px 16px; background: rgba(255, 255, 255, 0.02); border: 1px dashed var(--border)">
+      <div class="row" style="justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span class="small muted" style="font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+          <i class="bi bi-lightning-charge" style="color: #f1c40f"></i> Szybkie makra poleceń (Kliknij, aby wykonać)
+        </span>
+        <button type="button" class="btn ghost sm" @click="macroModalOpen = true">
+          <i class="bi bi-plus-circle"></i> Zarządzaj makrami
+        </button>
+      </div>
+      <div class="row" style="gap: 8px; flex-wrap: wrap;">
+        {% for m in s_macros %}
+        <button type="button" class="btn sm" style="border-left: 3px solid {{ m.color or '#3498db' }}; background: rgba(255,255,255,0.03);"
+                @click="execCmd('{{ m.cmd }}')" :disabled="cmdLoading" title="Polecenie: /{{ m.cmd }}">
+          <i class="bi {{ m.icon or 'bi-lightning' }}" style="color: {{ m.color or '#3498db' }}"></i>
+          {{ m.name }}
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Terminal poleceń -->
+    <div class="card" style="background: #0d1117; border-color: #30363d; overflow: hidden">
+      <div class="card-head" style="background: #161b22; border-bottom: 1px solid #30363d; padding: 10px 16px; justify-content: space-between">
+        <div class="row" style="gap: 8px; align-items: center">
+          <span style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f56; display: inline-block"></span>
+          <span style="width: 12px; height: 12px; border-radius: 50%; background: #ffbd2e; display: inline-block"></span>
+          <span style="width: 12px; height: 12px; border-radius: 50%; background: #27c93f; display: inline-block"></span>
+          <span class="small muted mono" style="margin-left: 8px; color: #8b949e">Konsola serwera Minecraft</span>
+        </div>
+        <button type="button" class="btn ghost sm" @click="cmdOutput = ''" style="color: #8b949e">Wyczyść ekran</button>
+      </div>
+
+      <!-- Wynik poleceń -->
+      <div id="mc-terminal-view" style="padding: 16px; min-height: 240px; max-height: 420px; overflow-y: auto; font-family: monospace; font-size: 0.9rem; color: #c9d1d9; white-space: pre-wrap; line-height: 1.5;">
+        <div style="color: #8b949e; margin-bottom: 8px;">// Połączono z DeployraBridge na {{ server.host }}:{{ server.port }}. Wpisz polecenie poniżej (np. say, kick, op, whitelist) lub kliknij makro.</div>
+        <div x-text="cmdOutput" style="color: #58a6ff;"></div>
+        <div x-show="cmdLoading" style="color: #e3b341"><i class="bi bi-arrow-repeat spin"></i> Wykonywanie polecenia...</div>
+      </div>
+
+      <!-- Pole wprowadzania komendy -->
+      <form @submit.prevent="if (cmdInput.trim() && !cmdLoading) { execCmd(cmdInput); cmdInput = ''; }"
+            style="display: flex; border-top: 1px solid #30363d; background: #161b22;">
+        <span style="padding: 12px 14px; color: #7ee787; font-family: monospace; font-weight: bold;">&gt;</span>
+        <input class="input mono" type="text" x-model="cmdInput" placeholder="np. say Cześć wszystkim! lub time set day"
+               style="flex: 1; background: transparent; border: none; color: #f0f6fc; box-shadow: none; font-size: 0.95rem"
+               :disabled="cmdLoading" autofocus>
+        <button type="submit" class="btn primary sm" style="margin: 6px 10px; border-radius: 6px" :disabled="cmdLoading || !cmdInput.trim()">
+          Wykonaj
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- ZAKŁADKA 2: GRACZE (ATERNOS STYLE UI)      -->
+  <!-- ========================================== -->
+  <div x-show="tab === 'players'" class="stack" style="gap: 20px">
+
+    {% if players_rich %}
+    <!-- Widok Szczegółów Gracza (Replikacja Widoku Aternos) -->
+    <template x-for="p in {{ players_rich | tojson | safe }}" :key="p.name">
+      <div x-show="selectedPlayer === p.name" class="stack" style="gap: 16px">
+
+        <!-- Nagłówek gracza w stylu Aternos -->
+        <div class="row" style="align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+          <div class="row" style="gap: 12px; align-items: center">
+            <span class="muted small" style="cursor: pointer" @click="selectedPlayer = null">Gracze</span>
+            <i class="bi bi-chevron-right small muted"></i>
+            <h2 style="margin: 0; font-size: 1.4rem;" x-text="p.name"></h2>
+            <span class="badge ok" style="padding: 4px 10px; font-size: 0.8rem">ONLINE</span>
+          </div>
+          <button type="button" class="btn sm" @click="selectedPlayer = null">
+            <i class="bi bi-list-ul"></i> Wróć do listy wszystkich graczy
+          </button>
+        </div>
+
+        <div class="grid" style="grid-template-columns: minmax(320px, 1fr) minmax(320px, 1.2fr); gap: 20px;">
+
+          <!-- Lewa Karta: Awatar i Atrybuty (Zdrowie, Głód, Gamemode, UUID) -->
+          <div class="card" style="display: flex; flex-direction: column; gap: 16px; padding: 20px;">
+            <div class="row" style="gap: 20px; align-items: flex-start">
+              <!-- Awatar Skina Gracza -->
+              <div style="width: 100px; height: 100px; border-radius: 12px; background: #161b22; border: 2px solid var(--border); overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3); flex-shrink: 0;">
+                <img :src="'https://mc-heads.net/avatar/' + p.name + '/96'" alt="Skin"
+                     style="width: 80px; height: 80px; image-rendering: pixelated;"
+                     onerror="this.src='https://minotar.net/avatar/' + p.name + '/80'">
+              </div>
+
+              <!-- Dane podstawowe -->
+              <div class="stack" style="gap: 8px; flex: 1; min-width: 0;">
+                <div>
+                  <div class="small muted">UUID gracza:</div>
+                  <div class="row" style="gap: 6px; align-items: center;">
+                    <span class="mono small trunc" style="color: #58a6ff;" x-text="p.uuid"></span>
+                    <button type="button" class="btn ghost icon sm" title="Kopiuj UUID" @click="navigator.clipboard.writeText(p.uuid); alert('Skopiowano UUID!');">
+                      <i class="bi bi-clipboard"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Wybór trybu gry (Gamemode) -->
+                <div>
+                  <div class="small muted" style="margin-bottom: 4px;">Tryb gry:</div>
+                  <select class="input sm" :value="p.gamemode" @change="playerAction('gamemode', $event.target.value)" style="width: 100%;">
+                    <option value="SURVIVAL">Survival</option>
+                    <option value="CREATIVE">Creative</option>
+                    <option value="ADVENTURE">Adventure</option>
+                    <option value="SPECTATOR">Spectator</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Zdrowie (Health) w stylu Aternos -->
+            <div class="card" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 14px;">
+              <div class="row" style="justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="small" style="font-weight: 600;">Zdrowie:</span>
+                <span class="mono small" style="font-weight: 700; color: #ff5f56;" x-text="p.health + ' / ' + (p.max_health || 20.0)"></span>
+              </div>
+
+              <!-- Pasek serduszek Minecraft -->
+              <div class="row" style="gap: 3px; margin-bottom: 12px; font-size: 1.15rem; color: #ff5f56;">
+                <template x-for="i in 10">
+                  <i class="bi" :class="(p.health >= i * 2) ? 'bi-heart-fill' : ((p.health >= i * 2 - 1) ? 'bi-heart-half' : 'bi-heart')"></i>
+                </template>
+              </div>
+
+              <div class="row" style="gap: 8px;">
+                <button type="button" class="btn sm err" style="flex: 1" @click="playerAction('kill')">
+                  <i class="bi bi-x-octagon"></i> Zabij (Kill)
+                </button>
+                <button type="button" class="btn sm ok" style="flex: 1" @click="playerAction('heal')">
+                  <i class="bi bi-heart-pulse"></i> Ulecz (Heal)
+                </button>
+              </div>
+            </div>
+
+            <!-- Głód (Food / Hunger) -->
+            <div class="card" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 14px;">
+              <div class="row" style="justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="small" style="font-weight: 600;">Głód / Poziom sytości:</span>
+                <span class="mono small" style="font-weight: 700; color: #e67e22;" x-text="p.food + ' / 20'"></span>
+              </div>
+
+              <!-- Pasek jedzenia -->
+              <div class="row" style="gap: 3px; margin-bottom: 12px; font-size: 1.15rem; color: #e67e22;">
+                <template x-for="i in 10">
+                  <i class="bi" :class="(p.food >= i * 2) ? 'bi-circle-fill' : 'bi-circle'"></i>
+                </template>
+              </div>
+
+              <div class="row" style="gap: 8px;">
+                <button type="button" class="btn sm" style="flex: 1; border-color: #e67e22; color: #e67e22;" @click="playerAction('starve')">
+                  <i class="bi bi-battery"></i> Wygłodź
+                </button>
+                <button type="button" class="btn sm ok" style="flex: 1" @click="playerAction('feed')">
+                  <i class="bi bi-egg-fried"></i> Nakarm (Feed)
+                </button>
+              </div>
+            </div>
+
+            <!-- Współrzędne i świat -->
+            <div class="small muted row" style="justify-content: space-between; padding-top: 4px;">
+              <span>Świat: <b class="mono" style="color: var(--text)" x-text="p.world"></b></span>
+              <span>XYZ: <span class="mono" style="color: var(--text)" x-text="p.x + ', ' + p.y + ', ' + p.z"></span></span>
+              <span>Ping: <span class="mono" style="color: var(--text)" x-text="p.ping + ' ms'"></span></span>
+            </div>
+          </div>
+
+          <!-- Prawa Karta: Kontrola (Control) w stylu Aternos -->
+          <div class="card" style="display: flex; flex-direction: column; gap: 16px; padding: 20px;">
+            <h3 style="margin: 0; font-size: 1.15rem;"><i class="bi bi-toggles"></i> Kontrola gracza</h3>
+
+            <div class="stack" style="gap: 12px;">
+
+              <!-- Toggle: Whitelisted -->
+              <div class="card row" style="justify-content: space-between; align-items: center; padding: 12px 16px; background: rgba(255,255,255,0.02);">
+                <div class="row" style="gap: 12px; align-items: center">
+                  <i class="bi bi-shield-check" style="font-size: 1.3rem; color: #2ecc71;"></i>
+                  <div>
+                    <div style="font-weight: 600;">Biała lista (Whitelisted)</div>
+                    <div class="small muted">Pozwala graczowi na wejście, gdy whitelist jest włączona</div>
+                  </div>
+                </div>
+                <button type="button" class="btn sm" :class="p.whitelisted ? 'ok' : 'ghost'"
+                        @click="playerAction('whitelist', (!p.whitelisted).toString())">
+                  <i class="bi" :class="p.whitelisted ? 'bi-check-lg' : 'bi-x-lg'"></i>
+                  <span x-text="p.whitelisted ? 'Włączona' : 'Wyłączona'"></span>
+                </button>
+              </div>
+
+              <!-- Toggle: Operator (OP) -->
+              <div class="card row" style="justify-content: space-between; align-items: center; padding: 12px 16px; background: rgba(255,255,255,0.02);">
+                <div class="row" style="gap: 12px; align-items: center">
+                  <i class="bi bi-award" style="font-size: 1.3rem; color: #f1c40f;"></i>
+                  <div>
+                    <div style="font-weight: 600;">Operator (OP)</div>
+                    <div class="small muted">Przyznaje pełne uprawnienia administratora na serwerze</div>
+                  </div>
+                </div>
+                <button type="button" class="btn sm" :class="p.op ? 'primary' : 'ghost'"
+                        @click="playerAction('op', (!p.op).toString())">
+                  <i class="bi" :class="p.op ? 'bi-check-lg' : 'bi-x-lg'"></i>
+                  <span x-text="p.op ? 'Jest OP' : 'Zwykły gracz'"></span>
+                </button>
+              </div>
+
+              <!-- Toggle: Banned -->
+              <div class="card row" style="justify-content: space-between; align-items: center; padding: 12px 16px; background: rgba(255,255,255,0.02);">
+                <div class="row" style="gap: 12px; align-items: center">
+                  <i class="bi bi-slash-circle" style="font-size: 1.3rem; color: #e74c3c;"></i>
+                  <div>
+                    <div style="font-weight: 600;">Zablokuj (Ban)</div>
+                    <div class="small muted">Blokuje graczowi możliwość ponownego wejścia</div>
+                  </div>
+                </div>
+                <button type="button" class="btn sm err" @click="
+                  const reason = prompt('Podaj powód bana dla gracza ' + p.name + ':', 'Zbanowany z poziomu Deployry');
+                  if (reason !== null) playerAction('ban', reason);
+                ">
+                  <i class="bi bi-ban"></i> Zbanuj gracza
+                </button>
+              </div>
+
+              <!-- Przycisk Kick -->
+              <div class="card row" style="justify-content: space-between; align-items: center; padding: 12px 16px; background: rgba(255,255,255,0.02);">
+                <div class="row" style="gap: 12px; align-items: center">
+                  <i class="bi bi-box-arrow-right" style="font-size: 1.3rem; color: #e67e22;"></i>
+                  <div>
+                    <div style="font-weight: 600;">Wyrzuć z serwera (Kick)</div>
+                    <div class="small muted">Rozłącza gracza z bieżącej sesji gry</div>
+                  </div>
+                </div>
+                <button type="button" class="btn sm" style="border-color: #e67e22; color: #e67e22;" @click="
+                  const reason = prompt('Podaj powód wyrzucenia gracza ' + p.name + ':', 'Wyrzucony przez administratora');
+                  if (reason !== null) playerAction('kick', reason);
+                ">
+                  <i class="bi bi-person-x"></i> Wyrzuć
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </template>
+    {% endif %}
+
+    <!-- Tabela wszystkich graczy -->
+    <div class="card" x-show="!selectedPlayer || {{ 'false' if players_rich else 'true' }}">
+      <div class="card-head" style="justify-content: space-between">
+        <h3><i class="bi bi-people"></i> Lista graczy na serwerze</h3>
+        <span class="badge ok">{{ players_rich | length }} online</span>
+      </div>
+      <div class="card-body">
+        {% if players_rich %}
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th style="width: 48px;"></th>
+                <th>Nick</th>
+                <th>Tryb gry</th>
+                <th>Zdrowie</th>
+                <th>Głód</th>
+                <th>OP</th>
+                <th>Ping</th>
+                <th>Świat / Pozycja</th>
+                <th style="text-align: right">Akcje</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in players_rich %}
+              <tr style="cursor: pointer" @click="selectedPlayer = '{{ p.name }}'">
+                <td>
+                  <img src="https://mc-heads.net/avatar/{{ p.name }}/32" alt="" style="width: 28px; height: 28px; border-radius: 6px; image-rendering: pixelated;" onerror="this.src='https://minotar.net/avatar/{{ p.name }}/28'">
+                </td>
+                <td>
+                  <b>{{ p.name }}</b>
+                  <div class="small muted mono" style="font-size: 0.75rem;">{{ p.uuid }}</div>
+                </td>
+                <td><span class="badge">{{ p.gamemode }}</span></td>
+                <td><span style="color: #ff5f56; font-weight: 600;">❤️ {{ p.health }}</span></td>
+                <td><span style="color: #e67e22; font-weight: 600;">🍗 {{ p.food }}</span></td>
+                <td>
+                  {% if p.op %}
+                  <span class="badge ok" style="font-size: 0.75rem"><i class="bi bi-check-lg"></i> OP</span>
+                  {% else %}
+                  <span class="muted small">—</span>
+                  {% endif %}
+                </td>
+                <td class="mono small">{{ p.ping }} ms</td>
+                <td class="small muted mono">{{ p.world }} ({{ p.x | int }}, {{ p.y | int }}, {{ p.z | int }})</td>
+                <td style="text-align: right" @click.stop>
+                  <button type="button" class="btn sm" @click="selectedPlayer = '{{ p.name }}'">
+                    <i class="bi bi-sliders"></i> Zarządzaj
+                  </button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="muted small" style="text-align: center; padding: 32px 20px;">
+          <i class="bi bi-people" style="font-size: 2.5rem; display: block; margin-bottom: 8px;"></i>
+          Aktualnie żaden gracz nie jest połączony z serwerem Minecraft.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ========================================== -->
+  <!-- ZAKŁADKA 3: OPCJE (SERVER.PROPERTIES)       -->
+  <!-- REPLIKACJA WIDOKU ATERNOS                  -->
+  <!-- ========================================== -->
+  <div x-show="tab === 'options'" class="stack" style="gap: 16px">
+    <div class="card">
+      <div class="card-head" style="justify-content: space-between">
+        <div>
+          <h3 style="margin: 0;"><i class="bi bi-sliders"></i> Opcje serwera (server.properties)</h3>
+          <div class="small muted">Wizualny edytor parametrów serwera w stylu Aternos. Zmiany zostaną zapisane w pliku <code>server.properties</code>.</div>
+        </div>
+      </div>
+
+      <form method="POST" action="/minecraft/{{ server.id }}/properties">
+        <div class="card-body grid grid-auto" style="gap: 16px;">
+
+          <!-- Miejsca (Slots / max-players) -->
+          <div class="card" style="padding: 16px; background: rgba(255,255,255,0.02);">
+            <div class="row" style="gap: 12px; align-items: center; margin-bottom: 8px;">
+              <i class="bi bi-people-fill" style="font-size: 1.4rem; color: #3498db;"></i>
+              <div>
+                <div style="font-weight: 600;">Miejsca (Slots)</div>
+                <div class="small muted">Maksymalna liczba graczy online</div>
+              </div>
+            </div>
+            <input class="input mono" type="number" name="max-players" value="{{ properties.get('max-players', '20') }}" min="1" max="1000" required>
+          </div>
+
+          <!-- Tryb gry (Gamemode) -->
+          <div class="card" style="padding: 16px; background: rgba(255,255,255,0.02);">
+            <div class="row" style="gap: 12px; align-items: center; margin-bottom: 8px;">
+              <i class="bi bi-controller" style="font-size: 1.4rem; color: #2ecc71;"></i>
+              <div>
+                <div style="font-weight: 600;">Tryb gry (Gamemode)</div>
+                <div class="small muted">Domyślny tryb dla nowych graczy</div>
+              </div>
+            </div>
+            {% set gm = properties.get('gamemode', 'survival') | lower %}
+            <select class="input" name="gamemode">
+              <option value="survival" {{ 'selected' if gm == 'survival' else '' }}>Survival (Przetrwanie)</option>
+              <option value="creative" {{ 'selected' if gm == 'creative' else '' }}>Creative (Kreatywny)</option>
+              <option value="adventure" {{ 'selected' if gm == 'adventure' else '' }}>Adventure (Przygoda)</option>
+              <option value="spectator" {{ 'selected' if gm == 'spectator' else '' }}>Spectator (Widz)</option>
+            </select>
+          </div>
+
+          <!-- Trudność (Difficulty) -->
+          <div class="card" style="padding: 16px; background: rgba(255,255,255,0.02);">
+            <div class="row" style="gap: 12px; align-items: center; margin-bottom: 8px;">
+              <i class="bi bi-shield-shaded" style="font-size: 1.4rem; color: #e74c3c;"></i>
+              <div>
+                <div style="font-weight: 600;">Trudność (Difficulty)</div>
+                <div class="small muted">Poziom trudności świata gry</div>
+              </div>
+            </div>
+            {% set diff = properties.get('difficulty', 'easy') | lower %}
+            <select class="input" name="difficulty">
+              <option value="peaceful" {{ 'selected' if diff == 'peaceful' else '' }}>Peaceful (Pokojowy)</option>
+              <option value="easy" {{ 'selected' if diff == 'easy' else '' }}>Easy (Łatwy)</option>
+              <option value="normal" {{ 'selected' if diff == 'normal' else '' }}>Normal (Normalny)</option>
+              <option value="hard" {{ 'selected' if diff == 'hard' else '' }}>Hard (Trudny)</option>
+            </select>
+          </div>
+
+          <!-- Biała lista (Whitelist) -->
+          <div class="card row" style="padding: 16px; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02);">
+            <div class="row" style="gap: 12px; align-items: center">
+              <i class="bi bi-shield-lock" style="font-size: 1.4rem; color: #f1c40f;"></i>
+              <div>
+                <div style="font-weight: 600;">Biała lista (Whitelist)</div>
+                <div class="small muted">Wpuszczaj tylko graczy z listy</div>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" name="white-list" value="true" {{ 'checked' if properties.get('white-list') == 'true' else '' }}>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- Nieoryginalne (Cracked / online-mode) -->
+          <div class="card row" style="padding: 16px; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02);">
+            <div class="row" style="gap: 12px; align-items: center">
+              <i class="bi bi-unlock" style="font-size: 1.4rem; color: #9b59b6;"></i>
+              <div>
+                <div style="font-weight: 600;">Nieoryginalne (Cracked)</div>
+                <div class="small muted">Pozwala grać graczom bez konta premium (online-mode=false)</div>
+              </div>
+            </div>
+            <label class="switch">
+              <!-- If online-mode is false, then cracked is ON -->
+              <input type="checkbox" name="online-mode" value="false" {{ 'checked' if properties.get('online-mode') == 'false' else '' }}>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- Latanie (Fly / allow-flight) -->
+          <div class="card row" style="padding: 16px; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02);">
+            <div class="row" style="gap: 12px; align-items: center">
+              <i class="bi bi-airplane" style="font-size: 1.4rem; color: #1abc9c;"></i>
+              <div>
+                <div style="font-weight: 600;">Latanie (Allow Flight)</div>
+                <div class="small muted">Nie wyrzucaj graczy za latanie w trybie Survival</div>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" name="allow-flight" value="true" {{ 'checked' if properties.get('allow-flight') == 'true' else '' }}>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- Wymuś tryb gry (Force Gamemode) -->
+          <div class="card row" style="padding: 16px; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02);">
+            <div class="row" style="gap: 12px; align-items: center">
+              <i class="bi bi-arrow-repeat" style="font-size: 1.4rem; color: #e67e22;"></i>
+              <div>
+                <div style="font-weight: 600;">Wymuś tryb gry</div>
+                <div class="small muted">Gracze dołączają zawsze w domyślnym trybie</div>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" name="force-gamemode" value="true" {{ 'checked' if properties.get('force-gamemode') == 'true' else '' }}>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- PVP -->
+          <div class="card row" style="padding: 16px; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02);">
+            <div class="row" style="gap: 12px; align-items: center">
+              <i class="bi bi-swords" style="font-size: 1.4rem; color: #e74c3c;"></i>
+              <div>
+                <div style="font-weight: 600;">PVP</div>
+                <div class="small muted">Włącz zadawanie obrażeń między graczami</div>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" name="pvp" value="true" {{ 'checked' if properties.get('pvp', 'true') == 'true' else '' }}>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- Bloki poleceń (Command blocks) -->
+          <div class="card row" style="padding: 16px; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02);">
+            <div class="row" style="gap: 12px; align-items: center">
+              <i class="bi bi-terminal-split" style="font-size: 1.4rem; color: #34495e;"></i>
+              <div>
+                <div style="font-weight: 600;">Bloki poleceń (Command blocks)</div>
+                <div class="small muted">Włącz działanie command blocków na serwerze</div>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" name="enable-command-block" value="true" {{ 'checked' if properties.get('enable-command-block') == 'true' else '' }}>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- Potwory (Monsters) -->
+          <div class="card row" style="padding: 16px; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02);">
+            <div class="row" style="gap: 12px; align-items: center">
+              <i class="bi bi-bug" style="font-size: 1.4rem; color: #8e44ad;"></i>
+              <div>
+                <div style="font-weight: 600;">Potwory (Monsters)</div>
+                <div class="small muted">Spawnowanie wrogich mobów (zombie, creepery)</div>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" name="spawn-monsters" value="true" {{ 'checked' if properties.get('spawn-monsters', 'true') == 'true' else '' }}>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- Zwierzęta (Animals) -->
+          <div class="card row" style="padding: 16px; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02);">
+            <div class="row" style="gap: 12px; align-items: center">
+              <i class="bi bi-heart" style="font-size: 1.4rem; color: #27ae60;"></i>
+              <div>
+                <div style="font-weight: 600;">Zwierzęta (Animals)</div>
+                <div class="small muted">Spawnowanie pasywnych mobów (krowy, owce)</div>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" name="spawn-animals" value="true" {{ 'checked' if properties.get('spawn-animals', 'true') == 'true' else '' }}>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- Piekło (Nether) -->
+          <div class="card row" style="padding: 16px; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02);">
+            <div class="row" style="gap: 12px; align-items: center">
+              <i class="bi bi-fire" style="font-size: 1.4rem; color: #d35400;"></i>
+              <div>
+                <div style="font-weight: 600;">Nether (Piekło)</div>
+                <div class="small muted">Pozwala na podróżowanie przez portale Netheru</div>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" name="allow-nether" value="true" {{ 'checked' if properties.get('allow-nether', 'true') == 'true' else '' }}>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- Ochrona spawnu (Spawn Protection) -->
+          <div class="card" style="padding: 16px; background: rgba(255,255,255,0.02);">
+            <div class="row" style="gap: 12px; align-items: center; margin-bottom: 8px;">
+              <i class="bi bi-shield" style="font-size: 1.4rem; color: #f39c12;"></i>
+              <div>
+                <div style="font-weight: 600;">Ochrona spawnu (Promień w blokach)</div>
+                <div class="small muted">Zwykli gracze nie mogą niszczyć bloków na spawnie</div>
+              </div>
+            </div>
+            <input class="input mono" type="number" name="spawn-protection" value="{{ properties.get('spawn-protection', '16') }}" min="0" max="1000">
+          </div>
+
+          <!-- Paczka zasobów (Resource Pack) -->
+          <div class="card" style="padding: 16px; background: rgba(255,255,255,0.02);">
+            <div class="row" style="gap: 12px; align-items: center; margin-bottom: 8px;">
+              <i class="bi bi-box-seam" style="font-size: 1.4rem; color: #2980b9;"></i>
+              <div>
+                <div style="font-weight: 600;">Paczka zasobów (Resource pack URL)</div>
+                <div class="small muted">Bezpośredni link do pliku .zip z teksturami</div>
+              </div>
+            </div>
+            <input class="input" type="text" name="resource-pack" value="{{ properties.get('resource-pack', '') }}" placeholder="https://example.com/pack.zip">
+          </div>
+
+          <!-- MOTD -->
+          <div class="card" style="padding: 16px; background: rgba(255,255,255,0.02); grid-column: 1 / -1;">
+            <div class="row" style="gap: 12px; align-items: center; margin-bottom: 8px;">
+              <i class="bi bi-chat-quote" style="font-size: 1.4rem; color: #16a085;"></i>
+              <div>
+                <div style="font-weight: 600;">Wiadomość serwera (MOTD)</div>
+                <div class="small muted">Tekst wyświetlany na liście serwerów w grze</div>
+              </div>
+            </div>
+            <input class="input" type="text" name="motd" value="{{ properties.get('motd', 'A Minecraft Server') }}" placeholder="Mój super serwer Minecraft">
+          </div>
+
+        </div>
+
+        <div class="card-foot row" style="justify-content: flex-end; padding: 16px 20px;">
+          <button type="submit" class="btn primary">
+            <i class="bi bi-check2-circle"></i> Zapisz zmiany w server.properties
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- ZAKŁADKA 4: PLIKI (FILE MANAGER / FTP)      -->
+  <!-- REPLIKACJA WIDOKU ATERNOS                  -->
+  <!-- ========================================== -->
+  <div x-show="tab === 'files'" class="stack" style="gap: 16px">
+    <div class="card">
+      <div class="card-head" style="justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+        <!-- Ścieżka (Breadcrumbs) -->
+        <div class="row" style="gap: 6px; align-items: center; font-family: monospace; font-size: 0.95rem;">
+          <button type="button" class="btn ghost sm" @click="loadFiles('/')"><i class="bi bi-house"></i> root</button>
+          <template x-for="(segment, idx) in filePath.split('/').filter(Boolean)" :key="idx">
+            <div class="row" style="gap: 6px; align-items: center">
+              <span class="muted">/</span>
+              <button type="button" class="btn ghost sm" style="padding: 2px 6px;"
+                      @click="loadFiles('/' + filePath.split('/').filter(Boolean).slice(0, idx + 1).join('/'))"
+                      x-text="segment"></button>
+            </div>
+          </template>
+        </div>
+
+        <!-- Akcje paska narzędziowego -->
+        <div class="row" style="gap: 8px; align-items: center">
+          <span class="badge" :class="filesMode === 'ftp' ? 'ok' : 'primary'" style="font-size: 0.75rem">
+            <i class="bi" :class="filesMode === 'ftp' ? 'bi-hdd-network' : 'bi-cpu'"></i>
+            <span x-text="filesMode === 'ftp' ? 'Klient FTP' : 'Bridge Plugin'"></span>
+          </span>
+
+          <label class="btn sm" style="cursor: pointer; margin: 0">
+            <i class="bi bi-upload"></i> Wgraj plik
+            <input type="file" @change="uploadFile($event)" style="display: none">
+          </label>
+
+          <button type="button" class="btn sm" @click="createFolder()">
+            <i class="bi bi-folder-plus"></i> Nowy folder
+          </button>
+
+          <button type="button" class="btn sm" @click="
+            const name = prompt('Podaj nazwę nowego pliku (np. ops.json lub config.yml):');
+            if (name && name.trim()) {
+              editFilePath = (filePath === '/' ? '/' : filePath + '/') + name.trim();
+              editFileContent = '';
+              fileEditorOpen = true;
+            }
+          ">
+            <i class="bi bi-file-earmark-plus"></i> Nowy plik
+          </button>
+
+          <button type="button" class="btn ghost icon sm" @click="loadFiles(filePath)" :disabled="filesLoading" title="Odśwież">
+            <i class="bi bi-arrow-clockwise" :class="{ 'spin': filesLoading }"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabela plików i folderów -->
+      <div class="card-body" style="padding: 0">
+        <div class="table-wrap">
+          <table class="table" style="margin: 0">
+            <thead>
+              <tr style="background: rgba(255,255,255,0.02)">
+                <th style="width: 40px"></th>
+                <th>Nazwa</th>
+                <th style="width: 140px">Rozmiar</th>
+                <th style="width: 180px">Data modyfikacji</th>
+                <th style="width: 140px; text-align: right">Akcje</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Przycisk powrotu w górę folderu -->
+              <tr x-show="filePath !== '/' && filePath !== ''" style="cursor: pointer" @click="
+                const parts = filePath.split('/').filter(Boolean);
+                parts.pop();
+                loadFiles('/' + parts.join('/'));
+              ">
+                <td style="color: #f1c40f"><i class="bi bi-arrow-90deg-up"></i></td>
+                <td colspan="4"><span class="muted font-italic">.. (Wróć do katalogu nadrzędnego)</span></td>
+              </tr>
+
+              <!-- Wiersze plików/folderów -->
+              <template x-for="item in filesList" :key="item.path">
+                <tr style="cursor: pointer" @click="item.is_dir ? loadFiles(item.path) : openFile(item.path)">
+                  <td style="font-size: 1.2rem;">
+                    <i class="bi" :class="item.is_dir ? 'bi-folder-fill' : 'bi-file-earmark-code'"
+                       :style="item.is_dir ? 'color: #f1c40f' : (item.name.endsWith('.jar') ? 'color: #e74c3c' : (item.name.endsWith('.yml') || item.name.endsWith('.properties') ? 'color: #2ecc71' : 'color: #3498db'))"></i>
+                  </td>
+                  <td>
+                    <b x-text="item.name" :style="item.is_dir ? 'color: #f0f6fc' : ''"></b>
+                  </td>
+                  <td class="small muted mono" x-text="item.is_dir ? 'Folder' : (item.size > 1048576 ? (item.size/1048576).toFixed(1) + ' MB' : (item.size > 1024 ? (item.size/1024).toFixed(1) + ' KB' : item.size + ' B'))"></td>
+                  <td class="small muted mono" x-text="item.modified || '—'"></td>
+                  <td style="text-align: right" @click.stop>
+                    <div class="row" style="justify-content: flex-end; gap: 4px;">
+                      <template x-if="!item.is_dir">
+                        <button type="button" class="btn ghost icon sm" title="Edytuj plik" @click="openFile(item.path)">
+                          <i class="bi bi-pencil"></i>
+                        </button>
+                      </template>
+                      <template x-if="!item.is_dir">
+                        <a :href="'/minecraft/{{ server.id }}/files/download?path=' + encodeURIComponent(item.path)" class="btn ghost icon sm" title="Pobierz plik">
+                          <i class="bi bi-download"></i>
+                        </a>
+                      </template>
+                      <button type="button" class="btn ghost err icon sm" title="Usuń" @click="deleteFile(item.path, item.is_dir)">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+
+              <!-- Stan braku plików / ładowania -->
+              <tr x-show="filesList.length === 0 && !filesLoading">
+                <td colspan="5" class="muted small" style="text-align: center; padding: 30px;">
+                  Folder jest pusty lub nie udało się wczytać zawartości.
+                </td>
+              </tr>
+              <tr x-show="filesLoading">
+                <td colspan="5" style="text-align: center; padding: 30px; color: #3498db">
+                  <i class="bi bi-arrow-repeat spin"></i> Wczytywanie plików...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL EDYTORA PLIKÓW -->
+  <div x-show="fileEditorOpen" x-cloak class="modal-backdrop" @keydown.escape.window="fileEditorOpen = false">
+    <div class="card modal" @click.outside="fileEditorOpen = false" style="max-width: 900px; width: 100%; height: 80vh; display: flex; flex-direction: column;">
+      <div class="card-head" style="justify-content: space-between">
+        <div class="row" style="gap: 8px; align-items: center">
+          <i class="bi bi-file-earmark-code" style="color: #2ecc71;"></i>
+          <span style="font-weight: 600; font-family: monospace;" x-text="editFilePath"></span>
+        </div>
+        <button class="btn ghost icon sm" @click="fileEditorOpen = false"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="card-body" style="flex: 1; padding: 0; display: flex; flex-direction: column;">
+        <textarea x-model="editFileContent" class="mono"
+                  style="flex: 1; width: 100%; height: 100%; border: none; resize: none; background: #0d1117; color: #c9d1d9; padding: 16px; font-size: 0.9rem; line-height: 1.5; font-family: 'Consolas', 'Monaco', monospace; box-shadow: none;"
+                  placeholder="Zawartość pliku..."></textarea>
+      </div>
+      <div class="card-foot row" style="justify-content: space-between; align-items: center;">
+        <span class="small muted" x-text="'Długość: ' + editFileContent.length + ' znaków'"></span>
+        <div class="row" style="gap: 8px">
+          <button type="button" class="btn" @click="fileEditorOpen = false">Zamknij</button>
+          <button type="button" class="btn primary" @click="saveFile()" :disabled="editFileSaving">
+            <i class="bi" :class="editFileSaving ? 'bi-arrow-repeat spin' : 'bi-save'"></i> Zapisz plik
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- ZAKŁADKA 5: PLACEHOLDERAPI (PAPI)          -->
+  <!-- ========================================== -->
+  <div x-show="tab === 'papi'" class="stack" style="gap: 16px">
+    <div class="card">
+      <div class="card-head" style="justify-content: space-between">
+        <div class="row" style="gap: 10px; align-items: center">
+          <i class="bi bi-code-slash" style="font-size: 1.4rem; color: #9b59b6;"></i>
+          <div>
+            <h3 style="margin: 0;">PlaceholderAPI (PAPI)</h3>
+            <div class="small muted">Odczytuj dowolne zmienne i placeholdery z Twojego serwera Minecraft</div>
+          </div>
+        </div>
+        <div>
+          {% if papi.enabled %}
+          <span class="badge ok"><i class="bi bi-check-circle"></i> PAPI Aktywne (v{{ papi.version or '2.x' }})</span>
+          {% else %}
+          <span class="badge err"><i class="bi bi-exclamation-triangle"></i> PlaceholderAPI nie zostało wykryte</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card-body stack" style="gap: 20px">
+
+        <!-- Wykryte rozszerzenia (Expansions) -->
+        {% if papi.expansions %}
+        <div>
+          <div class="small muted" style="margin-bottom: 6px; font-weight: 600; text-transform: uppercase;">
+            Zarejestrowane rozszerzenia na serwerze ({{ papi.expansions | length }}):
+          </div>
+          <div class="row" style="gap: 6px; flex-wrap: wrap;">
+            {% for exp in papi.expansions %}
+            <span class="badge" style="background: rgba(155, 89, 182, 0.15); color: #9b59b6; cursor: pointer"
+                  @click="papiInput += '\n%' + '{{ exp }}' + '_...%'" title="Kliknij, aby dodać wzorzec">
+              %{{ exp }}%
+            </span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Panel Ewaluacji / Testera -->
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 20px;">
+
+          <!-- Lewa strona: Wejście -->
+          <div class="stack" style="gap: 12px">
+            <div class="field">
+              <label>Kontekst gracza (opcjonalny):</label>
+              <select class="input sm" x-model="papiPlayer">
+                <option value="">-- Kontekst globalny serwera --</option>
+                {% for p in players_rich %}
+                <option value="{{ p.name }}">{{ p.name }}</option>
+                {% endfor %}
+              </select>
+              <div class="hint small muted">Placeholdery dotyczące gracza (np. %player_ping%, %vault_eco_balance%) wymagają wybranego gracza.</div>
+            </div>
+
+            <div class="field">
+              <label>Wpisz placeholdery (po jednym w linii):</label>
+              <textarea class="input mono" rows="8" x-model="papiInput" style="font-size: 0.85rem;" placeholder="%server_tps%&#10;%player_ping%"></textarea>
+            </div>
+
+            <button type="button" class="btn primary" @click="parsePapi()" :disabled="papiLoading">
+              <i class="bi" :class="papiLoading ? 'bi-arrow-repeat spin' : 'bi-play-fill'"></i>
+              Odpytaj serwer i przetłumacz placeholdery
+            </button>
+          </div>
+
+          <!-- Prawa strona: Wyniki -->
+          <div class="card" style="background: #0d1117; border-color: #30363d; padding: 16px; display: flex; flex-direction: column;">
+            <div class="row" style="justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #30363d; padding-bottom: 8px;">
+              <span class="small muted mono" style="color: #8b949e">Zwrócone wartości na żywo</span>
+              <button type="button" class="btn ghost sm" @click="parsePapi()" :disabled="papiLoading"><i class="bi bi-arrow-clockwise"></i> Odśwież</button>
+            </div>
+
+            <div style="flex: 1; overflow-y: auto; max-height: 280px;" class="stack" style="gap: 8px">
+              <template x-for="(val, key) in papiResults" :key="key">
+                <div class="card row" style="justify-content: space-between; align-items: center; padding: 8px 12px; background: #161b22; border-color: #30363d;">
+                  <span class="mono small" style="color: #79c0ff" x-text="key"></span>
+                  <span class="mono small" style="font-weight: bold; color: #7ee787;" x-text="val"></span>
+                </div>
+              </template>
+              <div x-show="Object.keys(papiResults).length === 0 && !papiLoading" class="muted small" style="text-align: center; padding: 40px 0;">
+                Kliknij przycisk po lewej stronie, aby odpytać serwer o wartości placeholderów.
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- ZAKŁADKA 6: LOGI SERWERA                   -->
+  <!-- ========================================== -->
+  <div x-show="tab === 'logs'">
+    <div class="card" style="background: #0d1117; border-color: #30363d;">
+      <div class="card-head" style="background: #161b22; border-bottom: 1px solid #30363d; justify-content: space-between">
+        <span class="small mono" style="color: #8b949e"><i class="bi bi-card-text"></i> Ostatnie linie konsoli serwera</span>
+        <button class="btn sm ghost" @click="location.reload()"><i class="bi bi-arrow-clockwise"></i> Odśwież logi</button>
+      </div>
+      <div style="padding: 14px; max-height: 480px; overflow-y: auto; font-family: monospace; font-size: 0.85rem; color: #8b949e; line-height: 1.4; white-space: pre-wrap;">
+        {% if logs %}
+          {% for line in logs %}
+            <div style="color: {{ '#7ee787' if 'INFO' in line else ('#f85149' if 'ERROR' in line or 'WARN' in line else '#c9d1d9') }}">{{ line }}</div>
+          {% endfor %}
+        {% else %}
+          <div class="muted">Brak zarejestrowanych logów lub serwer offline.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- ZAKŁADKA 7: USTAWIENIA & FTP              -->
+  <!-- ========================================== -->
+  <div x-show="tab === 'settings'">
+    <div class="card">
+      <div class="card-head">
+        <h3><i class="bi bi-gear"></i> Konfiguracja połączenia i klienta FTP</h3>
+      </div>
+      <form method="POST" action="/minecraft/{{ server.id }}/settings">
+        <div class="card-body stack" style="gap: 20px">
+
+          <h4 style="margin: 0; color: #4caf50;"><i class="bi bi-hdd-network"></i> Mostek DeployraBridge (HTTP API)</h4>
+          <div class="field">
+            <label>Nazwa serwera w panelu</label>
+            <input class="input" type="text" name="name" value="{{ server.name }}" required>
+          </div>
+
+          <div class="row" style="gap: 12px">
+            <div class="field" style="flex: 2">
+              <label>Adres IP / Domena serwera</label>
+              <input class="input" type="text" name="host" value="{{ server.host }}" required>
+            </div>
+            <div class="field" style="flex: 1">
+              <label>Port API (z config.yml)</label>
+              <input class="input mono" type="number" name="port" value="{{ server.port }}" required>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Token autoryzacyjny DeployraBridge</label>
+            <input class="input mono" type="password" name="token" value="{{ server.token }}">
+          </div>
+
+          <hr style="border-color: var(--border); margin: 8px 0;">
+
+          <!-- Konfiguracja FTP -->
+          <div class="row" style="justify-content: space-between; align-items: center">
+            <h4 style="margin: 0; color: #3498db;"><i class="bi bi-folder2-open"></i> Dostęp przez FTP hostingu (Pliki &amp; Opcje)</h4>
+            <button type="button" class="btn sm" @click="testFtpConn()" :disabled="ftpTesting">
+              <i class="bi" :class="ftpTesting ? 'bi-arrow-repeat spin' : 'bi-activity'"></i> Testuj połączenie FTP
+            </button>
+          </div>
+
+          <div x-show="ftpStatusMsg" class="card" :style="ftpStatusOk ? 'background: rgba(46, 204, 113, 0.1); border-color: #2ecc71;' : 'background: rgba(231, 76, 60, 0.1); border-color: #e74c3c;'" style="padding: 10px 14px;" x-cloak>
+            <span class="small" :style="ftpStatusOk ? 'color: #2ecc71;' : 'color: #e74c3c;'" x-text="ftpStatusMsg"></span>
+          </div>
+
+          <div class="row" style="gap: 12px">
+            <div class="field" style="flex: 2">
+              <label>Host FTP</label>
+              <input class="input" type="text" name="ftp_host" value="{{ server.ftp_host or server.host }}" placeholder="{{ server.host }}">
+            </div>
+            <div class="field" style="flex: 1">
+              <label>Port FTP</label>
+              <input class="input mono" type="number" name="ftp_port" value="{{ server.ftp_port or 21 }}">
+            </div>
+          </div>
+
+          <div class="row" style="gap: 12px">
+            <div class="field" style="flex: 1">
+              <label>Użytkownik FTP</label>
+              <input class="input" type="text" name="ftp_user" value="{{ server.ftp_user or '' }}" placeholder="np. u123_mc">
+            </div>
+            <div class="field" style="flex: 1">
+              <label>Hasło FTP</label>
+              <input class="input" type="password" name="ftp_pass" value="{{ server.ftp_pass or '' }}">
+            </div>
+          </div>
+
+          <div class="row" style="gap: 20px; align-items: center">
+            <label class="row" style="gap: 8px; align-items: center; cursor: pointer">
+              <input type="checkbox" name="ftp_tls" value="true" {{ 'checked' if server.ftp_tls else '' }}>
+              <span>Wymuś szyfrowanie FTPS (TLS)</span>
+            </label>
+            <label class="row" style="gap: 8px; align-items: center; cursor: pointer">
+              <input type="checkbox" name="ftp_enabled" value="true" {{ 'checked' if server.ftp_enabled else '' }}>
+              <span>Włącz dostęp FTP do plików i server.properties</span>
+            </label>
+          </div>
+
+        </div>
+
+        <div class="card-foot row" style="justify-content: flex-end; padding: 16px 20px;">
+          <button type="submit" class="btn primary">
+            <i class="bi bi-save"></i> Zapisz ustawienia
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- MODAL: ZARZĄDZANIE MAKRAMI                 -->
+  <!-- ========================================== -->
+  <div x-show="macroModalOpen" x-cloak class="modal-backdrop" @keydown.escape.window="macroModalOpen = false">
+    <div class="card modal" @click.outside="macroModalOpen = false" style="max-width: 640px; width: 100%;">
+      <div class="card-head" style="justify-content: space-between">
+        <h3><i class="bi bi-lightning-charge" style="color: #f1c40f"></i> Zarządzanie Makrami Poleceń</h3>
+        <button class="btn ghost icon sm" @click="macroModalOpen = false"><i class="bi bi-x-lg"></i></button>
+      </div>
+
+      <div class="card-body stack" style="gap: 16px">
+        <div class="small muted">
+          Makra pozwalają jednym kliknięciem wywoływać predefiniowane komendy w konsoli serwera Minecraft.
+        </div>
+
+        <!-- Lista istniejących makr -->
+        <div class="stack" style="gap: 8px; max-height: 260px; overflow-y: auto;">
+          {% for m in s_macros %}
+          <div class="card row" style="justify-content: space-between; align-items: center; padding: 8px 12px; background: rgba(255,255,255,0.02)">
+            <div class="row" style="gap: 10px; align-items: center">
+              <i class="bi {{ m.icon or 'bi-lightning' }}" style="color: {{ m.color or '#3498db' }}; font-size: 1.1rem"></i>
+              <div>
+                <b style="font-size: 0.9rem;">{{ m.name }}</b>
+                <div class="small muted mono">/{{ m.cmd }}</div>
+              </div>
+            </div>
+            <form method="POST" action="/minecraft/{{ server.id }}/macros/delete">
+              <input type="hidden" name="index" value="{{ loop.index0 }}">
+              <button type="submit" class="btn ghost err icon sm" title="Usuń makro"><i class="bi bi-trash"></i></button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+
+        <hr style="border-color: var(--border); margin: 4px 0;">
+
+        <!-- Formularz dodawania nowego makra -->
+        <form method="POST" action="/minecraft/{{ server.id }}/macros/add" class="stack" style="gap: 10px;">
+          <h4 style="margin: 0; font-size: 0.95rem;">Dodaj nowe makro</h4>
+          <div class="row" style="gap: 10px;">
+            <input class="input sm" style="flex: 2" type="text" name="name" placeholder="Nazwa (np. Deszcz)" required>
+            <input class="input sm mono" style="flex: 3" type="text" name="cmd" placeholder="Komenda (np. weather rain)" required>
+          </div>
+          <div class="row" style="gap: 10px; align-items: center">
+            <input class="input sm" style="flex: 1" type="text" name="icon" value="bi-lightning" placeholder="Ikona Bootstrap (np. bi-sun)">
+            <input class="input sm mono" style="width: 120px" type="color" name="color" value="#3498db">
+            <button type="submit" class="btn primary sm" style="white-space: nowrap">
+              <i class="bi bi-plus-lg"></i> Dodaj makro
+            </button>
+          </div>
+        </form>
+
+        <form method="POST" action="/minecraft/{{ server.id }}/macros/reset" onsubmit="return confirm('Przywrócić 12 domyślnych makr?');">
+          <button type="submit" class="btn ghost sm" style="color: var(--muted); font-size: 0.8rem">
+            <i class="bi bi-arrow-counterclockwise"></i> Przywróć makra domyślne
+          </button>
+        </form>
+      </div>
+
+      <div class="card-foot row" style="justify-content: flex-end">
+        <button type="button" class="btn" @click="macroModalOpen = false">Zamknij</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Style dla przełączników (Switch) w stylu Aternos -->
+<style>
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #30363d;
+  transition: .3s;
+  border-radius: 24px;
+}
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .3s;
+  border-radius: 50%;
+}
+input:checked + .slider {
+  background-color: #2ea043;
+}
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+</style>
+{% endblock %}
