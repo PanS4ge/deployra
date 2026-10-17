@@ -117,3 +117,59 @@ def test_app_logs_handles_missing_container_gracefully(admin, monkeypatch):
     assert resp.status_code in (204, 303)
     loc = resp.headers.get("HX-Redirect") or resp.headers.get("location")
     assert f"/apps/{app_id}" in loc
+
+
+class InspectClient:
+    """Węzeł z jednym kontenerem (inspect + logi) — do renderu strony kontenera."""
+
+    def __init__(self, running: bool):
+        self.info = {
+            "Id": "c" * 64, "Name": "/web", "RestartCount": 0, "Mounts": [{"Type": "bind", "Source": "/srv/www", "Destination": "/var/www", "RW": True}],
+            "State": {"Status": "running" if running else "exited", "Running": running,
+                      "StartedAt": "2026-10-01T10:00:00Z" if running else "0001-01-01T00:00:00Z"},
+            "Config": {"Image": "nginx:alpine", "Env": [], "Labels": {}}, "HostConfig": {"RestartPolicy": {"Name": "always"}},
+            "NetworkSettings": {"Ports": {}, "Networks": {}},
+        }  # fmt: skip
+        self.calls = []
+
+    async def get(self, path, **kwargs):
+        self.calls.append(path)
+        if path.startswith("/api/containers/") and "/logs" in path:
+            return {"lines": ["hello from logs"]}
+        if path.startswith("/api/containers/"):
+            return self.info
+        return []
+
+
+@pytest.mark.parametrize("running", [True, False])
+def test_container_page_renders(admin, monkeypatch, running):
+    panel = admin.app.state.panel
+    node_id = panel.db.insert("nodes", name="node1", transport="direct", api_url="http://127.0.0.1:1", status="paired", secret=panel.sealer.seal(b"x" * 32))
+    node = InspectClient(running)
+    monkeypatch.setattr(panel, "node_client", lambda n: node)
+    admin.headers.pop("HX-Request", None)
+    resp = admin.get(f"/nodes/{node_id}/containers/{'c' * 12}")
+    assert resp.status_code == 200, resp.text[:300]
+    page = resp.text
+    if running:
+        assert "/logs/stream" in page and "/stats/stream" in page
+    else:  # zatrzymany: logi jednorazowo, bez SSE (nie zapętla ogona) i bez roku 1
+        assert "/logs/stream" not in page and "hello from logs" in page and "0001-01-01 0" not in page
+
+
+def test_app_logs_and_files_follow_real_container(admin, monkeypatch):
+    panel = admin.app.state.panel
+    node_id = panel.db.insert("nodes", name="node1", transport="direct", api_url="http://127.0.0.1:1", status="paired", secret=panel.sealer.seal(b"x" * 32))
+    from deployra_common.schemas import AppSpec
+    from deployra_panel.services import deploy
+
+    spec = AppSpec.model_validate({"slug": "robal-bot", "node_id": node_id, "source": {"kind": "image", "image": "robal:1"}, "container_port": 8080})
+    app_id = deploy.create_app_row(panel, "Robal Bot", node_id, spec, {})
+    containers = [{"id": "abc123", "name": "robal_bot", "state": "running", "ports": []}]
+    mock = MockNodeClient(containers=containers)
+    monkeypatch.setattr(panel, "node_client", lambda n: mock)
+    admin.headers.pop("HX-Request", None)
+    logs = admin.get(f"/apps/{app_id}/logs")
+    assert logs.headers["location"] == f"/nodes/{node_id}/containers/abc123#logs"
+    files = admin.get(f"/apps/{app_id}/files")
+    assert files.headers["location"] == f"/nodes/{node_id}/containers/abc123/files"

@@ -44,3 +44,8 @@ legacy/
 /test_*.py
 /*.json
 /HANDOFF.md
+
+# Osobiste pliki (produkcyjne ID węzłów, domeny) — zostają lokalnie
+/deploy/nginx-frog*.conf
+/scripts/update_nodes.py
+/scripts/refresh_nodes_info.py

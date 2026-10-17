@@ -217,6 +217,25 @@ def v13(dialect: str) -> list[str]:
     ]
 
 
+def v14(dialect: str) -> list[str]:
+    """Własna ikona aplikacji (`url:…` albo `file:…`; pusta = automatycznie: favicon → logo obrazu)."""
+    return [f"ALTER TABLE apps ADD COLUMN icon {_types(dialect)['text']}"]
+
+
+def v15(dialect: str) -> list[str]:
+    """Serwery Minecraft z pluginem DeployraBridge (parowanie kodem, sekret zaszyfrowany kluczem panelu)."""
+    t = _types(dialect)
+    i, s, x, n, r, tail = t["id"], t["str"], t["text"], t["int"], t["real"], t["tail"]
+    return [
+        f"""CREATE TABLE minecraft_servers (
+            id {i}, name {s} NOT NULL, app_id {n}, secret {x}, pair_hash {s}, pair_code {x}, pair_expires {r}, ftp {x}, macros {x},
+            info {x}, last_seen {r}, created_at {s}
+        ){tail}""",
+        "CREATE INDEX idx_minecraft_pair ON minecraft_servers (pair_hash)",
+    ]
+
+
 MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [
-    (1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8), (9, v9), (10, v10), (11, v11), (12, v12), (13, v13)
+    (1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8), (9, v9), (10, v10), (11, v11), (12, v12), (13, v13),
+    (14, v14), (15, v15),
 ]

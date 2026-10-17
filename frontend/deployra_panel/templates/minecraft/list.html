@@ -1,211 +1,50 @@
 {% extends "base.html" %}
-{% from "_macros.html" import empty, meter, status_badge %}
-
+{% from "_macros.html" import empty %}
 {% block actions %}
-<a class="btn" href="/static/downloads/DeployraBridge-1.0.0.jar?v=2" download="DeployraBridge-1.0.0.jar">
-  <i class="bi bi-download"></i> Pobierz plugin (.jar)
-</a>
-<button class="btn primary" @click="$dispatch('open-add-mc-modal')">
-  <i class="bi bi-plus-lg"></i> Dodaj serwer Minecraft
-</button>
+<a class="btn ghost" href="/minecraft/download/DeployraBridge.jar" hx-boost="false"><i class="bi bi-download"></i> {{ t("mc.plugin") }}</a>
+{% if has(user, P.ALLOW_DEPLOYMENT) %}<a class="btn" href="/apps/new?template=apps-catalog:minecraft"><i class="bi bi-hdd-network"></i> {{ t("mc.new_on_node") }}</a>{% endif %}
+{% if has(user, P.ALLOW_MODIFY_DOCKERS) %}<button class="btn primary" x-data @click="$dispatch('mc-add')"><i class="bi bi-plus-lg"></i> {{ t("mc.add_external") }}</button>{% endif %}
 {% endblock %}
-
 {% block content %}
-<div x-data="{ addOpen: false, showFtpFields: false }" @open-add-mc-modal.window="addOpen = true">
-
-  <!-- Baner informacyjny -->
-  <div class="card" style="margin-bottom: 20px; background: linear-gradient(135deg, rgba(76, 175, 80, 0.08), rgba(33, 150, 243, 0.05)); border: 1px solid rgba(76, 175, 80, 0.25);">
-    <div class="card-body row" style="gap: 16px; align-items: center; justify-content: space-between">
-      <div class="row" style="gap: 14px; align-items: center">
-        <div style="width: 44px; height: 44px; border-radius: 10px; background: rgba(76, 175, 80, 0.2); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: #4caf50;">
-          <i class="bi bi-controller"></i>
-        </div>
-        <div class="stack" style="gap: 2px">
-          <div style="font-weight: 600; font-size: 1.05rem;">Zdalne sterowanie serwerami Minecraft (Hostingi współdzielone)</div>
-          <div class="small muted">Działa na Craftserve, TitanAxe, Pterodactyl, Falix itp. Wystarczy wrzucić plugin <b>DeployraBridge.jar</b> lub skonfigurować wbudowany klient <b>FTP</b>.</div>
-        </div>
+{% if items %}
+<div class="grid grid-auto">
+  {% for it in items %}{% set s = it.row %}{% set i = it.info %}
+  <div class="card link app-card">
+    <div class="card-head" style="gap: 10px">
+      <i class="bi bi-controller" style="color: var(--ok)"></i>
+      <h3 class="trunc"><a class="card-link" href="/minecraft/{{ s.id }}">{{ s.name }}</a></h3>
+      {% if not s.secret %}<span class="badge warn">{{ t("mc.not_paired") }}</span>
+      {% elif it.online %}<span class="badge ok">online</span>{% else %}<span class="badge">offline</span>{% endif %}
+    </div>
+    <div class="card-body stack" style="gap: 6px">
+      <div class="small dim row between">
+        <span>{% if it.app %}<i class="bi bi-rocket-takeoff"></i> {{ it.app.name }}{% else %}<i class="bi bi-cloud"></i> {{ t("mc.external") }}{% endif %}</span>
+        {% if i.software %}<span class="mono muted">{{ i.software }} {{ i.mc_version }}</span>{% endif %}
       </div>
-      <a class="btn sm" href="/static/downloads/DeployraBridge-1.0.0.jar?v=2" download="DeployraBridge-1.0.0.jar" style="white-space: nowrap">
-        <i class="bi bi-box-arrow-down"></i> Pobierz DeployraBridge (51 KB)
-      </a>
+      {% if it.online %}<div class="small row" style="gap: 12px"><span><i class="bi bi-people"></i> {{ i.players_online or 0 }} / {{ i.players_max or "?" }}</span>{% if i.tps %}<span class="muted">TPS {{ i.tps }}</span>{% endif %}</div>
+      {% elif s.last_seen %}<div class="small muted">{{ t("mc.last_seen", when=s.last_seen | ago) }}</div>{% endif %}
     </div>
   </div>
-
-  <!-- Lista serwerów -->
-  {% if servers %}
-  <div class="grid grid-auto" style="gap: 16px">
-    {% for s in servers %}
-    {% set d = s.data or {} %}
-    {% set ram = d.ram or {} %}
-    {% set tps = (d.tps and d.tps[0]) or 20.0 %}
-    <a class="card link" href="/minecraft/{{ s.id }}" style="color: inherit; text-decoration: none; display: flex; flex-direction: column;">
-      <div class="card-head" style="align-items: flex-start">
-        <div style="display: flex; gap: 12px; align-items: center; min-width: 0; flex: 1;">
-          <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: #4caf50;">
-            <i class="bi bi-hdd-rack"></i>
-          </div>
-          <div style="min-width: 0; flex: 1">
-            <div class="name trunc" style="font-weight: 600;">{{ s.name }}</div>
-            <div class="small muted mono trunc">{{ s.host }}:{{ s.port }}</div>
-          </div>
-        </div>
-        <div class="row" style="gap: 6px; align-items: center">
-          {% if s.ftp_user %}
-          <span class="badge" title="FTP skonfigurowane" style="font-size: 0.75rem; background: rgba(52, 152, 219, 0.15); color: #3498db; border: 1px solid rgba(52, 152, 219, 0.3);">
-            <i class="bi bi-folder2-open"></i> FTP
-          </span>
-          {% endif %}
-          <span class="badge {{ 'ok' if s.online else 'err' }}">
-            <span class="dot {{ 'ok' if s.online else 'err' }}"></span>
-            {{ "ONLINE" if s.online else "OFFLINE" }}
-          </span>
-        </div>
-      </div>
-
-      <div class="card-body stack" style="gap: 12px; flex: 1">
-        {% if s.online %}
-        <div class="small muted trunc" style="font-style: italic;">"{{ d.motd or 'A Minecraft Server' }}"</div>
-
-        <div class="row" style="justify-content: space-between; font-size: 0.85rem">
-          <span class="muted">Wersja:</span>
-          <span class="mono">{{ d.version or '—' }}</span>
-        </div>
-
-        <div class="row" style="justify-content: space-between; font-size: 0.85rem">
-          <span class="muted">Gracze:</span>
-          <span class="mono" style="font-weight: 600; color: #4caf50;">
-            {{ d.players_online or 0 }} / {{ d.players_max or 20 }}
-          </span>
-        </div>
-
-        <div class="stack" style="gap: 4px">
-          <div class="row small muted" style="justify-content: space-between">
-            <span>TPS (1m):</span>
-            <span class="mono" style="color: {{ '#4caf50' if tps >= 19.0 else ('#ff9800' if tps >= 15.0 else '#f44336') }}; font-weight: 600;">{{ tps }}</span>
-          </div>
-          {{ meter(tps / 20.0 * 100) }}
-        </div>
-
-        {% if ram.get('max_mb') and ram.get('used_mb') is not none %}
-        <div class="stack" style="gap: 4px">
-          <div class="row small muted" style="justify-content: space-between">
-            <span>RAM:</span>
-            <span class="mono">{{ ram.used_mb }} MB / {{ ram.max_mb }} MB</span>
-          </div>
-          {{ meter(ram.used_mb / ram.max_mb * 100) }}
-        </div>
-        {% endif %}
-
-        {% else %}
-        <div class="muted small" style="padding: 12px 0; text-align: center;">
-          <i class="bi bi-exclamation-circle" style="font-size: 1.5rem; display: block; margin-bottom: 6px;"></i>
-          Brak łączności z serwerem HTTP na porcie {{ s.port }}.
-        </div>
-        {% endif %}
-      </div>
-    </a>
-    {% endfor %}
-  </div>
-  {% else %}
-  <div class="card" style="padding: 40px; text-align: center;">
-    <div style="font-size: 3rem; color: var(--muted); margin-bottom: 12px;"><i class="bi bi-controller"></i></div>
-    <h3>Brak podpiętych serwerów Minecraft</h3>
-    <p class="muted" style="max-width: 500px; margin: 0 auto 20px auto;">
-      Zarządzaj swoimi serwerami na hostingach współdzielonych. Pobierz plugin, wrzuć na serwer i dodaj adres IP.
-    </p>
-    <div class="row" style="justify-content: center; gap: 12px;">
-      <a class="btn" href="/minecraft/download"><i class="bi bi-download"></i> Pobierz plugin</a>
-      <button class="btn primary" @click="addOpen = true"><i class="bi bi-plus-lg"></i> Dodaj pierwszy serwer</button>
-    </div>
-  </div>
-  {% endif %}
-
-  <!-- Modal dodawania serwera -->
-  <div x-show="addOpen" x-cloak class="modal-backdrop" @keydown.escape.window="addOpen = false">
-    <div class="card modal" @click.outside="addOpen = false" style="max-width: 560px; width: 100%;">
-      <div class="card-head">
-        <h3><i class="bi bi-controller" style="color: #4caf50;"></i> Dodaj serwer Minecraft</h3>
-        <button class="btn ghost icon sm" @click="addOpen = false"><i class="bi bi-x-lg"></i></button>
-      </div>
-      <form method="POST" action="/minecraft/add">
-        <div class="card-body stack" style="gap: 16px">
-          <div class="field">
-            <label for="f-name">Nazwa w Deployrze</label>
-            <input class="input" id="f-name" name="name" type="text" placeholder="np. Survival Craftserve" required>
-          </div>
-
-          <div class="row" style="gap: 12px">
-            <div class="field" style="flex: 2">
-              <label for="f-host">Adres IP / Domena</label>
-              <input class="input" id="f-host" name="host" type="text" placeholder="np. 123.45.67.89 lub mc.pansage.xyz" required>
-            </div>
-            <div class="field" style="flex: 1">
-              <label for="f-port">Port API</label>
-              <input class="input mono" id="f-port" name="port" type="number" value="25585" required>
-            </div>
-          </div>
-          <div class="hint small muted">
-            Port API to port z pliku <code>config.yml</code> pluginu DeployraBridge (np. przydzielony port w panelu hostingu).
-          </div>
-
-          <div class="field">
-            <label for="f-token">Token bezpieczeństwa DeployraBridge</label>
-            <input class="input mono" id="f-token" name="token" type="password" placeholder="np. dep_9a7b6c5d...">
-            <div class="hint small muted">Wpisz w konsoli serwera <code>/deployra token</code>, aby pobrać wygenerowany token.</div>
-          </div>
-
-          <!-- Sekcja FTP -->
-          <div class="card" style="background: rgba(255,255,255,0.02); border: 1px dashed var(--border); padding: 12px 14px;">
-            <div class="row" style="justify-content: space-between; align-items: center; cursor: pointer" @click="showFtpFields = !showFtpFields">
-              <div class="row" style="gap: 8px; align-items: center">
-                <i class="bi bi-folder2-open" style="color: #3498db"></i>
-                <span style="font-weight: 600; font-size: 0.95rem">Ustawienia FTP hostingu (Opcjonalne)</span>
-              </div>
-              <i class="bi" :class="showFtpFields ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
-            </div>
-
-            <div x-show="showFtpFields" class="stack" style="gap: 12px; margin-top: 14px" x-cloak>
-              <div class="row" style="gap: 12px">
-                <div class="field" style="flex: 2">
-                  <label for="f-ftp-host">Host FTP</label>
-                  <input class="input" id="f-ftp-host" name="ftp_host" type="text" placeholder="Domyślnie taki sam jak IP serwera">
-                </div>
-                <div class="field" style="flex: 1">
-                  <label for="f-ftp-port">Port FTP</label>
-                  <input class="input mono" id="f-ftp-port" name="ftp_port" type="number" value="21">
-                </div>
-              </div>
-              <div class="row" style="gap: 12px">
-                <div class="field" style="flex: 1">
-                  <label for="f-ftp-user">Użytkownik FTP</label>
-                  <input class="input" id="f-ftp-user" name="ftp_user" type="text" placeholder="np. u1234_mc">
-                </div>
-                <div class="field" style="flex: 1">
-                  <label for="f-ftp-pass">Hasło FTP</label>
-                  <input class="input" id="f-ftp-pass" name="ftp_pass" type="password">
-                </div>
-              </div>
-              <div class="row" style="gap: 16px; align-items: center">
-                <label class="row" style="gap: 8px; align-items: center; cursor: pointer">
-                  <input type="checkbox" name="ftp_tls" value="true">
-                  <span class="small">Wymuś FTPS (TLS)</span>
-                </label>
-                <label class="row" style="gap: 8px; align-items: center; cursor: pointer">
-                  <input type="checkbox" name="ftp_enabled" value="true" checked>
-                  <span class="small">Włącz zarządzanie przez FTP</span>
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card-foot row" style="justify-content: flex-end; gap: 8px">
-          <button type="button" class="btn" @click="addOpen = false">Anuluj</button>
-          <button type="submit" class="btn primary"><i class="bi bi-plus-lg"></i> Dodaj serwer</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
+  {% endfor %}
 </div>
+{% else %}
+<div class="card">{{ empty("controller", t("mc.empty_title"), t("mc.empty_text")) }}</div>
+{% endif %}
+
+{% if has(user, P.ALLOW_MODIFY_DOCKERS) %}
+<div x-data="{ open: false }" @mc-add.window="open = true">
+  <div class="modal-backdrop" x-show="open" x-cloak @keydown.escape.window="open = false">
+    <form class="card modal" style="max-width: 440px" hx-post="/minecraft/add" hx-swap="none" @click.outside="open = false">
+      <div class="card-head"><h3><i class="bi bi-plus-lg"></i> {{ t("mc.add_external") }}</h3></div>
+      <div class="card-body stack">
+        <input class="input" name="name" placeholder="{{ t('mc.name_placeholder') }}" maxlength="60" required>
+      </div>
+      <div class="card-body row" style="justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border)">
+        <button type="button" class="btn ghost sm" @click="open = false">{{ t("common.cancel") }}</button>
+        <button class="btn primary sm"><span class="spin"></span>{{ t("common.add") }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

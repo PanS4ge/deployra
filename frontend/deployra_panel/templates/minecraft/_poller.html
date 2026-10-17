@@ -1,0 +1,2 @@
+{% if lines %}<div hx-swap-oob="beforeend:#mc-log">{% for line in lines %}<div>{{ line }}</div>{% endfor %}</div>{% endif %}
+<div id="mc-poll" hx-get="/minecraft/{{ s.id }}/logs?since={{ since }}" hx-trigger="every 2s [!document.hidden]" hx-swap="outerHTML"></div>

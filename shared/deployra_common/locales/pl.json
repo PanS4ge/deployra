@@ -254,6 +254,19 @@
       "too_big": "archiwum po rozpakowaniu jest za duże",
       "too_many": "za dużo plików w archiwum (> {max})",
       "unsafe": "niebezpieczna ścieżka w archiwum: {name}"
+    },
+    "files": {
+      "no_dir": "Katalog nie istnieje albo brak uprawnień: {path}",
+      "exec_failed": "Polecenie w kontenerze się nie powiodło: {error}",
+      "cant_read": "Nie można odczytać {path}: {error}",
+      "empty_archive": "Puste archiwum pliku",
+      "too_big": "Plik jest za duży do podglądu — pobierz go",
+      "is_dir": "{path} jest katalogiem",
+      "not_file": "{path} nie jest plikiem",
+      "bad_path": "Nieprawidłowa ścieżka",
+      "protected": "Nie można usunąć katalogu systemowego {path}",
+      "stopped_only_mounts": "Kontener jest zatrzymany — dostępne są tylko podpięte foldery",
+      "read_only": "Folder {path} jest podpięty tylko do odczytu"
     }
   },
   "srv": {
@@ -311,7 +324,9 @@
       "bad_version": "nieprawidłowy numer wersji: {value}",
       "no_updater": "brak aktualizatora — zaktualizuj ręcznie (Portainer: „Pull and redeploy”, compose: pull + up -d)",
       "running": "aktualizacja do {version} już trwa",
-      "no_data_mount": "katalog danych {path} nie jest na wolumenie — stan aktualizacji nie przeżyłby podmiany kontenera"
+      "no_data_mount": "katalog danych {path} nie jest na wolumenie — stan aktualizacji nie przeżyłby podmiany kontenera",
+      "no_peer": "Na tym hoście nie ma kontenera panelu ani bramki „{name}”",
+      "local_image": "Kontener zbudowany lokalnie — aktualizuj go ze źródeł (git pull + build)"
     },
     "wg": {
       "bad_endpoint": "zły endpoint: {value}",

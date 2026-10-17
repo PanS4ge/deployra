@@ -3,3 +3,5 @@ build/
 *.class
 .idea/
 *.iml
+# jary API (paper-api itd.) tylko lokalnie — nie są częścią repozytorium
+libs/

@@ -13,8 +13,11 @@
         </td>
         <td class="small">
           {% if not c.online %}<span class="badge err">{{ c.error or "offline" }}</span>
-          {% elif u.available %}<span class="badge info">{{ t("updates.mode." ~ u.mode) }}</span>
-          {% else %}<span class="badge" title="{{ t('updates.no_updater_hint') }}">{{ t("updates.none") }}</span>{% endif %}
+          {% elif u.available and u.mode == "node" %}<span class="badge info">{{ t("updates.mode_node", node=c.via.name) }}</span>
+          {% elif u.available %}<span class="badge info">{{ t("updates.mode." ~ u.mode) if u.mode in ("image", "native", "source") else u.mode }}</span>
+          {% else %}{% set reason = u.reason if u.reason in ("disabled", "no_container", "no_docker", "not_backend", "local_image", "no_updater") else None %}
+            <span class="badge" title="{{ t('updates.reason.' ~ reason) if reason else t('updates.no_updater_hint') }}">{{ t("updates.none") }}</span>
+            {% if reason %}<div class="small muted">{{ t("updates.reason." ~ reason) }}</div>{% endif %}{% endif %}
         </td>
         <td class="small">
           {% if u.state in ("queued", "running") %}<span class="row" style="gap: 6px"><span class="spin"></span>{{ describe(u) or t("jobs.running") }}</span>

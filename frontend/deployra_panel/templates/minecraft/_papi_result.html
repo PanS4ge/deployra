@@ -1,0 +1,2 @@
+{% if data.installed is sameas false %}<div class="callout warn small"><i class="bi bi-exclamation-triangle"></i> {{ t("mc.papi_missing") }}</div>
+{% else %}<pre class="code-block">{{ data.result }}</pre>{% endif %}

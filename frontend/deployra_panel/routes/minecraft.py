@@ -1,901 +1,449 @@
-"""Obsługa serwerów Minecraft (mostek DeployraBridge dla hostingów współdzielonych + klient FTP)."""
+"""Minecraft: serwery z pluginem DeployraBridge (aplikacje na węzłach i hostingi zewnętrzne)."""
 
 from __future__ import annotations
 
-import asyncio
-import io
+import base64
+import json
 import posixpath
-import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote, urlencode
 
-import httpx
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import FileResponse, JSONResponse
+
+from deployra_common import hmac_auth
 
 from ..context import Panel, get_panel
-from ..deps import current_user
-from ..services.ftp_client import FtpClientService
+from ..deps import current_user, require
+from ..i18n import t
+from ..permissions import Permission
+from ..services import minecraft as mc
 from ..web import redirect, render, toast
 
 public = APIRouter()
 router = APIRouter(dependencies=[Depends(current_user)])
-
-JAR_PATH = Path(__file__).parent.parent / "static" / "downloads" / "DeployraBridge-1.0.0.jar"
-
-DEFAULT_MACROS: list[dict[str, str]] = [
-    {"name": "☀️ Dzień", "cmd": "time set day", "icon": "bi-sun", "color": "#f1c40f"},
-    {"name": "🌙 Noc", "cmd": "time set night", "icon": "bi-moon-stars", "color": "#9b59b6"},
-    {"name": "⚡ Pogoda: Czyste niebo", "cmd": "weather clear", "icon": "bi-cloud-sun", "color": "#3498db"},
-    {"name": "💾 Zapisz świat", "cmd": "save-all", "icon": "bi-save", "color": "#2ecc71"},
-    {"name": "📦 Przeładuj serwer", "cmd": "reload confirm", "icon": "bi-arrow-repeat", "color": "#e67e22"},
-    {"name": "🧹 Wyczyść przedmioty", "cmd": "kill @e[type=item]", "icon": "bi-trash", "color": "#e74c3c"},
-    {"name": "❤️ Ulecz wszystkich", "cmd": "effect give @a instant_health 1 255", "icon": "bi-heart-pulse", "color": "#e74c3c"},
-    {"name": "🍗 Nakarm wszystkich", "cmd": "effect give @a saturation 1 255", "icon": "bi-egg-fried", "color": "#f39c12"},
-    {"name": "🛡️ Whitelist ON", "cmd": "whitelist on", "icon": "bi-shield-check", "color": "#27ae60"},
-    {"name": "🔓 Whitelist OFF", "cmd": "whitelist off", "icon": "bi-shield-slash", "color": "#c0392b"},
-    {"name": "👥 Lista graczy", "cmd": "list", "icon": "bi-people", "color": "#34495e"},
-    {"name": "⚡ Sprawdź TPS", "cmd": "tps", "icon": "bi-speedometer2", "color": "#1abc9c"},
-]
+JAR = Path(__file__).resolve().parent.parent / "static" / "downloads" / "DeployraBridge.jar"
+TABS = ("console", "players", "properties", "files", "papi", "settings")
 
 
-def _get_servers(panel: Panel) -> list[dict[str, Any]]:
-    return panel.db.setting("minecraft_servers", [])
+def panel_url(request: Request, panel: Panel) -> str:
+    domain = panel.db.setting("panel_domain")
+    return f"https://{domain}" if domain else str(request.base_url).rstrip("/")
 
 
-def _save_servers(panel: Panel, servers: list[dict[str, Any]]) -> None:
-    panel.db.set_setting("minecraft_servers", servers)
+def _server(server_id: int, panel: Panel = Depends(get_panel)) -> dict:
+    row = mc.server(panel, server_id)
+    if not row:
+        raise HTTPException(404, t("mc.not_found"))
+    return row
 
 
-def _get_server(panel: Panel, server_id: int) -> dict[str, Any] | None:
-    servers = _get_servers(panel)
-    return next((s for s in servers if s.get("id") == server_id), None)
+def _bridge_error(exc: Exception) -> Response:
+    if isinstance(exc, mc.Offline):
+        return toast(t("mc.offline"), "err", status=409)
+    return toast(t("mc.bridge_error", error=str(exc)), "err", status=502)
 
 
-def _update_server(panel: Panel, server_id: int, updates: dict[str, Any]) -> dict[str, Any] | None:
-    servers = _get_servers(panel)
-    for s in servers:
-        if s.get("id") == server_id:
-            s.update(updates)
-            _save_servers(panel, servers)
-            return s
-    return None
+# --- plugin: parowanie i kanał poleceń (bez sesji, podpis HMAC) ---------------------------------------
 
 
-def _get_ftp(server: dict[str, Any]) -> FtpClientService | None:
-    host = server.get("ftp_host") or server.get("host")
-    if not host or not server.get("ftp_user"):
-        return None
-    return FtpClientService(
-        host=host,
-        port=server.get("ftp_port", 21),
-        username=server.get("ftp_user", ""),
-        password=server.get("ftp_pass", ""),
-        use_tls=server.get("ftp_tls", False),
-        timeout=8.0,
-    )
+@public.get("/minecraft/download/DeployraBridge.jar")
+def download_plugin() -> FileResponse:
+    return FileResponse(JAR, media_type="application/java-archive", filename="DeployraBridge.jar")
 
 
-async def _fetch_status(server: dict[str, Any]) -> dict[str, Any]:
-    url = f"http://{server['host']}:{server['port']}/api/info"
-    headers = {"Authorization": f"Bearer {server.get('token', '')}"}
+@public.post("/minecraft/bridge/pair")
+async def bridge_pair(request: Request, panel: Panel = Depends(get_panel)):
     try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            resp = await client.get(url, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                server["online"] = True
-                server["data"] = data
-                return server
-    except Exception:
-        pass
-    server["online"] = False
-    server["data"] = {}
-    return server
+        data = json.loads(await request.body() or b"{}")
+    except ValueError:
+        data = {}
+    client_ip = request.client.host if request.client else "?"
+    found = mc.pair(panel, str(data.get("code") or "")[:64], data, client_ip)
+    if not found:
+        return JSONResponse({"detail": "invalid or expired pairing code"}, status_code=403)
+    return found
 
 
-async def _fetch_players(server: dict[str, Any]) -> list[dict[str, Any]]:
-    if not server.get("online"):
-        return []
-    url = f"http://{server['host']}:{server['port']}/api/players"
-    headers = {"Authorization": f"Bearer {server.get('token', '')}"}
+@public.post("/minecraft/bridge/poll")
+async def bridge_poll(request: Request, panel: Panel = Depends(get_panel)):
+    path = "/minecraft/bridge/poll"
+    body = await request.body()
+    if len(body) > 16 * 1024 * 1024:
+        return JSONResponse({"detail": "too large"}, status_code=413)
     try:
-        async with httpx.AsyncClient(timeout=2.5) as client:
-            resp = await client.get(url, headers=headers)
-            if resp.status_code == 200:
-                return resp.json().get("players", [])
-    except Exception:
-        pass
-    return []
+        row = mc.verify(panel, path, body, request.headers)
+        payload = json.loads(body or b"{}")
+    except (hmac_auth.SignatureError, ValueError) as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=401)
+    commands = await mc.poll(panel, row, payload if isinstance(payload, dict) else {})
+    out = json.dumps({"commands": commands}).encode()
+    nonce = request.headers.get(hmac_auth.H_NONCE, "")
+    return Response(out, media_type="application/json", headers=mc.sign_response(mc.secret_of(panel, row), f"{path}#{nonce}", out))
 
 
-async def _fetch_properties(server: dict[str, Any]) -> dict[str, str]:
-    # Próba 1: Jeśli FTP jest skonfigurowane, czytamy server.properties z FTP
-    ftp = _get_ftp(server)
-    if ftp and server.get("ftp_enabled"):
-        try:
-            raw = ftp.read_text("server.properties")
-            props: dict[str, str] = {}
-            for line in raw.splitlines():
-                line = line.strip()
-                if line and not line.startswith(("#", "!")):
-                    eq = line.find("=")
-                    if eq > 0:
-                        props[line[:eq].strip()] = line[eq + 1:].strip()
-            return props
-        except Exception:
-            pass
-
-    # Próba 2: Przez bridge plugin
-    if server.get("online"):
-        url = f"http://{server['host']}:{server['port']}/api/properties"
-        headers = {"Authorization": f"Bearer {server.get('token', '')}"}
-        try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                resp = await client.get(url, headers=headers)
-                if resp.status_code == 200:
-                    return resp.json().get("properties", {})
-        except Exception:
-            pass
-
-    return {}
-
-
-async def _save_properties(server: dict[str, Any], updates: dict[str, str]) -> tuple[bool, str]:
-    # Próba 1: FTP
-    ftp = _get_ftp(server)
-    if ftp and server.get("ftp_enabled"):
-        try:
-            raw = ""
-            try:
-                raw = ftp.read_text("server.properties")
-            except Exception:
-                pass
-
-            existing_lines = raw.splitlines()
-            new_lines = []
-            seen_keys = set()
-            for line in existing_lines:
-                trimmed = line.strip()
-                if trimmed and not trimmed.startswith(("#", "!")):
-                    eq = trimmed.find("=")
-                    if eq > 0:
-                        k = trimmed[:eq].strip()
-                        if k in updates:
-                            new_lines.append(f"{k}={updates[k]}")
-                            seen_keys.add(k)
-                            continue
-                new_lines.append(line)
-
-            for k, v in updates.items():
-                if k not in seen_keys:
-                    new_lines.append(f"{k}={v}")
-
-            ftp.write_text("server.properties", "\n".join(new_lines) + "\n")
-            return True, "Zapisano server.properties przez FTP."
-        except Exception as e:
-            return False, f"Błąd zapisu przez FTP: {e}"
-
-    # Próba 2: Bridge Plugin
-    if server.get("online"):
-        url = f"http://{server['host']}:{server['port']}/api/properties"
-        headers = {"Authorization": f"Bearer {server.get('token', '')}"}
-        try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
-                resp = await client.post(url, headers=headers, json={"properties": updates})
-                if resp.status_code == 200:
-                    return True, "Zapisano server.properties przez DeployraBridge."
-                return False, f"Błąd bridge {resp.status_code}: {resp.text}"
-        except Exception as e:
-            return False, f"Błąd połączenia z bridge: {e}"
-
-    return False, "Brak połączenia z FTP ani z pluginem DeployraBridge."
-
-
-@public.get("/minecraft/download")
-def download_plugin():
-    if not JAR_PATH.exists():
-        raise HTTPException(404, "Plik pluginu DeployraBridge nie został odnaleziony.")
-    return FileResponse(
-        JAR_PATH,
-        filename="DeployraBridge-1.0.0.jar",
-        media_type="application/java-archive",
-    )
+# --- lista i dodawanie ---------------------------------------------------------------------------------
 
 
 @router.get("/minecraft")
-async def list_page(request: Request, panel: Panel = Depends(get_panel)):
-    servers = _get_servers(panel)
-    if servers:
-        tasks = [_fetch_status(dict(s)) for s in servers]
-        servers_with_status = await asyncio.gather(*tasks)
-    else:
-        servers_with_status = []
-
-    return render(
-        request,
-        "minecraft/list.html",
-        title="Serwery Minecraft",
-        section="minecraft",
-        servers=servers_with_status,
-    )
+def list_page(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SEEKING_CONTAINER))):
+    mc.import_legacy(panel)
+    rows = mc.servers(panel)
+    apps = {a["id"]: a for a in panel.db.fetchall("SELECT id, name, slug, status FROM apps")}
+    items = [{"row": r, "online": mc.online(r), "info": mc.info(r), "app": apps.get(r.get("app_id"))} for r in rows]
+    return render(request, "minecraft/list.html", title="Minecraft", items=items)
 
 
 @router.post("/minecraft/add")
-async def add_server(
-    request: Request,
-    name: str = Form(...),
-    host: str = Form(...),
-    port: int = Form(25585),
-    token: str = Form(""),
-    ftp_host: str = Form(""),
-    ftp_port: int = Form(21),
-    ftp_user: str = Form(""),
-    ftp_pass: str = Form(""),
-    ftp_tls: bool = Form(False),
-    ftp_enabled: bool = Form(False),
-    panel: Panel = Depends(get_panel),
-):
-    host = host.strip()
-    name = name.strip() or f"Minecraft ({host}:{port})"
-    token = token.strip()
+async def add_server(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):
+    form = await request.form()
+    name = str(form.get("name") or "").strip()
+    if not name:
+        return toast(t("common.required_field"), "err", status=400)
+    app_id = int(form.get("app_id") or 0) or None
+    if app_id and not panel.db.get("apps", app_id):
+        return toast(t("msg.bad_data"), "err", status=400)
+    server_id, _ = mc.create(panel, name, app_id)
+    return redirect(request, f"/minecraft/{server_id}?tab=settings")
 
-    test_url = f"http://{host}:{port}/health"
-    online = False
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(test_url)
-            if resp.status_code == 200:
-                online = True
-    except Exception:
-        pass
 
-    servers = _get_servers(panel)
-    new_id = max([s.get("id", 0) for s in servers], default=0) + 1
-
-    servers.append({
-        "id": new_id,
-        "name": name,
-        "host": host,
-        "port": port,
-        "token": token,
-        "ftp_host": ftp_host.strip() or host,
-        "ftp_port": ftp_port,
-        "ftp_user": ftp_user.strip(),
-        "ftp_pass": ftp_pass,
-        "ftp_tls": bool(ftp_tls),
-        "ftp_enabled": bool(ftp_enabled or ftp_user.strip()),
-        "macros": list(DEFAULT_MACROS),
-        "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-    })
-    _save_servers(panel, servers)
-
-    msg = f"Serwer '{name}' został dodany!" if online else f"Serwer '{name}' został dodany (obecnie offline)."
-    return redirect(request, f"/minecraft/{new_id}", msg)
+# --- szczegóły -------------------------------------------------------------------------------------------
 
 
 @router.get("/minecraft/{server_id}")
-async def detail_page(
-    request: Request,
-    server_id: int,
-    tab: str = Query("console"),
-    player: str = Query(""),
-    panel: Panel = Depends(get_panel),
-):
-    server = _get_server(panel, server_id)
-    if not server:
-        raise HTTPException(404, "Serwer Minecraft nie został odnaleziony.")
+def detail_page(request: Request, tab: str = "console", row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                user: dict = Depends(require(Permission.ALLOW_SEEKING_CONTAINER))):  # fmt: skip
+    tab = tab if tab in TABS else "console"
+    from ..permissions import has
 
-    # Inicjalizacja makr jeśli serwer ich jeszcze nie ma
-    if "macros" not in server or not server["macros"]:
-        server["macros"] = list(DEFAULT_MACROS)
-        _update_server(panel, server_id, {"macros": server["macros"]})
-
-    server_status = await _fetch_status(dict(server))
-    data = server_status.get("data", {})
-
-    # Pobierz graczy
-    players_rich = []
-    if server_status["online"]:
-        players_rich = await _fetch_players(server_status)
-
-    # Pobierz właściwości serwera
-    properties = await _fetch_properties(server_status)
-
-    # Pobierz logi
-    logs = []
-    if server_status["online"]:
-        try:
-            async with httpx.AsyncClient(timeout=2.0) as client:
-                r = await client.get(
-                    f"http://{server['host']}:{server['port']}/api/logs",
-                    headers={"Authorization": f"Bearer {server.get('token', '')}"},
-                )
-                if r.status_code == 200:
-                    logs = r.json().get("lines", [])
-        except Exception:
-            pass
-
-    # Sprawdź stan PAPI
-    papi_status: dict[str, Any] = {"enabled": False, "version": None, "expansions": []}
-    if server_status["online"]:
-        try:
-            async with httpx.AsyncClient(timeout=2.0) as client:
-                r = await client.get(
-                    f"http://{server['host']}:{server['port']}/api/papi/status",
-                    headers={"Authorization": f"Bearer {server.get('token', '')}"},
-                )
-                if r.status_code == 200:
-                    papi_status = r.json()
-        except Exception:
-            pass
-
-    # Stan połączenia FTP
-    ftp_ok = False
-    ftp_msg = "Nie skonfigurowano FTP"
-    ftp = _get_ftp(server)
-    if ftp and server.get("ftp_enabled"):
-        ftp_ok, ftp_msg = ftp.test_connection()
-
-    return render(
-        request,
-        "minecraft/detail.html",
-        title=f"Minecraft: {server['name']}",
-        section="minecraft",
-        server=server_status,
-        data=data,
-        players_rich=players_rich,
-        properties=properties,
-        logs=logs,
-        papi=papi_status,
-        ftp_ok=ftp_ok,
-        ftp_msg=ftp_msg,
-        default_macros=DEFAULT_MACROS,
-        active_tab=tab,
-        active_player=player,
-    )
+    app = panel.db.get("apps", row["app_id"]) if row.get("app_id") else None
+    manager = has(user, Permission.ALLOW_MODIFY_DOCKERS)  # kod parowania pozwala podpiąć dowolny serwer — tylko dla zarządzających
+    ftp = mc.get_ftp(panel, row) if manager else None
+    ftp = {k: v for k, v in ftp.items() if k != "password"} if ftp else None
+    return render(request, "minecraft/detail.html", title=row["name"], s=row, tab=tab, online=mc.online(row), info=mc.info(row), app=app,
+                  code=mc.pending_code(panel, row) if manager else None, panel_url=panel_url(request, panel), macros=mc.macros(row), ftp=ftp,
+                  manager=manager)  # fmt: skip
 
 
-@router.post("/minecraft/{server_id}/settings")
-async def update_settings(
-    request: Request,
-    server_id: int,
-    name: str = Form(...),
-    host: str = Form(...),
-    port: int = Form(...),
-    token: str = Form(""),
-    ftp_host: str = Form(""),
-    ftp_port: int = Form(21),
-    ftp_user: str = Form(""),
-    ftp_pass: str = Form(""),
-    ftp_tls: bool = Form(False),
-    ftp_enabled: bool = Form(False),
-    panel: Panel = Depends(get_panel),
-):
-    updates = {
-        "name": name.strip(),
-        "host": host.strip(),
-        "port": port,
-        "token": token.strip(),
-        "ftp_host": ftp_host.strip(),
-        "ftp_port": ftp_port,
-        "ftp_user": ftp_user.strip(),
-        "ftp_pass": ftp_pass,
-        "ftp_tls": bool(ftp_tls),
-        "ftp_enabled": bool(ftp_enabled or ftp_user.strip()),
-    }
-    _update_server(panel, server_id, updates)
-    return redirect(request, f"/minecraft/{server_id}?tab=settings", "Ustawienia serwera zostały zaktualizowane.")
-
-
-@router.post("/minecraft/{server_id}/ftp/test")
-async def test_ftp(request: Request, server_id: int, panel: Panel = Depends(get_panel)):
-    server = _get_server(panel, server_id)
-    if not server:
-        return JSONResponse({"ok": False, "message": "Serwer nie istnieje."}, status_code=404)
-    ftp = _get_ftp(server)
-    if not ftp:
-        return JSONResponse({"ok": False, "message": "Uzupełnij dane logowania FTP (host, użytkownik, hasło)."})
-    ok, msg = ftp.test_connection()
-    return JSONResponse({"ok": ok, "message": msg})
+@router.get("/minecraft/{server_id}/status")
+def status_badge(request: Request, row: dict = Depends(_server), user: dict = Depends(require(Permission.ALLOW_SEEKING_CONTAINER))):
+    return render(request, "minecraft/_status.html", s=row, online=mc.online(row), info=mc.info(row))
 
 
 @router.post("/minecraft/{server_id}/command")
-async def execute_command(
-    request: Request,
-    server_id: int,
-    command: str = Form(...),
-    panel: Panel = Depends(get_panel),
-):
-    server = _get_server(panel, server_id)
-    if not server:
-        raise HTTPException(404, "Serwer nie został odnaleziony.")
-
+async def command(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                  user: dict = Depends(require(Permission.ALLOW_CONTAINER_TERMINAL))):  # fmt: skip
+    form = await request.form()
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.post(
-                f"http://{server['host']}:{server['port']}/api/command",
-                headers={"Authorization": f"Bearer {server.get('token', '')}"},
-                json={"command": command},
-            )
-            if resp.status_code == 200:
-                res = resp.json()
-                return JSONResponse({"ok": True, "output": res.get("output", "Wykonano.")})
-            return JSONResponse({"ok": False, "output": f"Błąd {resp.status_code}: {resp.text}"}, status_code=resp.status_code)
-    except Exception as e:
-        return JSONResponse({"ok": False, "output": f"Błąd połączenia z serwerem: {e}"}, status_code=500)
-
-
-@router.post("/minecraft/{server_id}/action")
-async def execute_action(
-    request: Request,
-    server_id: int,
-    action: str = Form(...),
-    panel: Panel = Depends(get_panel),
-):
-    server = _get_server(panel, server_id)
-    if not server:
-        raise HTTPException(404, "Serwer nie został odnaleziony.")
-
+        line = mc.clean_command(str(form.get("command") or ""))
+    except ValueError:
+        return toast(t("mc.bad_command"), "err", status=400)
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.post(
-                f"http://{server['host']}:{server['port']}/api/action",
-                headers={"Authorization": f"Bearer {server.get('token', '')}"},
-                json={"action": action},
-            )
-            if resp.status_code == 200:
-                return redirect(request, f"/minecraft/{server_id}", f"Akcja '{action}' wykonana pomyślnie.")
-    except Exception:
-        pass
-    return redirect(request, f"/minecraft/{server_id}", f"Nie udało się wykonać akcji '{action}'.")
+        data = await mc.call(panel, row, "command", {"command": line})
+    except (mc.Offline, mc.BridgeError) as exc:
+        return _bridge_error(exc)
+    return render(request, "minecraft/_lines.html", lines=[f"> {line}", *[str(x) for x in data.get("output") or []]], oob=True)
 
 
-@router.post("/minecraft/{server_id}/players/action")
-async def player_action(
-    request: Request,
-    server_id: int,
-    player: str = Form(...),
-    action: str = Form(...),
-    value: str = Form(""),
-    panel: Panel = Depends(get_panel),
-):
-    server = _get_server(panel, server_id)
-    if not server:
-        return JSONResponse({"ok": False, "error": "Serwer nie znaleziony."}, status_code=404)
-
+@router.get("/minecraft/{server_id}/logs")
+async def logs(request: Request, since: int = 0, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+               user: dict = Depends(require(Permission.ALLOW_CONTAINER_TERMINAL))):  # fmt: skip
     try:
-        async with httpx.AsyncClient(timeout=6.0) as client:
-            resp = await client.post(
-                f"http://{server['host']}:{server['port']}/api/players/action",
-                headers={"Authorization": f"Bearer {server.get('token', '')}"},
-                json={"player": player, "action": action, "value": value},
-            )
-            if resp.status_code == 200:
-                return JSONResponse(resp.json())
-            return JSONResponse({"ok": False, "error": f"Błąd {resp.status_code}: {resp.text}"}, status_code=resp.status_code)
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": f"Błąd połączenia: {e}"}, status_code=500)
+        data = await mc.call(panel, row, "logs", {"since": since}, timeout=10)
+    except (mc.Offline, mc.BridgeError):
+        return render(request, "minecraft/_poller.html", s=row, since=since, lines=[])
+    return render(request, "minecraft/_poller.html", s=row, since=int(data.get("next") or since), lines=data.get("lines") or [])
+
+
+@router.get("/minecraft/{server_id}/players")
+async def players(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                  user: dict = Depends(require(Permission.ALLOW_SEEKING_CONTAINER))):  # fmt: skip
+    error = None
+    try:
+        data = await mc.call(panel, row, "players")
+    except (mc.Offline, mc.BridgeError) as exc:
+        data, error = {}, t("mc.offline") if isinstance(exc, mc.Offline) else str(exc)
+    return render(request, "minecraft/_players.html", s=row, players=data.get("players") or [], error=error)
+
+
+@router.post("/minecraft/{server_id}/player")
+async def player_action(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                        user: dict = Depends(require(Permission.ALLOW_CONTAINER_TERMINAL))):  # fmt: skip
+    form = await request.form()
+    try:
+        op, args = mc.player_command(str(form.get("action") or ""), str(form.get("name") or ""), str(form.get("reason") or ""))
+    except ValueError:
+        return toast(t("mc.bad_player"), "err", status=400)
+    try:
+        data = await mc.call(panel, row, op, args)
+    except (mc.Offline, mc.BridgeError) as exc:
+        return _bridge_error(exc)
+    return toast(str(data.get("message") or t("mc.done")), extra={"mc-players": True})
 
 
 @router.get("/minecraft/{server_id}/properties")
-async def get_properties_endpoint(server_id: int, panel: Panel = Depends(get_panel)):
-    server = _get_server(panel, server_id)
-    if not server:
-        return JSONResponse({"ok": False, "error": "Serwer nie znaleziony."}, status_code=404)
-    props = await _fetch_properties(server)
-    return JSONResponse({"ok": True, "properties": props})
+async def properties(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                     user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES))):  # fmt: skip
+    try:
+        props = (await mc.call(panel, row, "properties.get")).get("properties") or {}
+    except (mc.Offline, mc.BridgeError) as exc:
+        return render(request, "minecraft/_properties.html", s=row, error=t("mc.offline") if isinstance(exc, mc.Offline) else str(exc))
+    known = dict(mc.PROPERTIES)
+    return render(request, "minecraft/_properties.html", s=row, fields=mc.PROPERTIES, props=props,
+                  others=sorted(k for k in props if k not in known), error=None)  # fmt: skip
 
 
 @router.post("/minecraft/{server_id}/properties")
-async def save_properties_endpoint(
-    request: Request,
-    server_id: int,
-    panel: Panel = Depends(get_panel),
-):
-    server = _get_server(panel, server_id)
-    if not server:
-        raise HTTPException(404, "Serwer nie znaleziony.")
-
-    form_data = await request.form()
-    updates: dict[str, str] = {}
-    for k, v in form_data.items():
-        if k not in ("_csrf_token", "server_id"):
-            updates[k] = str(v)
-
-    ok, msg = await _save_properties(server, updates)
-    return redirect(request, f"/minecraft/{server_id}?tab=options", msg)
+async def save_properties(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                          user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES_WRITE))):  # fmt: skip
+    form = await request.form()
+    changes = {}
+    for key in {k for k in form.keys() if k.startswith("p:")}:
+        values = form.getlist(key)  # pole bool: ukryte „false” + zaznaczone „true” — liczy się ostatnie
+        value = str(values[-1] if values else "").replace("\r", "").replace("\n", " ")
+        changes[key[2:]] = value[:400]
+    try:
+        await mc.call(panel, row, "properties.set", {"properties": changes})
+    except (mc.Offline, mc.BridgeError) as exc:
+        return _bridge_error(exc)
+    return toast(t("mc.properties_saved"))
 
 
-# --- FILE MANAGER ENDPOINTS (FTP + BRIDGE FALLBACK) ---
+# --- pliki: plugin, a gdy serwer jest wyłączony — FTP ------------------------------------------------------
 
 
-@router.get("/minecraft/{server_id}/files/list")
-async def files_list(server_id: int, path: str = Query("/"), panel: Panel = Depends(get_panel)):
-    server = _get_server(panel, server_id)
-    if not server:
-        return JSONResponse({"ok": False, "error": "Serwer nie znaleziony."}, status_code=404)
+def _files_url(server_id: int, path: str) -> str:
+    return f"/minecraft/{server_id}/files?{urlencode({'path': path})}"
 
-    # 1. Próba FTP
-    ftp = _get_ftp(server)
-    if ftp and server.get("ftp_enabled"):
-        try:
-            items = ftp.list_dir(path)
-            return JSONResponse({
-                "ok": True,
-                "path": path,
-                "mode": "ftp",
-                "files": [i.to_dict() for i in items],
-            })
-        except Exception as e:
-            # Jeśli FTP zawiedzie, próbujemy bridge plugin
-            pass
 
-    # 2. Próba Bridge Plugin
-    if server.get("online"):
-        try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
-                r = await client.get(
-                    f"http://{server['host']}:{server['port']}/api/files/list",
-                    headers={"Authorization": f"Bearer {server.get('token', '')}"},
-                    params={"path": path},
-                )
-                if r.status_code == 200:
-                    data = r.json()
-                    data["mode"] = "bridge"
-                    return JSONResponse(data)
-        except Exception:
-            pass
+async def _files(panel: Panel, row: dict, op: str, args: dict) -> dict:
+    """Operacja na plikach przez plugin, z FTP jako zapasem (serwer wyłączony)."""
+    if mc.online(row) and row.get("secret"):
+        return await mc.call(panel, row, f"files.{op}", args, timeout=60)
+    ftp = mc.get_ftp(panel, row)
+    if not ftp:
+        raise mc.Offline
+    path = mc.clean_path(args.get("path") or "/")
+    if op == "list":
+        return {"items": await mc.ftp_call(ftp, "list", path), "via": "ftp"}
+    if op == "read":
+        return {"data_b64": base64.b64encode(await mc.ftp_call(ftp, "read", path)).decode()}
+    if op == "write":
+        await mc.ftp_call(ftp, "write", path, base64.b64decode(args["data_b64"]))
+    elif op == "delete":
+        await mc.ftp_call(ftp, "delete", path, bool(args.get("is_dir")))
+    elif op == "mkdir":
+        await mc.ftp_call(ftp, "mkdir", path)
+    return {}
 
-    return JSONResponse({
-        "ok": False,
-        "error": "Nie udało się pobrać listy plików (brak połączenia FTP i Bridge).",
-    }, status_code=500)
+
+@router.get("/minecraft/{server_id}/files")
+async def files(request: Request, path: str = "/", row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES))):  # fmt: skip
+    path = mc.clean_path(path)
+    error, data = None, {}
+    try:
+        data = await _files(panel, row, "list", {"path": path})
+    except mc.Offline:
+        error = t("mc.files_offline")
+    except Exception as exc:  # noqa: BLE001 — błąd pluginu albo FTP pokazujemy w tabeli
+        error = str(exc)[:300]
+    crumbs, acc = [], ""
+    for part in [x for x in path.strip("/").split("/") if x]:
+        acc += "/" + part
+        crumbs.append({"name": part, "url": _files_url(row["id"], acc)})
+    items = []
+    for item in data.get("items") or []:
+        item_path = mc.clean_path(posixpath.join(path, str(item.get("name") or "")))
+        items.append({**item, "path": item_path, "url": _files_url(row["id"], item_path) if item.get("is_dir") else None,
+                      "download": None if item.get("is_dir") else f"/minecraft/{row['id']}/files/download?path={quote(item_path)}"})  # fmt: skip
+    parent = None if path == "/" else (path.rstrip("/").rpartition("/")[0] or "/")
+    return render(request, "minecraft/_files.html", s=row, cur_path=path, items=items, crumbs=crumbs, error=error, via=data.get("via"),
+                  self_url=_files_url(row["id"], path), root_url=_files_url(row["id"], "/"),
+                  parent_url=_files_url(row["id"], parent) if parent else None)  # fmt: skip
 
 
 @router.get("/minecraft/{server_id}/files/read")
-async def files_read(server_id: int, path: str = Query(...), panel: Panel = Depends(get_panel)):
-    server = _get_server(panel, server_id)
-    if not server:
-        return JSONResponse({"ok": False, "error": "Serwer nie znaleziony."}, status_code=404)
-
-    # 1. FTP
-    ftp = _get_ftp(server)
-    if ftp and server.get("ftp_enabled"):
-        try:
-            text = ftp.read_text(path)
-            return JSONResponse({"ok": True, "path": path, "content": text})
-        except Exception:
-            pass
-
-    # 2. Bridge Plugin
-    if server.get("online"):
-        try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
-                r = await client.get(
-                    f"http://{server['host']}:{server['port']}/api/files/read",
-                    headers={"Authorization": f"Bearer {server.get('token', '')}"},
-                    params={"path": path},
-                )
-                if r.status_code == 200:
-                    return JSONResponse(r.json())
-        except Exception as e:
-            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-
-    return JSONResponse({"ok": False, "error": "Brak możliwości odczytu pliku."}, status_code=500)
-
-
-@router.post("/minecraft/{server_id}/files/write")
-async def files_write(
-    server_id: int,
-    path: str = Form(...),
-    content: str = Form(...),
-    panel: Panel = Depends(get_panel),
-):
-    server = _get_server(panel, server_id)
-    if not server:
-        return JSONResponse({"ok": False, "error": "Serwer nie znaleziony."}, status_code=404)
-
-    # 1. FTP
-    ftp = _get_ftp(server)
-    if ftp and server.get("ftp_enabled"):
-        try:
-            ftp.write_text(path, content)
-            return JSONResponse({"ok": True, "path": path, "message": "Zapisano przez FTP."})
-        except Exception:
-            pass
-
-    # 2. Bridge Plugin
-    if server.get("online"):
-        try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
-                r = await client.post(
-                    f"http://{server['host']}:{server['port']}/api/files/write",
-                    headers={"Authorization": f"Bearer {server.get('token', '')}"},
-                    json={"path": path, "content": content},
-                )
-                if r.status_code == 200:
-                    return JSONResponse(r.json())
-        except Exception as e:
-            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-
-    return JSONResponse({"ok": False, "error": "Nie udało się zapisać pliku."}, status_code=500)
-
-
-@router.post("/minecraft/{server_id}/files/upload")
-async def files_upload(
-    server_id: int,
-    path: str = Form("/"),
-    file: UploadFile = File(...),
-    panel: Panel = Depends(get_panel),
-):
-    server = _get_server(panel, server_id)
-    if not server:
-        return JSONResponse({"ok": False, "error": "Serwer nie znaleziony."}, status_code=404)
-
-    data = await file.read()
-    dest_path = posixpath.join(path, file.filename or "upload.bin")
-
-    # 1. FTP
-    ftp = _get_ftp(server)
-    if ftp and server.get("ftp_enabled"):
-        try:
-            ftp.upload_bytes(dest_path, data)
-            return JSONResponse({"ok": True, "path": dest_path, "message": f"Wgrano {file.filename} przez FTP."})
-        except Exception as e:
-            return JSONResponse({"ok": False, "error": f"Błąd uploadu FTP: {e}"}, status_code=500)
-
-    # 2. Bridge fallback (dla plików tekstowych lub małych)
-    if server.get("online"):
-        try:
-            text_content = data.decode("utf-8", errors="replace")
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                r = await client.post(
-                    f"http://{server['host']}:{server['port']}/api/files/write",
-                    headers={"Authorization": f"Bearer {server.get('token', '')}"},
-                    json={"path": dest_path, "content": text_content},
-                )
-                if r.status_code == 200:
-                    return JSONResponse({"ok": True, "path": dest_path, "message": "Wgrano przez bridge."})
-        except Exception as e:
-            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-
-    return JSONResponse({"ok": False, "error": "Brak skonfigurowanego FTP do wgrywania plików."}, status_code=500)
-
-
-@router.post("/minecraft/{server_id}/files/delete")
-async def files_delete(
-    server_id: int,
-    path: str = Form(...),
-    is_dir: bool = Form(False),
-    panel: Panel = Depends(get_panel),
-):
-    server = _get_server(panel, server_id)
-    if not server:
-        return JSONResponse({"ok": False, "error": "Serwer nie znaleziony."}, status_code=404)
-
-    # 1. FTP
-    ftp = _get_ftp(server)
-    if ftp and server.get("ftp_enabled"):
-        try:
-            ftp.delete(path, is_dir=is_dir)
-            return JSONResponse({"ok": True, "message": "Usunięto pomyślnie."})
-        except Exception as e:
-            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-
-    # 2. Bridge Plugin
-    if server.get("online"):
-        try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
-                r = await client.post(
-                    f"http://{server['host']}:{server['port']}/api/files/delete",
-                    headers={"Authorization": f"Bearer {server.get('token', '')}"},
-                    json={"path": path},
-                )
-                if r.status_code == 200:
-                    return JSONResponse(r.json())
-        except Exception as e:
-            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-
-    return JSONResponse({"ok": False, "error": "Nie udało się usunąć obiektu."}, status_code=500)
-
-
-@router.post("/minecraft/{server_id}/files/mkdir")
-async def files_mkdir(
-    server_id: int,
-    path: str = Form(...),
-    panel: Panel = Depends(get_panel),
-):
-    server = _get_server(panel, server_id)
-    if not server:
-        return JSONResponse({"ok": False, "error": "Serwer nie znaleziony."}, status_code=404)
-
-    # 1. FTP
-    ftp = _get_ftp(server)
-    if ftp and server.get("ftp_enabled"):
-        try:
-            ftp.mkdir(path)
-            return JSONResponse({"ok": True, "message": "Utworzono folder przez FTP."})
-        except Exception as e:
-            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-
-    # 2. Bridge Plugin
-    if server.get("online"):
-        try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
-                r = await client.post(
-                    f"http://{server['host']}:{server['port']}/api/files/mkdir",
-                    headers={"Authorization": f"Bearer {server.get('token', '')}"},
-                    json={"path": path},
-                )
-                if r.status_code == 200:
-                    return JSONResponse(r.json())
-        except Exception as e:
-            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-
-    return JSONResponse({"ok": False, "error": "Nie udało się utworzyć folderu."}, status_code=500)
+async def files_read(path: str, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                     user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES))):  # fmt: skip
+    try:
+        raw = base64.b64decode((await _files(panel, row, "read", {"path": mc.clean_path(path)})).get("data_b64") or "")
+    except mc.Offline as exc:
+        raise HTTPException(409, t("mc.files_offline")) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, str(exc)[:300]) from exc
+    binary = b"\x00" in raw[:4096]
+    return {"path": path, "size": len(raw), "is_binary": binary, "truncated": False, "content": "" if binary else raw.decode("utf-8", errors="replace")}
 
 
 @router.get("/minecraft/{server_id}/files/download")
-async def files_download(
-    server_id: int,
-    path: str = Query(...),
-    panel: Panel = Depends(get_panel),
-):
-    server = _get_server(panel, server_id)
-    if not server:
-        raise HTTPException(404, "Serwer nie znaleziony.")
-
-    ftp = _get_ftp(server)
-    if ftp and server.get("ftp_enabled"):
-        try:
-            data = ftp.download_bytes(path)
-            filename = posixpath.basename(path) or "download"
-            return Response(
-                content=data,
-                media_type="application/octet-stream",
-                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-            )
-        except Exception as e:
-            raise HTTPException(500, f"Błąd pobierania pliku przez FTP: {e}")
-
-    # Bridge read text fallback
-    if server.get("online"):
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                r = await client.get(
-                    f"http://{server['host']}:{server['port']}/api/files/read",
-                    headers={"Authorization": f"Bearer {server.get('token', '')}"},
-                    params={"path": path},
-                )
-                if r.status_code == 200:
-                    data_str = r.json().get("content", "")
-                    filename = posixpath.basename(path) or "download.txt"
-                    return Response(
-                        content=data_str.encode("utf-8"),
-                        media_type="application/octet-stream",
-                        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-                    )
-        except Exception as e:
-            raise HTTPException(500, f"Błąd pobierania pliku przez Bridge: {e}")
-
-    raise HTTPException(500, "Brak aktywnego połączenia FTP ani Bridge.")
-
-
-# --- PLACEHOLDERAPI (PAPI) ENDPOINTS ---
-
-
-@router.get("/minecraft/{server_id}/papi/status")
-async def papi_status_endpoint(server_id: int, panel: Panel = Depends(get_panel)):
-    server = _get_server(panel, server_id)
-    if not server:
-        return JSONResponse({"ok": False, "error": "Serwer nie znaleziony."}, status_code=404)
-
-    if not server.get("online"):
-        return JSONResponse({"ok": False, "error": "Serwer jest offline."})
-
+async def files_download(path: str, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                         user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES))):  # fmt: skip
     try:
-        async with httpx.AsyncClient(timeout=2.5) as client:
-            r = await client.get(
-                f"http://{server['host']}:{server['port']}/api/papi/status",
-                headers={"Authorization": f"Bearer {server.get('token', '')}"},
-            )
-            if r.status_code == 200:
-                return JSONResponse(r.json())
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)})
-
-    return JSONResponse({"ok": False, "enabled": False})
+        raw = base64.b64decode((await _files(panel, row, "read", {"path": mc.clean_path(path)})).get("data_b64") or "")
+    except mc.Offline as exc:
+        raise HTTPException(409, t("mc.files_offline")) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, str(exc)[:300]) from exc
+    name = posixpath.basename(path) or "file"
+    return Response(raw, media_type="application/octet-stream", headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
 
 
-@router.post("/minecraft/{server_id}/papi/parse")
-async def papi_parse_endpoint(
-    request: Request,
-    server_id: int,
-    player: str = Form(""),
-    placeholders: str = Form(...),
-    panel: Panel = Depends(get_panel),
-):
-    server = _get_server(panel, server_id)
-    if not server:
-        return JSONResponse({"ok": False, "error": "Serwer nie znaleziony."}, status_code=404)
-
-    ph_list = [p.strip() for p in placeholders.replace("\r", "\n").split("\n") if p.strip()]
-
+async def _write(panel: Panel, row: dict, path: str, data: bytes) -> Response | None:
+    if len(data) > mc.FILE_LIMIT:
+        return toast(t("mc.file_too_big"), "err", status=413)
     try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
-            r = await client.post(
-                f"http://{server['host']}:{server['port']}/api/papi/parse",
-                headers={"Authorization": f"Bearer {server.get('token', '')}"},
-                json={"player": player.strip() or None, "placeholders": ph_list},
-            )
-            if r.status_code == 200:
-                return JSONResponse(r.json())
-            return JSONResponse({"ok": False, "error": f"Błąd {r.status_code}: {r.text}"}, status_code=r.status_code)
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+        await _files(panel, row, "write", {"path": mc.clean_path(path), "data_b64": base64.b64encode(data).decode()})
+    except (mc.Offline, mc.BridgeError) as exc:
+        return _bridge_error(exc)
+    except Exception as exc:  # noqa: BLE001 — FTP
+        return toast(str(exc)[:200], "err", status=400)
+    return None
 
 
-# --- MACROS ENDPOINTS ---
+@router.post("/minecraft/{server_id}/files/write")
+async def files_write(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                      user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES_WRITE))):  # fmt: skip
+    form = await request.form()
+    error = await _write(panel, row, str(form.get("path") or ""), str(form.get("content") or "").encode())
+    return error or toast(t("containers.file_saved"))
 
 
-@router.post("/minecraft/{server_id}/macros/add")
-async def add_macro(
-    request: Request,
-    server_id: int,
-    name: str = Form(...),
-    cmd: str = Form(...),
-    icon: str = Form("bi-lightning"),
-    color: str = Form("#3498db"),
-    panel: Panel = Depends(get_panel),
-):
-    server = _get_server(panel, server_id)
-    if not server:
-        raise HTTPException(404, "Serwer nie znaleziony.")
-
-    macros = list(server.get("macros", DEFAULT_MACROS))
-    macros.append({
-        "name": name.strip(),
-        "cmd": cmd.strip(),
-        "icon": icon.strip() or "bi-lightning",
-        "color": color.strip() or "#3498db",
-    })
-    _update_server(panel, server_id, {"macros": macros})
-    return redirect(request, f"/minecraft/{server_id}?tab=console", f"Dodano makro '{name}'.")
+@router.post("/minecraft/{server_id}/files/upload")
+async def files_upload(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                       user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES_WRITE))):  # fmt: skip
+    form = await request.form()
+    directory = mc.clean_path(str(form.get("dir_path") or "/"))
+    count = 0
+    for upload in form.getlist("files"):
+        name = posixpath.basename(str(getattr(upload, "filename", "") or "").replace("\\", "/"))
+        if not name or name in (".", ".."):
+            continue
+        error = await _write(panel, row, posixpath.join(directory, name), await upload.read(mc.FILE_LIMIT + 1))
+        if error:
+            return error
+        count += 1
+    return redirect(request, f"/minecraft/{row['id']}?{urlencode({'tab': 'files', 'path': directory})}", t("containers.files_uploaded", count=count))
 
 
-@router.post("/minecraft/{server_id}/macros/delete")
-async def delete_macro(
-    request: Request,
-    server_id: int,
-    index: int = Form(...),
-    panel: Panel = Depends(get_panel),
-):
-    server = _get_server(panel, server_id)
-    if not server:
-        raise HTTPException(404, "Serwer nie znaleziony.")
-
-    macros = list(server.get("macros", DEFAULT_MACROS))
-    if 0 <= index < len(macros):
-        removed = macros.pop(index)
-        _update_server(panel, server_id, {"macros": macros})
-        return redirect(request, f"/minecraft/{server_id}?tab=console", f"Usunięto makro '{removed['name']}'.")
-    return redirect(request, f"/minecraft/{server_id}?tab=console", "Nieprawidłowy indeks makra.")
+@router.post("/minecraft/{server_id}/files/delete")
+async def files_delete(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                       user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES_WRITE))):  # fmt: skip
+    form = await request.form()
+    path = mc.clean_path(str(form.get("path") or ""))
+    if path == "/":
+        return toast(t("mc.bad_path"), "err", status=400)
+    try:
+        await _files(panel, row, "delete", {"path": path, "is_dir": form.get("is_dir") == "1"})
+    except (mc.Offline, mc.BridgeError) as exc:
+        return _bridge_error(exc)
+    except Exception as exc:  # noqa: BLE001
+        return toast(str(exc)[:200], "err", status=400)
+    return toast(t("containers.file_deleted", path=path), extra={"mc-files": True})
 
 
-@router.post("/minecraft/{server_id}/macros/reset")
-async def reset_macros(
-    request: Request,
-    server_id: int,
-    panel: Panel = Depends(get_panel),
-):
-    _update_server(panel, server_id, {"macros": list(DEFAULT_MACROS)})
-    return redirect(request, f"/minecraft/{server_id}?tab=console", "Zresetowano makra do wartości domyślnych.")
+@router.post("/minecraft/{server_id}/files/mkdir")
+async def files_mkdir(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                      user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES_WRITE))):  # fmt: skip
+    form = await request.form()
+    name = posixpath.basename(str(form.get("name") or "").strip().strip("/"))
+    if not name or name in (".", ".."):
+        return toast(t("common.required_field"), "err", status=400)
+    try:
+        await _files(panel, row, "mkdir", {"path": mc.clean_path(posixpath.join(str(form.get("dir_path") or "/"), name))})
+    except (mc.Offline, mc.BridgeError) as exc:
+        return _bridge_error(exc)
+    except Exception as exc:  # noqa: BLE001
+        return toast(str(exc)[:200], "err", status=400)
+    return toast(t("containers.folder_created"), extra={"mc-files": True})
+
+
+# --- PlaceholderAPI i makra -------------------------------------------------------------------------------
+
+
+@router.post("/minecraft/{server_id}/papi")
+async def papi(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+               user: dict = Depends(require(Permission.ALLOW_CONTAINER_TERMINAL))):  # fmt: skip
+    form = await request.form()
+    player = str(form.get("player") or "").strip()
+    if player and not mc.PLAYER.match(player):
+        return toast(t("mc.bad_player"), "err", status=400)
+    try:
+        data = await mc.call(panel, row, "papi", {"text": str(form.get("text") or "")[:2000], "player": player})
+    except (mc.Offline, mc.BridgeError) as exc:
+        return _bridge_error(exc)
+    return render(request, "minecraft/_papi_result.html", data=data)
+
+
+@router.post("/minecraft/{server_id}/macros")
+async def save_macros(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                      user: dict = Depends(require(Permission.ALLOW_CONTAINER_TERMINAL))):  # fmt: skip
+    form = await request.form()
+    items = mc.macros(row)
+    action = form.get("action")
+    if action == "add":
+        try:
+            cmd = mc.clean_command(str(form.get("cmd") or ""))
+        except ValueError:
+            return toast(t("mc.bad_command"), "err", status=400)
+        label = str(form.get("label") or "").strip()[:30] or cmd[:30]
+        items = [*items, {"label": label, "cmd": cmd, "icon": "lightning"}][:30]
+    elif action == "delete":
+        index = int(form.get("index") or -1)
+        items = [m for i, m in enumerate(items) if i != index]
+    elif action == "reset":
+        items = mc.DEFAULT_MACROS
+    panel.db.update("minecraft_servers", row["id"], macros=json.dumps(items))
+    return redirect(request, f"/minecraft/{row['id']}?tab=console")
+
+
+# --- ustawienia połączenia --------------------------------------------------------------------------------
+
+
+@router.post("/minecraft/{server_id}/settings")
+async def save_settings(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                        user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
+    form = await request.form()
+    name = str(form.get("name") or "").strip()[:60] or row["name"]
+    panel.db.update("minecraft_servers", row["id"], name=name)
+    host = str(form.get("ftp_host") or "").strip()
+    if not host:
+        mc.set_ftp(panel, row["id"], None)
+    else:
+        old = mc.get_ftp(panel, row) or {}
+        port = str(form.get("ftp_port") or "21")
+        mc.set_ftp(panel, row["id"], {"host": host[:200], "port": int(port) if port.isdigit() else 21, "user": str(form.get("ftp_user") or "")[:120],
+                                      "password": str(form.get("ftp_password") or "") or old.get("password", ""), "tls": form.get("ftp_tls") == "1"})  # fmt: skip
+    return redirect(request, f"/minecraft/{row['id']}?tab=settings", t("mc.settings_saved"))
+
+
+@router.post("/minecraft/{server_id}/ftp/test")
+async def ftp_test(row: dict = Depends(_server), panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):
+    ftp = mc.get_ftp(panel, row)
+    if not ftp:
+        return toast(t("mc.ftp_missing"), "err", status=400)
+    try:
+        welcome = await mc.ftp_call(ftp, "test")
+    except Exception as exc:  # noqa: BLE001
+        return toast(t("mc.ftp_failed", error=str(exc)[:160]), "err", status=400)
+    return toast(t("mc.ftp_ok", welcome=str(welcome)[:120]))
+
+
+@router.post("/minecraft/{server_id}/pair")
+async def repair(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                 user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
+    mc.new_pair_code(panel, row["id"])
+    return redirect(request, f"/minecraft/{row['id']}?tab=settings", t("mc.pair_reset"))
 
 
 @router.post("/minecraft/{server_id}/delete")
-async def delete_server(request: Request, server_id: int, panel: Panel = Depends(get_panel)):
-    servers = _get_servers(panel)
-    filtered = [s for s in servers if s["id"] != server_id]
-    _save_servers(panel, filtered)
-    return redirect(request, "/minecraft", "Serwer został usunięty.")
+async def delete_server(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                        user: dict = Depends(require(Permission.ALLOW_DELETE_DOCKERS))):  # fmt: skip
+    panel.db.delete("minecraft_servers", row["id"])
+    mc._links.pop(row["id"], None)
+    return redirect(request, "/minecraft", t("mc.deleted", name=row["name"]))
+
+
+def linked_server(panel: Any, app_id: int) -> dict | None:
+    return panel.db.fetchone("SELECT * FROM minecraft_servers WHERE app_id = ?", [app_id])

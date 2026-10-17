@@ -409,7 +409,7 @@ async def _list_containers(panel: Panel, user: dict[str, Any], args: dict[str, A
     client = panel.node_client(node)
     containers = await client.get(_p("/api/containers", ep))
     for c in containers:
-        prof = detect_profile(c.get("name", ""), c.get("image", ""))
+        prof = detect_profile(c.get("image", ""), ports=c.get("ports"))
         c["profile"] = {
             "kind": prof.kind,
             "title": prof.title,

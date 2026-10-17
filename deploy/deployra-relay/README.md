@@ -1,24 +1,25 @@
-# Deployra Relay (Port Bounce & Edge Routing)
+# Deployra Relay
 
-Lekki kontener proxy (`nginx:alpine` w trybie `network_mode: host`) stworzony specjalnie dla środowisk z ograniczoną liczbą portów (np. Mikr.us, współdzielone VPS-y, maszyny za NAT-em lub z routingiem IPv6 przez Cloudflare).
+Mały kontener `nginx:alpine` (`network_mode: host`, ok. 3 MB RAM) dla maszyn, do których ruch przychodzi tylko
+przez Cloudflare po IPv6 (np. mikr.us bez publicznego IPv4). Słucha na `0.0.0.0:80` i `[::]:80` i przekazuje
+ruch do usług na `127.0.0.1`.
 
-## 🚀 Jak to działa?
+## Zasada
 
-1. **Dual-Stack (IPv4 + IPv6):**
-   - Słucha jednocześnie na `0.0.0.0:80` oraz `[::]:80`.
-   - Pozwala Cloudflare przekazywać ruch do maszyny bez żadnych publicznych adresów IPv4.
+Relay wpuszcza ruch **tylko do wpisanych domen**. Każdy inny `Host` dostaje 444 (połączenie zamknięte).
+Nie ma automatycznego „port bounce” po nazwie hosta: dawny wzorzec `<port>.domena` pozwalał każdemu w internecie
+dostać się do dowolnego portu localhost (Docker API, agent, bazy), więc został usunięty.
 
-2. **Automatyczny Port Bounce (Zero Config):**
-   - Pozwala dostać się do dowolnego portu na maszynie bez konfigurowania reguł!
-   - Obsługuje prefiksy:
-     - `npmpassthrough<id>.<port>` (pełna kompatybilność z Nginx Proxy Manager)
-     - `<port>.domena` (np. `8080.frog01.pansage.xyz`)
-     - `p<port>.domena` (np. `p8080.frog01.pansage.xyz`)
-   - Zapytanie natychmiast trafia do `127.0.0.1:<port>`.
+## Konfiguracja
 
-3. **Dedykowany routing do backendu Deployry:**
-   - Zapytania do domeny węzła (np. `frog01.pansage.xyz`) oraz żądania z nagłówkiem `X-Deployra-Signature` są natychmiast kierowane do agenta Deployry (`127.0.0.1:20379` lub `30913`).
+1. W `nginx.conf`, w `map $host $relay_upstream`, wpisz domeny i porty, np.:
+   ```nginx
+   node.example.com   127.0.0.1:2750;   # agent Deployry — w panelu adres węzła: https://node.example.com
+   tools.example.com  127.0.0.1:8080;
+   ```
+2. Jeśli korzystasz ze starego schematu `npmpassthrough<id>.<port>.<domena>`, odkomentuj wzorzec w
+   `map $host $relay_legacy_port` (z twoją domeną) i wypisz dozwolone porty w `map $relay_legacy_port $relay_legacy_allowed`.
+3. `docker compose up -d` (albo Portainer → Stack z `compose.yaml`). Po zmianie konfiguracji: `docker restart deployra-relay`.
 
-4. **Wydajność:**
-   - Zużywa zaledwie **~2-4 MB RAM-u** (w przeciwieństwie do ciężkich procesów Pythona).
-   - Pełna obsługa WebSockets, streamingu i długich połączeń.
+Prawdziwe IP odwiedzających jest brane z nagłówka `CF-Connecting-IP` tylko dla adresów Cloudflare (`set_real_ip_from`),
+a `X-Forwarded-Proto: https` od Cloudflare jest przekazywane dalej (bez pętli przekierowań HTTP → HTTPS).

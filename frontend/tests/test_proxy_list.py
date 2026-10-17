@@ -39,7 +39,7 @@ def test_proxy_list_loads_health_and_sparks_in_batches(admin, monkeypatch):
     ids = add_sites(panel)
     page = admin.get("/proxy/hosts", headers={"HX-Request": ""}).text
     joined = ",".join(map(str, ids))
-    assert f"/proxy/health?ids={joined}" in page and f"/analytics/sparks?ids={joined}" in page
+    assert f"/proxy/health?ids={joined}" in page and f"/analytics/sparks?ids={joined}" in page  # do 8 hostów w paczce
     assert "hx-get=\"/analytics/spark?" not in page  # bez osobnego zapytania na wiersz
 
     health = admin.get(f"/proxy/health?ids={joined}").text
@@ -48,7 +48,9 @@ def test_proxy_list_loads_health_and_sparks_in_batches(admin, monkeypatch):
     assert items[0] == {"id": str(ids[0]), "url": "http://130.162.245.37:8080/", "host": "a.example.com"}
     assert health.count('hx-swap-oob="true"') == 3 and "200 · 12 ms" in health
     admin.get(f"/proxy/health?ids={joined}")
-    assert len(gateway.posts) == 1  # wynik z pamięci (30 s)
+    assert len(gateway.posts) == 1  # wynik z pamięci (75 s)
+    again = admin.get("/proxy/hosts", headers={"HX-Request": ""}).text
+    assert again.count("200 · 12 ms") == 3  # ostatnie wyniki od razu w tabeli, bez czekania na bramkę
 
     sparks = admin.get(f"/analytics/sparks?ids={joined}").text
     assert sparks.count('hx-swap-oob="true"') == 3 and f'id="spark-{ids[0]}"' in sparks and "<svg" in sparks
@@ -64,3 +66,14 @@ def test_health_falls_back_for_older_gateway(admin, monkeypatch):
     page = admin.get(f"/proxy/health?ids={','.join(map(str, ids))}").text
     assert [p[0] for p in gateway.posts] == ["/api/check/batch", "/api/check", "/api/check"]
     assert page.count("nie odpowiada") == 2
+
+
+def test_health_requests_are_split_into_chunks(admin, monkeypatch):
+    panel = admin.app.state.panel
+    proxy_health._cache.clear()
+    proxy_state._EXTERNAL_CACHE.update(at=time.time(), routes={})
+    monkeypatch.setattr(panel, "gateway_client", lambda: FakeGateway())
+    ids = add_sites(panel, 19)
+    page = admin.get("/proxy/hosts", headers={"HX-Request": ""}).text
+    assert page.count('hx-get="/proxy/health?ids=') == 3  # 8 + 8 + 3 — wolny host nie wstrzymuje reszty
+    assert f"/proxy/health?ids={','.join(map(str, ids[16:]))}" in page

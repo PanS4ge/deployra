@@ -421,15 +421,18 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
         """Wiele celów naraz (lista hostów proxy w panelu) — równolegle, z krótszym limitem czasu."""
         import httpx
 
-        semaphore = asyncio.Semaphore(16)
+        semaphore = asyncio.Semaphore(32)
 
         async def one(item: CheckItem) -> tuple[str, dict]:
             if not item.url.startswith(("http://", "https://")):
                 return item.id, {"ok": False, "status": None, "error": tr("gw.url_scheme")}
             async with semaphore:
-                return item.id, await _probe(client, item.url, item.host)
+                try:  # łączny limit na host — powolna odpowiedź nie trzyma całej paczki
+                    return item.id, await asyncio.wait_for(_probe(client, item.url, item.host), 4.5)
+                except asyncio.TimeoutError:
+                    return item.id, {"ok": False, "status": None, "error": tr("gw.check_timeout")}
 
-        async with httpx.AsyncClient(timeout=5, verify=False, follow_redirects=False) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(4.0, connect=3.0), verify=False, follow_redirects=False) as client:
             results = await asyncio.gather(*(one(item) for item in body.items))
         return {"results": dict(results)}
 

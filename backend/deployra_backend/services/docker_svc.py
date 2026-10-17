@@ -448,196 +448,302 @@ def run_quick_action(client: Any, cid: str, action_id: str) -> tuple[int, str | 
 
 
 # --- Menedżer plików kontenera ------------------------------------------------
+# Działający kontener: system plików kontenera przez `exec` (listowanie, usuwanie, mkdir) i archiwa Dockera
+# (odczyt/zapis). Zatrzymany albo bez powłoki: tylko podpięte foldery (bind/wolumen) — bezpośrednio, gdy leżą
+# w /srv/deployra (ta sama ścieżka w backendzie), w pozostałych przypadkach jednorazowym kontenerem
+# `alpine` z --volumes-from (backend nie widzi reszty dysku hosta).
+
+FILES_HELPER = "alpine:3.20"
+PROTECTED = ("/", "/bin", "/boot", "/dev", "/etc", "/lib", "/lib64", "/proc", "/root", "/sys", "/usr", "/var")
+LIST_SCRIPT = (
+    'TARGET="$1"; cd "$TARGET" 2>/dev/null || exit 2; '
+    "for f in .* *; do "
+    '[ "$f" = "." ] || [ "$f" = ".." ] && continue; '
+    '[ ! -e "$f" ] && [ ! -L "$f" ] && continue; '
+    'if [ -d "$f" ]; then T="dir"; S=0; '
+    'elif [ -L "$f" ]; then T="link"; S=0; '
+    'else T="file"; S=$(wc -c < "$f" 2>/dev/null || echo 0); fi; '
+    'printf "%s\\t%s\\t%s\\n" "$T" "$S" "$f"; '
+    "done"
+)
+NO_SHELL = (126, 127)  # exec: brak `sh` w obrazie (distroless, scratch)
 
 
-def list_container_files(client: Any, cid: str, path: str = "/") -> dict:
-    """Listuje zawartość katalogu w kontenerze (typ, rozmiar, nazwa)."""
-    clean_path = "/" + path.strip("/")
-    target_dir = clean_path.rstrip("/") or "/"
+class StoppedContainer(ValueError):
+    """Ścieżka poza podpiętymi folderami, a kontener nie działa."""
 
-    cmd = [
-        "sh",
-        "-c",
-        'TARGET="$1"; cd "$TARGET" 2>/dev/null || exit 2; '
-        'for f in .* *; do '
-        '[ "$f" = "." ] || [ "$f" = ".." ] && continue; '
-        '[ ! -e "$f" ] && [ ! -L "$f" ] && continue; '
-        'if [ -d "$f" ]; then T="dir"; S=0; '
-        'elif [ -L "$f" ]; then T="link"; S=0; '
-        'else T="file"; S=$(wc -c < "$f" 2>/dev/null || echo 0); fi; '
-        'printf "%s\t%s\t%s\\n" "$T" "$S" "$f"; '
-        "done",
-        "--",
-        target_dir,
-    ]
+
+def _clean(path: str) -> str:
+    import posixpath
+
+    norm = posixpath.normpath("/" + (path or "/").strip("/"))
+    return "/" if norm in ("", ".", "//") else norm
+
+
+def container_mounts(info: dict) -> list[dict]:
+    return [
+        {"type": m.get("Type") or "volume", "name": m.get("Name") or "", "source": m.get("Source") or "",
+         "destination": m.get("Destination") or "", "rw": bool(m.get("RW", True))}
+        for m in info.get("Mounts") or [] if m.get("Destination")
+    ]  # fmt: skip
+
+
+def mount_for(mounts: list[dict], path: str) -> dict | None:
+    """Najgłębszy mount, pod którym leży ścieżka."""
+    found = [m for m in mounts if path == m["destination"] or path.startswith(m["destination"].rstrip("/") + "/")]
+    return max(found, key=lambda m: len(m["destination"]), default=None)
+
+
+def _local_dir(mount: dict, path: str, srv_dir: Any) -> Any:
+    """Ścieżka hosta dla bindu z /srv/deployra (backend ma ją pod tą samą ścieżką) albo None."""
+    from pathlib import Path
+
+    if not srv_dir or mount["type"] != "bind" or not mount["source"]:
+        return None
+    root = Path(srv_dir).resolve()
+    source = Path(mount["source"])
     try:
-        exec_res = client.api.exec_create(cid, cmd)
-        exec_id = exec_res["Id"]
-        output = client.api.exec_start(exec_id)
-        exit_code = (client.api.exec_inspect(exec_id) or {}).get("ExitCode", 0)
-    except Exception as exc:
-        raise RuntimeError(f"Błąd uruchomienia powłoki w kontenerze: {exc}")
+        source.resolve().relative_to(root)
+    except (ValueError, OSError):
+        return None
+    rest = path[len(mount["destination"].rstrip("/")):].lstrip("/")
+    target = (source / rest).resolve() if rest else source.resolve()
+    try:
+        target.relative_to(source.resolve())  # symlink nie wyprowadzi poza folder
+    except ValueError:
+        return None
+    return target
 
-    if exit_code != 0:
-        raise FileNotFoundError(f"Katalog nie istnieje lub brak uprawnień: {target_dir}")
 
-    out_text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
+def _exec(client: Any, cid: str, cmd: list[str]) -> tuple[int, str]:
+    exec_id = client.api.exec_create(cid, cmd)["Id"]
+    output = client.api.exec_start(exec_id)
+    code = (client.api.exec_inspect(exec_id) or {}).get("ExitCode", 0) or 0
+    return int(code), output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
+
+
+def _helper(client: Any, cid: str, cmd: list[str], timeout: int = 120) -> tuple[int, str]:
+    """Jednorazowy alpine z wolumenami i bindami kontenera (działa także dla zatrzymanego)."""
+    try:
+        client.api.inspect_image(FILES_HELPER)
+    except Exception:  # noqa: BLE001 — pierwszy raz na węźle
+        client.api.pull(FILES_HELPER)
+    host_config = client.api.create_host_config(volumes_from=[cid], network_mode="none")
+    hid = client.api.create_container(FILES_HELPER, command=cmd, labels={SYSTEM_LABEL: "files"}, host_config=host_config)["Id"]
+    try:
+        client.api.start(hid)
+        code = (client.api.wait(hid, timeout=timeout) or {}).get("StatusCode", 1)
+        out = client.api.logs(hid, stdout=True, stderr=True)
+    finally:
+        try:
+            client.api.remove_container(hid, force=True)
+        except Exception:  # noqa: BLE001 — AutoRemove albo już go nie ma
+            pass
+    return int(code), out.decode("utf-8", errors="replace") if isinstance(out, bytes) else str(out)
+
+
+def _parse_listing(text: str, directory: str) -> list[dict]:
     items = []
-    for line in out_text.splitlines():
-        line = line.strip()
-        if not line:
+    for line in text.splitlines():
+        parts = line.rstrip("\r").split("\t", 2)
+        if len(parts) != 3 or parts[0] not in ("dir", "file", "link"):
             continue
-        parts = line.split("\t", 2)
-        if len(parts) == 3:
-            t_kind, s_str, name = parts
-            try:
-                size = int(s_str.strip())
-            except ValueError:
-                size = 0
-            items.append({
-                "name": name,
-                "path": f"{target_dir.rstrip('/')}/{name}",
-                "type": t_kind,
-                "is_dir": t_kind == "dir",
-                "size": size,
-            })
+        kind, size, name = parts
+        items.append({"name": name, "path": f"{directory.rstrip('/')}/{name}", "type": kind, "is_dir": kind == "dir",
+                      "size": int(size) if size.strip().isdigit() else 0})  # fmt: skip
+    return items
 
+
+def _scan(directory: Any, shown: str) -> list[dict]:
+    items = []
+    for entry in directory.iterdir():
+        kind = "dir" if entry.is_dir() else "link" if entry.is_symlink() else "file"
+        size = entry.lstat().st_size if kind == "file" else 0
+        items.append({"name": entry.name, "path": f"{shown.rstrip('/')}/{entry.name}", "type": kind, "is_dir": kind == "dir", "size": size})
+    return items
+
+
+def list_container_files(client: Any, cid: str, path: str = "/", srv_dir: Any = None) -> dict:
+    """Zawartość katalogu: system plików kontenera albo (failover) podpięte foldery."""
+    target = _clean(path)
+    info = client.api.inspect_container(cid)
+    mounts = container_mounts(info)
+    running = bool((info.get("State") or {}).get("Running"))
+    result = {"path": target, "mounts": mounts, "running": running, "mode": "container"}
+
+    if running:
+        try:
+            code, out = _exec(client, cid, ["sh", "-c", LIST_SCRIPT, "--", target])
+        except Exception as exc:  # noqa: BLE001 — np. kontener zatrzymał się w międzyczasie
+            code, out = NO_SHELL[0], str(exc)
+        if code == 2:
+            raise FileNotFoundError(tr("node.files.no_dir", path=target))
+        if code == 0:
+            items = _parse_listing(out, target)
+            items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
+            return {**result, "items": items}
+        if code not in NO_SHELL:
+            raise RuntimeError(tr("node.files.exec_failed", error=out.strip()[:300]))
+
+    # failover: tylko podpięte foldery
+    result["mode"] = "mounts"
+    mount = mount_for(mounts, target)
+    if not mount:
+        items = [{"name": m["destination"], "path": m["destination"], "type": "mount", "is_dir": True, "size": 0, "mount": m}
+                 for m in sorted(mounts, key=lambda m: m["destination"])]  # fmt: skip
+        return {**result, "path": "/", "items": items}
+    local = _local_dir(mount, target, srv_dir)
+    if local is not None:
+        if not local.is_dir():
+            raise FileNotFoundError(tr("node.files.no_dir", path=target))
+        items = _scan(local, target)
+    else:
+        code, out = _helper(client, cid, ["sh", "-c", LIST_SCRIPT, "--", target])
+        if code == 2:
+            raise FileNotFoundError(tr("node.files.no_dir", path=target))
+        if code != 0:
+            raise RuntimeError(tr("node.files.exec_failed", error=out.strip()[:300]))
+        items = _parse_listing(out, target)
     items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
-    return {
-        "path": target_dir,
-        "items": items,
-    }
+    return {**result, "items": items}
+
+
+def _archive(client: Any, cid: str, path: str) -> tuple[Any, dict]:
+    try:
+        return client.api.get_archive(cid, path)
+    except Exception as exc:  # noqa: BLE001 — brak pliku albo uprawnień
+        raise FileNotFoundError(tr("node.files.cant_read", path=path, error=exc)) from exc
+
+
+def _first_member(strm: Any) -> tuple[Any, bytes | None]:
+    """Pierwszy plik z archiwum Dockera (strumień kawałków)."""
+    import io
+    import tarfile
+
+    buffer = io.BytesIO()
+    for chunk in strm:
+        buffer.write(chunk)
+    buffer.seek(0)
+    tar = tarfile.open(fileobj=buffer, mode="r")
+    member = tar.next()
+    if member is None:
+        raise FileNotFoundError(tr("node.files.empty_archive"))
+    data = tar.extractfile(member).read() if member.isfile() else None
+    return member, data
 
 
 def read_container_file(client: Any, cid: str, path: str, max_bytes: int = 2 * 1024 * 1024) -> dict:
-    """Odczytuje zawartość pliku z kontenera przez Docker API (tar stream)."""
-    import io
-    import os
-    import tarfile
+    """Odczyt pliku przez archiwum Dockera — działa także na zatrzymanym kontenerze."""
+    import posixpath
 
-    clean_path = "/" + path.strip("/")
-    try:
-        strm, stat = client.api.get_archive(cid, clean_path)
-    except Exception as exc:
-        raise FileNotFoundError(f"Nie można odczytać pliku {clean_path}: {exc}")
-
-    tar_bytes = io.BytesIO()
-    for chunk in strm:
-        tar_bytes.write(chunk)
-    tar_bytes.seek(0)
-
-    try:
-        with tarfile.open(fileobj=tar_bytes, mode="r") as tar:
-            member = tar.next()
-            if not member:
-                raise FileNotFoundError("Puste archiwum pliku")
-            if member.isdir():
-                raise IsADirectoryError(f"{clean_path} jest katalogiem, nie plikiem")
-            f = tar.extractfile(member)
-            if f is None:
-                raise FileNotFoundError("Nie można wyodrębnić pliku")
-            raw_content = f.read(max_bytes + 1)
-    except Exception as exc:
-        raise RuntimeError(f"Błąd rozpakowywania pliku: {exc}")
-
-    is_truncated = len(raw_content) > max_bytes
-    if is_truncated:
-        raw_content = raw_content[:max_bytes]
-
-    is_binary = b"\x00" in raw_content[:4096]
-    text_content = "" if is_binary else raw_content.decode("utf-8", errors="replace")
-
+    clean_path = _clean(path)
+    strm, stat = _archive(client, cid, clean_path)
+    if stat.get("size", 0) > 64 * 1024 * 1024:
+        raise ValueError(tr("node.files.too_big"))
+    member, raw = _first_member(strm)
+    if member.isdir():
+        raise IsADirectoryError(tr("node.files.is_dir", path=clean_path))
+    raw = raw or b""
+    truncated = len(raw) > max_bytes
+    raw = raw[:max_bytes]
+    is_binary = b"\x00" in raw[:4096]
     return {
-        "path": clean_path,
-        "name": stat.get("name") or os.path.basename(clean_path),
-        "size": stat.get("size", len(raw_content)),
-        "is_binary": is_binary,
-        "truncated": is_truncated,
-        "content": text_content,
-    }
+        "path": clean_path, "name": stat.get("name") or posixpath.basename(clean_path), "size": stat.get("size", len(raw)),
+        "is_binary": is_binary, "truncated": truncated, "content": "" if is_binary else raw.decode("utf-8", errors="replace"),
+    }  # fmt: skip
 
 
 def get_container_file_bytes(client: Any, cid: str, path: str) -> tuple[str, bytes]:
-    """Pobiera surowe bajty pliku do pobrania jako załącznik."""
-    import io
-    import os
-    import tarfile
+    """Surowe bajty pliku do pobrania."""
+    import posixpath
 
-    clean_path = "/" + path.strip("/")
-    strm, stat = client.api.get_archive(cid, clean_path)
-    tar_bytes = io.BytesIO()
-    for chunk in strm:
-        tar_bytes.write(chunk)
-    tar_bytes.seek(0)
+    clean_path = _clean(path)
+    strm, stat = _archive(client, cid, clean_path)
+    member, data = _first_member(strm)
+    if member.isdir() or data is None:
+        raise FileNotFoundError(tr("node.files.not_file", path=clean_path))
+    return stat.get("name") or posixpath.basename(clean_path), data
 
-    with tarfile.open(fileobj=tar_bytes, mode="r") as tar:
-        member = tar.next()
-        if not member or member.isdir():
-            raise FileNotFoundError(f"{clean_path} nie jest plikiem")
-        f = tar.extractfile(member)
-        if f is None:
-            raise FileNotFoundError("Nie można odczytać pliku")
-        data = f.read()
 
-    name = stat.get("name") or os.path.basename(clean_path)
-    return name, data
+def _owner(client: Any, cid: str, path: str) -> tuple[int, int, int] | None:
+    """(uid, gid, tryb) istniejącego pliku — zapis nie zmienia właściciela ani uprawnień."""
+    try:
+        strm, stat = client.api.get_archive(cid, path)
+    except Exception:  # noqa: BLE001 — nowy plik
+        return None
+    if stat.get("size", 0) > 64 * 1024 * 1024:
+        return None
+    try:
+        member, _ = _first_member(strm)
+    except Exception:  # noqa: BLE001
+        return None
+    return (member.uid, member.gid, member.mode) if member.isfile() else None
+
+
+def _default_owner(info: dict) -> tuple[int, int]:
+    """Nowe pliki dostają użytkownika kontenera (Config.User „1000:1000”), jeśli jest liczbowy."""
+    user = ((info.get("Config") or {}).get("User") or "").split(":")
+    uid = int(user[0]) if user[0].isdigit() else 0
+    gid = int(user[1]) if len(user) > 1 and user[1].isdigit() else uid
+    return uid, gid
 
 
 def write_container_file(client: Any, cid: str, path: str, content: str | bytes) -> dict:
-    """Zapisuje lub podmienia plik w kontenerze przez Docker put_archive."""
+    """Zapis pliku przez put_archive (także w zatrzymanym kontenerze); zachowuje właściciela i tryb."""
     import io
-    import os
+    import posixpath
     import tarfile
     import time
 
-    clean_path = "/" + path.strip("/")
-    raw_bytes = content.encode("utf-8") if isinstance(content, str) else content
-
-    dir_path, filename = os.path.split(clean_path)
-    if not dir_path:
-        dir_path = "/"
-
+    clean_path = _clean(path)
+    if clean_path == "/":
+        raise ValueError(tr("node.files.bad_path"))
+    data = content.encode("utf-8") if isinstance(content, str) else content
+    directory, filename = posixpath.split(clean_path)
+    existing = _owner(client, cid, clean_path)
+    if existing:
+        uid, gid, mode = existing
+    else:
+        uid, gid = _default_owner(client.api.inspect_container(cid))
+        mode = 0o644
     tar_stream = io.BytesIO()
     with tarfile.open(fileobj=tar_stream, mode="w") as tar:
-        ti = tarfile.TarInfo(name=filename)
-        ti.size = len(raw_bytes)
-        ti.mtime = int(time.time())
-        ti.mode = 0o644
-        tar.addfile(ti, io.BytesIO(raw_bytes))
-    tar_stream.seek(0)
+        info = tarfile.TarInfo(name=filename)
+        info.size, info.mtime, info.mode, info.uid, info.gid = len(data), int(time.time()), mode, uid, gid
+        tar.addfile(info, io.BytesIO(data))
+    client.api.put_archive(cid, directory or "/", tar_stream.getvalue())
+    return {"ok": True, "path": clean_path, "size": len(data)}
 
-    client.api.put_archive(cid, dir_path, tar_stream.getvalue())
-    return {"ok": True, "path": clean_path, "size": len(raw_bytes)}
+
+def _run_anywhere(client: Any, cid: str, cmd: list[str], path: str) -> None:
+    """Polecenie na ścieżce: w działającym kontenerze `exec`, w zatrzymanym — pomocnik na podpiętym folderze."""
+    info = client.api.inspect_container(cid)
+    running = bool((info.get("State") or {}).get("Running"))
+    if running:
+        code, out = _exec(client, cid, cmd)
+        if code not in NO_SHELL:
+            if code != 0:
+                raise RuntimeError(tr("node.files.exec_failed", error=out.strip()[:300]))
+            return
+    mount = mount_for(container_mounts(info), path)
+    if not mount or path == mount["destination"]:
+        raise StoppedContainer(tr("node.files.stopped_only_mounts"))
+    if not mount["rw"]:
+        raise PermissionError(tr("node.files.read_only", path=mount["destination"]))
+    code, out = _helper(client, cid, cmd)
+    if code != 0:
+        raise RuntimeError(tr("node.files.exec_failed", error=out.strip()[:300]))
 
 
 def delete_container_file(client: Any, cid: str, path: str) -> dict:
-    """Usuwa plik lub katalog w kontenerze."""
-    clean_path = "/" + path.strip("/")
-    if clean_path in ("/", "/bin", "/boot", "/dev", "/etc", "/lib", "/lib64", "/proc", "/root", "/sys", "/usr", "/var"):
-        raise ValueError(f"Nie można usunąć chronionego katalogu systemowego: {clean_path}")
-
-    cmd = ["rm", "-rf", clean_path]
-    exec_res = client.api.exec_create(cid, cmd)
-    exec_id = exec_res["Id"]
-    output = client.api.exec_start(exec_id)
-    exit_code = (client.api.exec_inspect(exec_id) or {}).get("ExitCode", 0)
-    if exit_code != 0:
-        out_str = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
-        raise RuntimeError(f"Błąd usuwania {clean_path}: {out_str}")
+    clean_path = _clean(path)
+    if clean_path in PROTECTED:
+        raise ValueError(tr("node.files.protected", path=clean_path))
+    _run_anywhere(client, cid, ["rm", "-rf", "--", clean_path], clean_path)
     return {"ok": True, "path": clean_path}
 
 
 def mkdir_container(client: Any, cid: str, path: str) -> dict:
-    """Tworzy katalog w kontenerze."""
-    clean_path = "/" + path.strip("/")
-    cmd = ["mkdir", "-p", clean_path]
-    exec_res = client.api.exec_create(cid, cmd)
-    exec_id = exec_res["Id"]
-    output = client.api.exec_start(exec_id)
-    exit_code = (client.api.exec_inspect(exec_id) or {}).get("ExitCode", 0)
-    if exit_code != 0:
-        out_str = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
-        raise RuntimeError(f"Błąd tworzenia katalogu {clean_path}: {out_str}")
+    clean_path = _clean(path)
+    _run_anywhere(client, cid, ["mkdir", "-p", "--", clean_path], clean_path)
     return {"ok": True, "path": clean_path}
-
-

@@ -1,5 +1,2 @@
-{% for site_id, r in results.items() %}<div id="health-{{ site_id }}" hx-swap-oob="true">
-{% if r.status %}<span class="badge {{ 'ok' if r.status < 400 else ('warn' if r.status < 500 else 'err') }}" title="{{ r.ms }} ms"><i class="bi bi-{{ 'check2' if r.ok else 'x-lg' }}"></i> {{ r.status }} · {{ r.ms }} ms</span>
-{% else %}<span class="badge err health-down" title="{{ r.error }}"><i class="bi bi-x-lg"></i> {{ t("proxy.health_down") }}</span>{% endif %}
-</div>
+{% for site_id, r in results.items() %}<div id="health-{{ site_id }}" hx-swap-oob="true">{% include "partials/health_cell.html" %}</div>
 {% endfor %}

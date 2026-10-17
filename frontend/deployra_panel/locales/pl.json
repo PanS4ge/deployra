@@ -255,7 +255,19 @@
         "cpus": "limit CPU",
         "slug": "identyfikator"
       }
-    }
+    },
+    "node_missing": "Węzeł przypisany do aplikacji nie istnieje.",
+    "no_container": "Aplikacja „{name}” nie ma jeszcze kontenera na węźle.",
+    "search": "Szukaj: nazwa, domena, węzeł, obraz…",
+    "sort": "Sortuj",
+    "usage_hint": "Średnie CPU i RAM z ostatniej minuty",
+    "no_match": "Nic nie pasuje",
+    "icon": "Ikona",
+    "icon_auto": "Automatycznie",
+    "icon_upload": "Wgraj",
+    "icon_bad_url": "Podaj adres http(s) obrazka",
+    "icon_bad_file": "Ikona: PNG, JPG, WEBP, GIF albo ICO do 256 KB",
+    "icon_saved": "Zapisano ikonę"
   },
   "auth": {
     "login": "Zaloguj",
@@ -448,7 +460,29 @@
     "unmonitor": "Wyłącz monitorowanie",
     "unpublished": "(niepublikowany)",
     "volumes": "Wolumeny (źródło:cel)",
-    "with_volumes": "z anonimowymi wolumenami"
+    "with_volumes": "z anonimowymi wolumenami",
+    "quick_actions": "Szybkie akcje",
+    "quick_failed": "Błąd ({code}): {output}",
+    "quick_done": "Wykonano",
+    "dump": "Zrzut bazy",
+    "dump_storage": "Kopia do magazynu",
+    "dump_storage_hint": "Zapisz zrzut bazy w magazynie kopii (S3/FTP/SFTP)",
+    "dump_failed": "Błąd zrzutu bazy: {error}",
+    "dump_saved": "Zapisano zrzut w magazynie kopii: {name}",
+    "no_backup_storage": "Brak magazynu kopii — Ustawienia → Kopie zapasowe",
+    "no_logs": "Brak logów",
+    "not_found": "Nie znaleziono kontenera",
+    "not_found_text": "Kontener „{name}” nie istnieje na węźle {node}.",
+    "logs_stream_failed": "Nie można pobrać strumienia logów: {error}",
+    "node_silent": "Węzeł {node} nie odpowiada",
+    "bad_port": "Port musi być z zakresu 1–65535",
+    "mounted": "Podpięte foldery",
+    "files_mounts_only": "Kontener jest zatrzymany — dostępne są podpięte foldery.",
+    "parent_dir": "Katalog wyżej",
+    "refresh": "Odśwież",
+    "size": "Rozmiar",
+    "download": "Pobierz",
+    "truncated": "Plik jest duży — pokazano pierwsze 2 MB, edycja wyłączona."
   },
   "dashboard": {
     "apps_error": "z błędem: {count}",
@@ -627,7 +661,8 @@
     "denied_request": "odmowa: błędne żądanie",
     "error_status": "Błąd {status}",
     "offline": "Brak połączenia z panelem",
-    "session_ended": "sesja zakończona"
+    "session_ended": "sesja zakończona",
+    "saved": "Zapisano"
   },
   "logs": {
     "bad_level": "Poziom: {levels}",
@@ -669,7 +704,14 @@
     "start": "Przenoszę {app}: {source} → {target}",
     "target_cleanup_failed": "Nie udało się usunąć kopii z nowego węzła: {error}",
     "title": "Przenieś na inny serwer",
-    "uploaded": "Paczka wysłana na nowy węzeł"
+    "uploaded": "Paczka wysłana na nowy węzeł",
+    "needs": "aplikacja używa ~{mb} MB RAM",
+    "here": "tutaj",
+    "fits": "zmieści się",
+    "tight": "na styk",
+    "no_room": "za mało RAM",
+    "free_of": "wolne {free} z {total} GB",
+    "free_gb": "{gb} GB wolne"
   },
   "msg": {
     "account_created": "Konto utworzone — witaj w Deployrze!",
@@ -826,7 +868,8 @@
     "saved_plain": "Zapisano",
     "sftp_port_saved": "Zmieniono port SFTP na {port}",
     "address_saved": "Zapisano adres węzła",
-    "gateway_saved": "Zapisano bramkę węzła"
+    "gateway_saved": "Zapisano bramkę węzła",
+    "title_not_found": "Nie znaleziono"
   },
   "nav": {
     "apps": "Aplikacje",
@@ -1567,7 +1610,9 @@
     "unskipped": "Pominięta wersja znów będzie proponowana",
     "up_to_date_toast": "Masz najnowszą wersję ({version})",
     "update_failed": "aktualizacja nie powiodła się",
-    "wait_timeout": "✖ {name}: przekroczony czas oczekiwania ({minutes} min)"
+    "wait_timeout": "✖ {name}: przekroczony czas oczekiwania ({minutes} min)",
+    "via_node": "{name}: {current} → {version} (podmienia węzeł {node})",
+    "rolled_back_via": "nowa wersja nie wstała, węzeł {node} przywrócił poprzednią — log aktualizacji jest na węźle"
   },
   "updater": {
     "bad_version": "nieprawidłowy numer wersji",
@@ -1617,14 +1662,14 @@
     "later": "Później",
     "latest": "Najnowsza",
     "live_view": "Podgląd na żywo",
-    "manual_hint": "Bez aktualizatora: {names}. Aktualizacja ręczna: w Portainerze stack → <b>Pull and redeploy</b>, albo <code>docker compose pull</code> i <code>up -d</code>.",
+    "manual_hint": "Bez aktualizatora: {names}. Zaktualizuj je raz ręcznie (Portainer → stack → <b>Pull and redeploy</b> albo <code>docker compose pull</code> i <code>up -d</code>) — od 1.3.0 węzeł Deployry na tej samej maszynie podmienia panel i bramkę sam.",
     "mode": {
       "image": "obrazy z rejestru",
       "native": "usługa systemd",
       "source": "ze źródeł (git + build)"
     },
     "no_source": "Wpisz źródło wydań obok, żeby panel mógł sprawdzać nowe wersje.",
-    "no_updater_hint": "Uruchom komponent z pliku compose z katalogu deploy/ (usługa *-updater) albo aktualizuj ręcznie",
+    "no_updater_hint": "Zaktualizuj raz ręcznie; od 1.3.0 panel i bramkę podmienia węzeł Deployry z tej samej maszyny",
     "none": "brak",
     "older": "starsza",
     "order_hint": "Aktualizacja idzie w tle: najpierw węzły, potem bramka, na końcu panel.",
@@ -1643,7 +1688,16 @@
     "version": "Wersja",
     "whats_new": "Co nowego w {version}",
     "whats_new_short": "Co nowego",
-    "you_have": "Masz"
+    "you_have": "Masz",
+    "mode_node": "przez węzeł {node}",
+    "reason": {
+      "disabled": "samoaktualizacja wyłączona (DEPLOYRA_SELF_UPDATE)",
+      "no_container": "nie widzę własnego kontenera — ustaw DEPLOYRA_CONTAINER",
+      "no_docker": "brak dostępu do docker.sock",
+      "not_backend": "obraz bez etykiety deployra.component=backend (stara wersja obrazu)",
+      "local_image": "obraz zbudowany lokalnie — aktualizacja ze źródeł",
+      "no_updater": "brak aktualizatora"
+    }
   },
   "uptime": {
     "changed": "zmiana {ago}",
@@ -1757,5 +1811,92 @@
     "bad_ip": "{value} to nie jest adres IP pasujący do typu rekordu",
     "edge": "bramka brzegowa",
     "known_hint": "ten adres to serwer Deployry"
+  },
+  "mc": {
+    "not_found": "Nie ma takiego serwera Minecraft",
+    "offline": "Serwer nie jest połączony (wyłączony albo bez pluginu DeployraBridge)",
+    "bridge_error": "Plugin zgłosił błąd: {error}",
+    "plugin": "Plugin",
+    "new_on_node": "Nowy serwer na węźle",
+    "add_external": "Dodaj serwer zewnętrzny",
+    "name_placeholder": "np. Survival na Craftserve",
+    "not_paired": "niesparowany",
+    "paired": "sparowany",
+    "external": "hosting zewnętrzny",
+    "last_seen": "ostatnio {when}",
+    "empty_title": "Brak serwerów Minecraft",
+    "empty_text": "Postaw serwer na węźle albo podłącz serwer z hostingu pluginem DeployraBridge.",
+    "pair_title": "Parowanie",
+    "pair_expires": "kod ważny 24 h",
+    "pair_auto": "Serwer na węźle sparuje się sam po pierwszym starcie.",
+    "pair_step1": "Wgraj plugin do folderu plugins/ i uruchom serwer.",
+    "pair_step2": "W konsoli serwera wpisz:",
+    "http_warning": "Panel działa bez HTTPS — podpisy chronią polecenia, ale lepiej ustawić domenę panelu z certyfikatem.",
+    "tab": {
+      "console": "Konsola",
+      "players": "Gracze",
+      "properties": "Ustawienia gry",
+      "files": "Pliki",
+      "papi": "PlaceholderAPI",
+      "settings": "Połączenie"
+    },
+    "macro": {
+      "day": "Dzień",
+      "night": "Noc",
+      "clear": "Pogoda",
+      "save": "Zapisz świat",
+      "list": "Gracze",
+      "whitelist_on": "Whitelist"
+    },
+    "macros": "Makra",
+    "macro_label": "Nazwa",
+    "macros_reset": "Przywróć domyślne makra",
+    "bad_command": "Podaj jedno polecenie (do 1000 znaków)",
+    "bad_player": "Nieprawidłowa nazwa gracza albo akcja",
+    "bad_path": "Nieprawidłowa ścieżka",
+    "done": "Wykonano",
+    "no_players": "Nikt nie gra",
+    "gm": {
+      "survival": "Survival",
+      "creative": "Creative",
+      "adventure": "Adventure",
+      "spectator": "Spectator"
+    },
+    "pa": {
+      "heal": "Ulecz",
+      "feed": "Nakarm",
+      "op": "OP",
+      "deop": "Zabierz OP",
+      "whitelist_add": "Do whitelisty",
+      "whitelist_remove": "Z whitelisty",
+      "kick": "Wyrzuć",
+      "ban": "Zbanuj"
+    },
+    "kick_confirm": "Wyrzucić {name}?",
+    "ban_confirm": "Zbanować {name}?",
+    "restart_hint": "zmiany działają po restarcie serwera",
+    "other_properties": "Pozostałe ({count})",
+    "properties_saved": "Zapisano server.properties",
+    "files_offline": "Serwer jest wyłączony — ustaw FTP w zakładce Połączenie, żeby mieć dostęp do plików",
+    "files_via_ftp": "Serwer jest wyłączony — pliki przez FTP.",
+    "file_too_big": "Plik większy niż 8 MB — użyj FTP hostingu",
+    "upload_limit": "do 8 MB na plik",
+    "container_files": "Pliki kontenera",
+    "player_optional": "gracz (opcjonalnie)",
+    "papi_missing": "Na serwerze nie ma PlaceholderAPI",
+    "ftp_hint": "FTP jest używane tylko wtedy, gdy serwer jest wyłączony.",
+    "ftp_user": "Użytkownik",
+    "ftp_test": "Testuj FTP",
+    "ftp_missing": "Najpierw zapisz dane FTP",
+    "ftp_failed": "FTP: {error}",
+    "ftp_ok": "FTP działa: {welcome}",
+    "settings_saved": "Zapisano",
+    "pairing": "Parowanie",
+    "repair": "Nowy kod parowania",
+    "repair_confirm": "Obecne połączenie przestanie działać, a plugin trzeba będzie sparować od nowa. Kontynuować?",
+    "pair_reset": "Wygenerowano nowy kod parowania",
+    "delete_confirm": "Usunąć {name} z panelu? Serwer i jego pliki zostają.",
+    "deleted": "Usunięto {name}",
+    "link_app": "Połącz z panelem Minecraft"
   }
 }

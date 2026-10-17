@@ -193,9 +193,8 @@ async def container(request: Request, cid: str, node: dict = Depends(node_or_404
                     return redirect(request, f"/nodes/{node['id']}/containers/{target_id}{_q(ep)}")
             except Exception:
                 pass
-            return render(request, "error.html", status_code=404, title="Nie znaleziono kontenera",
-                          message=f"Kontener «{cid}» nie istnieje na węźle {node['name']}. Być może aplikacja nie została jeszcze wdrożona lub kontener został zatrzymany/usunięty.",
-                          icon="box-seam")
+            return render(request, "error.html", status_code=404, title=t("containers.not_found"),
+                          message=t("containers.not_found_text", name=cid, node=node["name"]), icon="box-seam")
         raise
     name = info.get("Name", "").lstrip("/")
     cfg = info.get("Config") or {}
@@ -213,70 +212,68 @@ async def container(request: Request, cid: str, node: dict = Depends(node_or_404
             pass
     profile = container_profiles.detect_profile(cfg.get("Image", ""), env, ports)
     initial_logs = ""
-    try:
-        logs_res = await _client(panel, node).get(_p(f"/api/containers/{cid}/logs", ep), params={"tail": 100})
-        initial_logs = "\n".join(logs_res.get("lines", []))
-    except Exception:
-        pass
+    if not (info.get("State") or {}).get("Running"):  # działający dostaje logi strumieniem (SSE z ogonem)
+        try:
+            logs_res = await _client(panel, node).get(_p(f"/api/containers/{cid}/logs", ep), params={"tail": 300})
+            initial_logs = "\n".join(logs_res.get("lines", []))
+        except Exception:
+            pass
     return render(request, "nodes/container.html", title=name, node=node, tab="containers", c=info, name=name,
                   profile=profile, initial_logs=initial_logs, raw=json.dumps(info, indent=2, ensure_ascii=False), ep=ep)  # fmt: skip
 
 
-@router.post("/nodes/{node_id}/containers/{cid}/action/quick/{action_id}")
-async def container_quick_action(request: Request, node_id: int, cid: str, action_id: str,
-                                 node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
-                                 panel: Panel = Depends(get_panel),
-                                 user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):
+async def quick_action(panel: Panel, node: dict, cid: str, ep: str, action_id: str) -> Response:
+    """Szybka akcja profilu (np. VACUUM, FLUSHALL) — wspólna dla kontenera i aplikacji."""
     res = await _client(panel, node).post(_p(f"/api/containers/{cid}/action/quick/{action_id}", ep))
     output = (res or {}).get("output", "")
     code = (res or {}).get("exit_code", 0)
     if code != 0:
-        return toast(f"Błąd ({code}): {output[:120]}", kind="err")
-    summary = output.strip().splitlines()[0] if output.strip() else "Wykonano pomyślnie"
-    return toast(f"Sukces: {summary[:120]}")
+        return toast(t("containers.quick_failed", code=code, output=output[:120]), "err")
+    summary = output.strip().splitlines()[0] if output.strip() else t("containers.quick_done")
+    return toast(summary[:120])
 
 
-@router.get("/nodes/{node_id}/containers/{cid}/dump")
-async def container_dump_download(request: Request, node_id: int, cid: str,
-                                  node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
-                                  panel: Panel = Depends(get_panel),
-                                  user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):
-    client = _client(panel, node)
-    res = await client.client.get(
-        client._url(_p(f"/api/containers/{cid}/action/quick/dump_sql", ep)),
-        headers=client._headers("GET", f"/api/containers/{cid}/action/quick/dump_sql"),
-    )
-    if res.status_code != 200:
-        raise HTTPException(res.status_code, "Nie udało się wykonać zrzutu bazy")
-    fn = res.headers.get("content-disposition", "").split("filename=")[-1].strip('"') or f"dump_{cid[:12]}.sql.gz"
-    return Response(
-        content=res.content,
-        media_type="application/gzip",
-        headers={"Content-Disposition": f'attachment; filename="{fn}"'},
-    )
+async def _dump(panel: Panel, node: dict, cid: str, ep: str) -> tuple[bytes, str]:
+    res = await _client(panel, node).request("GET", _p(f"/api/containers/{cid}/action/quick/dump_sql", ep), timeout=300)
+    name = res.headers.get("content-disposition", "").split("filename=")[-1].strip('"') or f"dump_{cid[:12]}.sql.gz"
+    return res.content, name
 
 
-@router.post("/nodes/{node_id}/containers/{cid}/backup-dump")
-async def container_backup_to_storage(request: Request, node_id: int, cid: str,
-                                      node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
-                                      panel: Panel = Depends(get_panel),
-                                      user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):
+async def dump_download(panel: Panel, node: dict, cid: str, ep: str) -> Response:
+    content, name = await _dump(panel, node, cid, ep)
+    return Response(content=content, media_type="application/gzip", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+async def dump_to_storage(panel: Panel, node: dict, cid: str, ep: str) -> Response:
     from ..services import backup_storage
 
     driver = backup_storage.get_driver(panel)
     if not driver:
-        return toast("Brak skonfigurowanego magazynu kopii w Ustawienia -> Kopie zapasowe", kind="err")
-    client = _client(panel, node)
-    res = await client.client.get(
-        client._url(_p(f"/api/containers/{cid}/action/quick/dump_sql", ep)),
-        headers=client._headers("GET", f"/api/containers/{cid}/action/quick/dump_sql"),
-    )
-    if res.status_code != 200:
-        return toast(f"Błąd zrzutu bazy: {res.text[:100]}", kind="err")
-    fn = res.headers.get("content-disposition", "").split("filename=")[-1].strip('"') or f"db_dump_{cid[:12]}.sql.gz"
-    target_name = f"database/{node['name']}/{fn}"
-    driver.upload(target_name, res.content)
-    return toast(f"Zapisano zrzut bazy w magazynie kopii: {fn}")
+        return toast(t("containers.no_backup_storage"), "err")
+    try:
+        content, name = await _dump(panel, node, cid, ep)
+    except RemoteError as exc:
+        return toast(t("containers.dump_failed", error=str(exc.detail)[:100]), "err")
+    await asyncio.to_thread(driver.upload, f"database/{node['name']}/{name}", content)
+    return toast(t("containers.dump_saved", name=name))
+
+
+@router.post("/nodes/{node_id}/containers/{cid}/action/quick/{action_id}")
+async def container_quick_action(cid: str, action_id: str, node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
+                                 panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
+    return await quick_action(panel, node, cid, ep, action_id)
+
+
+@router.get("/nodes/{node_id}/containers/{cid}/dump")
+async def container_dump_download(cid: str, node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
+                                  panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
+    return await dump_download(panel, node, cid, ep)
+
+
+@router.post("/nodes/{node_id}/containers/{cid}/backup-dump")
+async def container_backup_to_storage(cid: str, node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
+                                      panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
+    return await dump_to_storage(panel, node, cid, ep)
 
 
 @router.get("/nodes/{node_id}/containers/{cid}/logs/stream", response_class=EventSourceResponse)
@@ -289,13 +286,13 @@ async def logs_stream(cid: str, tail: int = 300, node: dict = Depends(node_or_40
                 if event == "line":
                     yield ServerSentEvent(raw_data=line_html(data), event="line")
     except RemoteError as exc:
-        err_msg = line_html(f"⚠️ Nie można pobrać strumienia logów: {exc.detail}")
+        err_msg = line_html("⚠️ " + t("containers.logs_stream_failed", error=exc.detail))
         yield ServerSentEvent(raw_data=err_msg, event="line")
     except (httpx.HTTPError, asyncio.TimeoutError):
-        err_msg = line_html(f"⚠️ Węzeł {node['name']} nie odpowiada")
+        err_msg = line_html("⚠️ " + t("containers.node_silent", node=node["name"]))
         yield ServerSentEvent(raw_data=err_msg, event="line")
     except Exception as exc:
-        err_msg = line_html(f"⚠️ Błąd strumienia logów: {exc}")
+        err_msg = line_html("⚠️ " + t("containers.logs_stream_failed", error=exc))
         yield ServerSentEvent(raw_data=err_msg, event="line")
 
 
@@ -502,7 +499,7 @@ async def sftp_delete(request: Request, username: str, node: dict = Depends(node
 async def sftp_port_save(request: Request, port: int = Form(...), redirect_url: str = Form(None), node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
                          user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
     if not (1 <= port <= 65535):
-        raise HTTPException(400, "Port musi być z zakresu 1-65535")
+        raise HTTPException(400, t("containers.bad_port"))
     try:
         ports_resp = await _client(panel, node).get("/api/ports")
         occupied = ports_resp.get("ports", [])
@@ -521,7 +518,7 @@ async def sftp_port_save(request: Request, port: int = Form(...), redirect_url: 
 async def wg_port_save(request: Request, port: int = Form(...), redirect_url: str = Form(None), node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
                        user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
     if not (1 <= port <= 65535):
-        raise HTTPException(400, "Port musi być z zakresu 1-65535")
+        raise HTTPException(400, t("containers.bad_port"))
     try:
         await _client(panel, node).post(_p("/api/wg/config", ep), json={"port": port})
     except Exception:
@@ -612,17 +609,25 @@ def extract_compose_host_ports(compose_text: str) -> list[int]:
 # --- Menedżer plików kontenera ------------------------------------------------
 
 
+def files_url(node_id: int, cid: str, path: str, ep: str, action: str = "") -> str:
+    """Adres menedżera plików z poprawnie zakodowaną ścieżką i endpointem."""
+    from urllib.parse import urlencode
+
+    query = {"path": path or "/"}
+    if ep != "local":
+        query["ep"] = ep
+    return f"/nodes/{node_id}/containers/{cid}/files{action}?{urlencode(query)}"
+
+
+def _parent(path: str) -> str | None:
+    if path in ("", "/"):
+        return None
+    return path.rstrip("/").rpartition("/")[0] or "/"
+
+
 @router.get("/nodes/{node_id}/containers/{cid}/files")
-async def container_files(
-    request: Request,
-    node_id: int,
-    cid: str,
-    path: str = "/",
-    node: dict = Depends(node_or_404),
-    ep: str = Depends(ep_param),
-    panel: Panel = Depends(get_panel),
-    user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES)),
-):
+async def container_files(request: Request, cid: str, path: str = "/", node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
+                          panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES))):  # fmt: skip
     client = _client(panel, node)
     try:
         info = await client.get(_p(f"/api/containers/{cid}", ep))
@@ -631,55 +636,42 @@ async def container_files(
             try:
                 all_c = await client.get(_p("/api/containers", ep))
                 slug = cid[4:] if cid.startswith("app-") else cid
-                match = next((c for c in (all_c or []) if c.get("id", "").startswith(cid) or c.get("name") == cid or c.get("app") == slug or c.get("name") == f"app-{slug}" or slug in (c.get("name") or "")), None)
+                match = next((c for c in (all_c or []) if c.get("id", "").startswith(cid) or c.get("name") == cid or c.get("app") == slug or c.get("name") == f"app-{slug}"), None)
                 if match:
-                    target_id = match.get("id") or match.get("Id") or match.get("name")
-                    return redirect(request, f"/nodes/{node['id']}/containers/{target_id}/files{_q(ep)}")
-            except Exception:
+                    return redirect(request, files_url(node["id"], match["id"], path, ep))
+            except Exception:  # noqa: BLE001 — zostaje zwykłe 404
                 pass
-            return render(request, "error.html", status_code=404, title="Nie znaleziono kontenera",
-                          message=f"Kontener «{cid}» nie istnieje na węźle {node['name']}. Być może aplikacja nie została jeszcze wdrożona lub kontener został zatrzymany/usunięty.",
-                          icon="box-seam")
+            return render(request, "error.html", status_code=404, title=t("containers.not_found"),
+                          message=t("containers.not_found_text", name=cid, node=node["name"]), icon="box-seam")  # fmt: skip
         raise
     c_name = info.get("Name", "").lstrip("/") or cid[:12]
-
     try:
         data = await client.get(_p(f"/api/containers/{cid}/files", ep), params={"path": path})
-    except Exception as exc:
-        err = getattr(exc, "detail", str(exc))
-        data = {"path": path, "items": [], "error": err}
+    except RemoteError as exc:
+        data = {"path": path, "items": [], "error": exc.detail}
+    except (httpx.HTTPError, asyncio.TimeoutError):
+        data = {"path": path, "items": [], "error": t("containers.node_silent", node=node["name"])}
 
-    cur_path = data.get("path") or path
-    parts = [p for p in cur_path.strip("/").split("/") if p]
-    crumbs = []
-    acc = ""
-    for p in parts:
-        acc += "/" + p
-        crumbs.append({"name": p, "path": acc})
-
+    cur = data.get("path") or path or "/"
+    url = lambda target: files_url(node["id"], cid, target, ep)  # noqa: E731
+    crumbs, acc = [], ""
+    for part in [x for x in cur.strip("/").split("/") if x]:
+        acc += "/" + part
+        crumbs.append({"name": part, "url": url(acc)})
+    items = [{**item, "url": url(item["path"]) if item.get("is_dir") else None,
+              "download": None if item.get("is_dir") else files_url(node["id"], cid, item["path"], ep, "/download")}
+             for item in data.get("items") or []]  # fmt: skip
+    mounts = [{**m, "url": url(m["destination"])} for m in data.get("mounts") or []]
+    parent = _parent(cur)
     ctx = {
-        "node": node,
-        "cid": cid,
-        "c_name": c_name,
-        "ep": ep,
-        "epa": "" if ep == "local" else f"?ep={ep}",
-        "cur_path": cur_path,
-        "crumbs": crumbs,
-        "items": data.get("items", []),
-        "error": data.get("error"),
-        "P": Permission,
-    }
-
-    if request.headers.get("HX-Request") and not request.headers.get("HX-Boosted"):
+        "node": node, "cid": cid, "c_name": c_name, "ep": ep, "epa": _q(ep), "cur_path": cur, "crumbs": crumbs, "items": items,
+        "error": data.get("error"), "mounts": mounts, "mode": data.get("mode", "container"), "running": data.get("running", True),
+        "self_url": url(cur), "root_url": url("/"), "parent_url": url(parent) if parent else None,
+    }  # fmt: skip
+    partial = request.headers.get("HX-Target") == "files-browser" and not request.headers.get("HX-History-Restore-Request")
+    if partial:
         return render(request, "nodes/_container_files_table.html", **ctx)
-
-    return render(
-        request,
-        "nodes/container_files.html",
-        title=f"{t('containers.files')}: {c_name}",
-        tab="containers",
-        **ctx,
-    )
+    return render(request, "nodes/container_files.html", title=f"{t('containers.files')}: {c_name}", tab="containers", **ctx)
 
 
 @router.get("/nodes/{node_id}/containers/{cid}/files/read")
@@ -712,18 +704,10 @@ async def container_file_download(
     panel: Panel = Depends(get_panel),
     user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES)),
 ):
-    import os
-
-    client = _client(panel, node)
-    res = await client.request("GET", _p(f"/api/containers/{cid}/files/download", ep), params={"path": path})
-    if res.status_code != 200:
-        raise HTTPException(res.status_code, "Nie udało się pobrać pliku")
-    fn = res.headers.get("content-disposition", "").split("filename=")[-1].strip('"') or os.path.basename(path)
-    return Response(
-        content=res.content,
-        media_type=res.headers.get("content-type", "application/octet-stream"),
-        headers={"Content-Disposition": f'attachment; filename="{fn}"'},
-    )
+    res = await _client(panel, node).request("GET", _p(f"/api/containers/{cid}/files/download", ep), params={"path": path}, timeout=300)
+    disposition = res.headers.get("content-disposition") or "attachment"
+    return Response(content=res.content, media_type=res.headers.get("content-type", "application/octet-stream"),
+                    headers={"Content-Disposition": disposition})  # fmt: skip
 
 
 @router.post("/nodes/{node_id}/containers/{cid}/files/write")
@@ -782,12 +766,7 @@ async def container_file_upload(
             data={"dir_path": dir_path},
             files=file_payload,
         )
-        epa = "" if ep == "local" else f"&ep={ep}"
-        return redirect(
-            request,
-            f"/nodes/{node['id']}/containers/{cid}/files?path={dir_path}{epa}",
-            t("containers.files_uploaded", count=len(file_payload)),
-        )
+        return redirect(request, files_url(node["id"], cid, dir_path, ep), t("containers.files_uploaded", count=len(file_payload)))
     except Exception as exc:
         return toast(getattr(exc, "detail", str(exc)), "err", status=400)
 
@@ -811,12 +790,7 @@ async def container_file_delete(
     client = _client(panel, node)
     try:
         await client.delete(_p(f"/api/containers/{cid}/files", ep), params={"path": path})
-        epa = "" if ep == "local" else f"&ep={ep}"
-        return redirect(
-            request,
-            f"/nodes/{node['id']}/containers/{cid}/files?path={dir_path}{epa}",
-            t("containers.file_deleted", path=path),
-        )
+        return redirect(request, files_url(node["id"], cid, dir_path, ep), t("containers.file_deleted", path=path))
     except Exception as exc:
         return toast(getattr(exc, "detail", str(exc)), "err", status=400)
 
@@ -841,12 +815,7 @@ async def container_file_mkdir(
     client = _client(panel, node)
     try:
         await client.post(_p(f"/api/containers/{cid}/files/mkdir", ep), json={"path": target_path})
-        epa = "" if ep == "local" else f"&ep={ep}"
-        return redirect(
-            request,
-            f"/nodes/{node['id']}/containers/{cid}/files?path={dir_path}{epa}",
-            t("containers.folder_created"),
-        )
+        return redirect(request, files_url(node["id"], cid, dir_path, ep), t("containers.folder_created"))
     except Exception as exc:
         return toast(getattr(exc, "detail", str(exc)), "err", status=400)
 

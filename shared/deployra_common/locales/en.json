@@ -254,6 +254,19 @@
       "too_big": "the archive is too big once unpacked",
       "too_many": "too many files in the archive (> {max})",
       "unsafe": "unsafe path in the archive: {name}"
+    },
+    "files": {
+      "no_dir": "Directory does not exist or access denied: {path}",
+      "exec_failed": "Command in the container failed: {error}",
+      "cant_read": "Cannot read {path}: {error}",
+      "empty_archive": "Empty file archive",
+      "too_big": "File is too big to preview — download it",
+      "is_dir": "{path} is a directory",
+      "not_file": "{path} is not a file",
+      "bad_path": "Invalid path",
+      "protected": "Cannot delete system directory {path}",
+      "stopped_only_mounts": "The container is stopped — only mounted folders are available",
+      "read_only": "Folder {path} is mounted read-only"
     }
   },
   "srv": {
@@ -311,7 +324,9 @@
       "bad_version": "invalid version number: {value}",
       "no_updater": "no updater — update by hand (Portainer: “Pull and redeploy”, compose: pull + up -d)",
       "running": "the update to {version} is already running",
-      "no_data_mount": "the data directory {path} isn't on a volume — the update state wouldn't survive replacing the container"
+      "no_data_mount": "the data directory {path} isn't on a volume — the update state wouldn't survive replacing the container",
+      "no_peer": "No panel or gateway container “{name}” on this host",
+      "local_image": "The container was built locally — update it from source (git pull + build)"
     },
     "wg": {
       "bad_endpoint": "invalid endpoint: {value}",

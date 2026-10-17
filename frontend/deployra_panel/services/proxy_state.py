@@ -208,25 +208,43 @@ def push_message(result: dict) -> tuple[str, str]:
 # --- passthrough: host, którego ruch idzie dalej przez tunel (bramka → wg / węzeł → cel) --------------
 
 _EXTERNAL_CACHE: dict[str, Any] = {"at": 0.0, "routes": {}}
+_BACKGROUND: set[Any] = set()
 
 
-async def _external_routes(panel: Any) -> dict[str, list[str]]:
-    """Podsieci zewnętrznych WireGuardów bramki (np. wg1 → 10.8.0.0/24); pamiętane minutę."""
+async def _fetch_external(panel: Any, timeout: float) -> dict[str, list[str]]:
     import asyncio
     import time
 
-    if time.time() - _EXTERNAL_CACHE["at"] < 60:
-        return _EXTERNAL_CACHE["routes"]
     routes: dict[str, list[str]] = {}
     client = panel.gateway_client()
     if client:
         try:
-            data = await asyncio.wait_for(client.get("/api/external-wg"), 3)
+            data = await asyncio.wait_for(client.get("/api/external-wg"), timeout)
             routes = {x.get("label") or x["name"]: x["routes"] for x in data.get("tunnels") or []}  # „przez Cezary” zamiast „przez wg1”
         except Exception:  # noqa: BLE001 — stara bramka albo brak połączenia: zostaje ogólna etykieta
-            routes = {}
-    _EXTERNAL_CACHE.update(at=time.time(), routes=routes)
+            routes = _EXTERNAL_CACHE["routes"]
+    _EXTERNAL_CACHE.update(at=time.time(), routes=routes, refreshing=False)
     return routes
+
+
+async def _external_routes(panel: Any) -> dict[str, list[str]]:
+    """Podsieci zewnętrznych WireGuardów bramki (np. wg1 → 10.8.0.0/24); pamiętane minutę.
+
+    Starszy odczyt wraca od razu, a odświeżenie idzie w tle — lista hostów nie czeka na bramkę."""
+    import asyncio
+    import time
+
+    age = time.time() - _EXTERNAL_CACHE["at"]
+    if age < 60:
+        return _EXTERNAL_CACHE["routes"]
+    if not _EXTERNAL_CACHE["at"]:  # pierwszy raz po starcie panelu: krótko czekamy
+        return await _fetch_external(panel, 1.5)
+    if not _EXTERNAL_CACHE.get("refreshing"):
+        _EXTERNAL_CACHE["refreshing"] = True
+        task = asyncio.create_task(_fetch_external(panel, 3))
+        _BACKGROUND.add(task)
+        task.add_done_callback(_BACKGROUND.discard)
+    return _EXTERNAL_CACHE["routes"]
 
 
 async def passthrough(panel: Any, sites: list[dict], nodes: dict[int, dict]) -> dict[int, str]:

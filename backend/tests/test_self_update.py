@@ -59,8 +59,15 @@ class Engine:
         return self._find(ref)
 
     def containers(self, all=False, filters=None):
+        if "label" in (filters or {}):
+            key = filters["label"]
+            return [{"Id": c["Id"], "Names": [c["Name"]], "Image": c["Config"].get("Image"), "Labels": c["Config"].get("Labels") or {},
+                     "State": c["State"]["Status"]} for c in self.box.values() if key in (c["Config"].get("Labels") or {})]  # fmt: skip
         name = (filters or {}).get("name", "")[2:-1]
         return [{"Id": c["Id"], "State": c["State"]["Status"]} for c in self.box.values() if c["Name"].lstrip("/") == name]
+
+    def images(self, filters=None):
+        return []
 
     def inspect_image(self, ref):
         image_id = self.images.get(ref, ref)
@@ -107,8 +114,8 @@ class Engine:
             c["State"].update(Status="exited", Running=False, ExitCode=1)
             return
         c["State"].update(Status="running", Running=True)
-        if c["Image"] == "sha256:new":  # nowy backend po starcie zgłasza wersję
-            status = read_kv(self.data_dir / "update" / "status")
+        status = read_kv(self.data_dir / "update" / "status")
+        if c["Image"] == "sha256:new" and status.get("version"):  # nowy backend po starcie zgłasza wersję
             (self.data_dir / "update" / "booted").write_text(f"version={status['version']}\nupdated={int(time.time())}\n", encoding="utf-8")
 
     def logs(self, cid, tail=None):
@@ -198,3 +205,53 @@ def test_without_container_falls_back_to_sidecar(tmp_path, monkeypatch):
     (tmp_path / "sidecar").mkdir()
     (tmp_path / "sidecar" / "agent").write_text(f"mode=source\nupdated={int(time.time())}\n", encoding="utf-8")
     assert agent.info()["mode"] == "source"
+
+
+PANEL_REPO = "ghcr.io/pans4ge/deployra-panel"
+
+
+def add_panel(engine, health=None):
+    cid = engine._add("deployra-panel", "sha256:oldpanel", {"Image": f"{PANEL_REPO}:latest", "Env": ["DEPLOYRA_LANG=pl"],
+                                                             "Labels": {"deployra.component": "panel"}},
+                      {"NetworkMode": "bridge", "RestartPolicy": {"Name": "unless-stopped"}})  # fmt: skip
+    engine.images[f"{PANEL_REPO}:latest"] = "sha256:oldpanel"
+    engine.image_config["sha256:oldpanel"] = {"Env": [], "Labels": {"deployra.component": "panel"}}
+    engine.health = health
+    return cid
+
+
+def test_backend_lists_and_updates_panel_on_same_host(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEPLOYRA_DATA", str(tmp_path / "data"))
+    monkeypatch.setenv("DEPLOYRA_UPDATE_DIR", str(tmp_path / "sidecar"))
+    monkeypatch.setenv("DEPLOYRA_CONTAINER", "deployra-backend")
+    config = Config()
+    engine = Engine(config.data_dir)
+    panel_id = add_panel(engine)
+    agent = update_agent(config, lambda: SimpleNamespace(api=engine))
+    assert [(p["name"], p["component"]) for p in agent.peers()] == [("deployra-panel", "panel")]
+    started = agent.request_peer(panel_id, "v9.9.9")
+    assert started == {"name": "deployra-panel", "component": "panel", "target": "9.9.9"}
+    helper = engine.inspect_container("deployra-panel-update")
+    assert helper["Config"]["Cmd"] == ["python", "-m", "deployra_backend.services.self_update", panel_id, "9.9.9", "panel"]
+    assert helper["Image"] == "sha256:old"  # pomocnik z obrazu backendu — panel nie potrzebuje docker.sock
+    assert agent.peers()[0]["state"] == "running" and agent.peers()[0]["target"] == "9.9.9"
+    with pytest.raises(LookupError):  # backend nie podmieni dowolnego kontenera, tylko panel/bramkę
+        agent.request_peer(engine.old, "9.9.9")
+
+
+def test_apply_replaces_panel_and_records_peer_status(tmp_path):
+    engine = Engine(tmp_path)
+    panel_id = add_panel(engine)
+    assert self_update.apply(engine, tmp_path, panel_id, "9.9.9", poll=0.01, component="panel", settle=0)
+    new = engine.inspect_container("deployra-panel")
+    assert new["Id"] != panel_id and new["Image"] == "sha256:new" and new["State"]["Running"]
+    assert new["Config"]["Env"] == ["DEPLOYRA_LANG=pl"]
+    assert read_kv(tmp_path / "update" / "peers" / "deployra-panel" / "status")["state"] == "done"
+    assert not (tmp_path / "update" / "status").exists()  # stan backendu nietknięty
+
+
+def test_unavailable_updater_reports_reason(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEPLOYRA_DATA", str(tmp_path / "data"))
+    monkeypatch.setenv("DEPLOYRA_UPDATE_DIR", str(tmp_path / "sidecar"))
+    agent = update_agent(Config(), lambda: SimpleNamespace(api=Engine(tmp_path)))
+    assert agent.info()["reason"] == "no_container"

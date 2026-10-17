@@ -93,8 +93,11 @@ pokazuje baner z wyborem **Aktualizuj / Później / Pomiń tę wersję**. „Akt
 potem bramka, na końcu panel, a każdy krok czeka, aż komponent wstanie w nowej wersji. Jeśli coś się nie uda, panel zostaje w starej wersji.
 
 Węzeł podmienia się sam: backend uruchamia na chwilę swoją kopię, która pobiera nowy obraz, podmienia kontener, a gdy nowa wersja
-nie wstanie — przywraca starą, po czym znika. Panel i bramka nie mają `docker.sock`, więc ich podmianą zajmuje się mały kontener
-`*-updater` (w spoczynku ~1 MB RAM, bez sieci). Tryby:
+nie wstanie — przywraca starą, po czym znika. Panel i bramka nie mają `docker.sock`, więc od 1.3.0 ich kontener podmienia **węzeł
+Deployry z tej samej maszyny** (panel wysyła żądanie, węzeł stawia kontener na nowej wersji, sprawdza healthcheck i w razie problemu
+wraca do poprzedniej). Węzeł starszy niż 1.3.0 jest najpierw aktualizowany sam. Bramka na maszynie bez węzła i starsze instalacje
+korzystają jeszcze z kontenera `*-updater`; bez żadnego z nich zostaje „Pull and redeploy”. W tabeli komponentów widać, czym
+zaktualizuje się dany komponent, a przy „brak” — dlaczego. Tryby:
 
 - **obrazy z GHCR** (domyślnie): `docker compose pull` + `up -d`;
 - **ze źródeł** (`DEPLOYRA_IMAGES=deployra` w `deploy/.env`): `git` przewija repozytorium do taga `vX.Y.Z`, potem `build` + `up -d`;
@@ -181,6 +184,19 @@ Panel co minutę zbiera CPU, RAM i dysk każdego węzła oraz CPU/RAM każdego k
 
 Ochrona przed przepełnieniem: pierwsze wdrożenie sprawdza, czy węzeł ma dość wolnego RAM-u (limit aplikacji albo 64 MB) i dysku,
 i podpowiada węzeł z większym zapasem. Kreator pokazuje wolny RAM przy każdym węźle, a środowiska mają domyślny limit pamięci.
+
+## Minecraft
+
+Sekcja **Minecraft** zarządza serwerami z pluginem **DeployraBridge** (Paper/Spigot/Purpur 1.8.8–1.21): konsola z makrami, gracze
+(tryb gry, leczenie, OP, whitelist, kick, ban), `server.properties`, pliki i PlaceholderAPI.
+
+- **Serwer na węźle**: Aplikacje → Nowa → **Minecraft (Paper)** (`itzg/minecraft-server`, port gry 25565). Plugin pobiera się z panelu
+  i paruje sam.
+- **Hosting zewnętrzny** (Craftserve, Pterodactyl…): Minecraft → Dodaj serwer zewnętrzny, wgraj plugin, w konsoli
+  `deployra pair <adres-panelu> <kod>`. Opcjonalne FTP hostingu służy do plików, gdy serwer jest wyłączony.
+
+Serwer nie otwiera żadnego portu: plugin sam łączy się z panelem (długie zapytanie po HTTPS), a żądania i odpowiedzi są podpisane
+HMAC z ochroną przed powtórzeniem. Szczegóły: `minecraft-plugin/README.md`.
 
 ## Przenoszenie aplikacji między węzłami
 

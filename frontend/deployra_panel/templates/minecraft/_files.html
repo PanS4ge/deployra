@@ -1,0 +1,50 @@
+<div id="files-browser" data-url="{{ self_url }}" hx-get="{{ self_url }}" hx-trigger="mc-files from:body" hx-swap="outerHTML">
+{% if via == "ftp" %}<div class="callout info small"><i class="bi bi-info-circle"></i> {{ t("mc.files_via_ftp") }}</div>{% endif %}
+<div class="card">
+  <div class="card-head" style="gap: 6px; flex-wrap: wrap">
+    {% if parent_url %}<button class="btn sm ghost" hx-get="{{ parent_url }}" hx-target="#files-browser" title="{{ t('containers.parent_dir') }}"><i class="bi bi-arrow-up"></i> ..</button>{% endif %}
+    <a class="pill {{ 'active' if cur_path == '/' }}" hx-get="{{ root_url }}" hx-target="#files-browser"><i class="bi bi-hdd"></i> /</a>
+    {% for cr in crumbs %}<span class="muted">/</span><a class="pill {{ 'active' if loop.last }}" hx-get="{{ cr.url }}" hx-target="#files-browser">{{ cr.name }}</a>{% endfor %}
+    <span class="spacer"></span>
+    {% if has(user, P.ALLOW_CONTAINER_FILES_WRITE) and not error %}
+    <button class="btn sm ghost" @click="$dispatch('files-upload')" title="{{ t('containers.upload_file') }}"><i class="bi bi-upload"></i></button>
+    <button class="btn sm ghost" @click="$dispatch('files-mkdir')" title="{{ t('containers.new_folder') }}"><i class="bi bi-folder-plus"></i></button>
+    {% endif %}
+    <button class="btn sm ghost icon" hx-get="{{ self_url }}" hx-target="#files-browser" title="{{ t('containers.refresh') }}"><i class="bi bi-arrow-clockwise"></i></button>
+  </div>
+  {% if error %}
+  <div class="card-body"><div class="callout warn"><i class="bi bi-plug"></i> {{ error }}</div></div>
+  {% else %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>{{ t("common.name") }}</th><th style="width: 120px">{{ t("containers.size") }}</th><th style="width: 130px"></th></tr></thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>
+            {% if item.is_dir %}<a class="row" style="gap: 8px; font-weight: 500" hx-get="{{ item.url }}" hx-target="#files-browser"><i class="bi bi-folder-fill" style="color: var(--warn)"></i><span class="trunc mono">{{ item.name }}</span></a>
+            {% else %}<span class="row" style="gap: 8px"><i class="bi bi-file-earmark-text" style="color: var(--text-dim)"></i><span class="trunc mono">{{ item.name }}</span></span>{% endif %}
+          </td>
+          <td class="small muted mono">{{ "—" if item.is_dir else item.size | bytes }}</td>
+          <td>
+            <div class="actions">
+              {% if not item.is_dir %}
+              <button class="btn icon sm ghost" data-path="{{ item.path }}" @click="openFile($el.dataset.path)" title="{{ t('containers.edit_file') }}"><i class="bi bi-pencil-square"></i></button>
+              <a class="btn icon sm ghost" href="{{ item.download }}" hx-boost="false" download title="{{ t('containers.download') }}"><i class="bi bi-download"></i></a>
+              {% endif %}
+              {% if has(user, P.ALLOW_CONTAINER_FILES_WRITE) %}
+              <button class="btn icon sm ghost danger" hx-post="/minecraft/{{ s.id }}/files/delete" hx-swap="none" hx-vals="{{ {'path': item.path, 'is_dir': '1' if item.is_dir else ''} | jsonattr }}"
+                      hx-confirm="{{ t('containers.delete_file_confirm', path=item.name) }}" title="{{ t('common.delete') }}"><i class="bi bi-trash"></i></button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="empty small">{{ t("containers.empty_dir") }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+</div>

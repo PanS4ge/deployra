@@ -43,7 +43,7 @@
     <div class="nav-label">{{ t("nav.tools") }}</div>
     {% if has(user, P.ALLOW_SEEKING_CONTAINER) %}<a class="nav-item {{ 'active' if section == 'logs' }}" href="/logs"><i class="bi bi-search"></i> {{ t("nav.logs") }}</a>{% endif %}
     <a class="nav-item {{ 'active' if section == 'jobs' }}" href="/jobs"><i class="bi bi-activity"></i> {{ t("nav.jobs") }}</a>
-    <a class="nav-item {{ 'active' if section == 'minecraft' }}" href="/minecraft"><i class="bi bi-controller"></i> Minecraft</a>
+    {% if has(user, P.ALLOW_SEEKING_CONTAINER) %}<a class="nav-item {{ 'active' if section == 'minecraft' }}" href="/minecraft"><i class="bi bi-controller"></i> Minecraft</a>{% endif %}
     <a class="nav-item {{ 'active' if section in ('settings', 'import') }}" href="/settings"><i class="bi bi-gear"></i> {{ t("nav.settings") }}</a>
     {% set plugin_nav = panel.plugins.nav_items() %}
     {% if plugin_nav %}

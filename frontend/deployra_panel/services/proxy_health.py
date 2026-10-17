@@ -1,4 +1,4 @@
-"""Czy host proxy działa: bramka odpytuje cel każdego hosta (jednym zbiorczym zapytaniem, wynik pamiętany 30 s)."""
+"""Czy host proxy działa: bramka odpytuje cele hostów (zbiorczo, paczkami), wynik pamiętany 75 s — dłużej niż odświeżanie listy."""
 
 from __future__ import annotations
 
@@ -12,7 +12,8 @@ from deployra_common.client import RemoteError
 
 from . import proxy_state
 
-CACHE_SECONDS = 30
+CACHE_SECONDS = 75
+CHUNK = 8  # tylu hostów na jedno zapytanie z listy — wolny host nie wstrzymuje reszty
 _cache: dict[tuple[int, str], tuple[float, dict]] = {}
 
 
@@ -23,6 +24,18 @@ def probe_url(panel: Any, site: dict[str, Any], nodes: dict[int, dict]) -> tuple
         return None
     host = next((d for d in site.get("domains") or [] if not d.startswith("*.")), None)
     return f"{upstream.scheme}://{upstream.host}:{upstream.port}{upstream.path or '/'}", host
+
+
+def known(panel: Any, sites: list[dict[str, Any]]) -> dict[int, dict]:
+    """Ostatnie znane wyniki (także starsze) — lista hostów pokazuje je od razu, zanim przyjdzie świeże sprawdzenie."""
+    nodes = {n["id"]: n for n in panel.db.all("nodes")}
+    out = {}
+    for site in sites:
+        probe = probe_url(panel, site, nodes)
+        cached = _cache.get((site["id"], probe[0])) if probe else None
+        if cached:
+            out[site["id"]] = cached[1]
+    return out
 
 
 async def check(panel: Any, sites: list[dict[str, Any]]) -> dict[int, dict]:

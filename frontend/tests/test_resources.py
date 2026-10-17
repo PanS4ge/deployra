@@ -337,7 +337,7 @@ def test_runtime_wizard_uploads_files_before_deploy(admin, nodes):
     app = panel.db.get("apps", "hello", key="slug")
     assert app["kind"] == "runtime" and app["status"] == "running"
     page = admin.get(f"/apps/{app['id']}", headers={"HX-Request": ""}).text
-    assert "Flask" in page and "gunicorn" in page and "/containers/app-hello" in page
+    assert "Flask" in page and "gunicorn" in page and f"/apps/{app['id']}/logs" in page
 
     # nowy ZIP → automatyczne ponowne wdrożenie; PHP widzi zmiany od razu
     again = admin.post(f"/apps/{app['id']}/upload", files={"file": ("site.zip", zip_bytes(), "application/zip")})

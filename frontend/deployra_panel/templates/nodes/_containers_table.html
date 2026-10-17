@@ -46,7 +46,7 @@
           {% if c.profile and c.profile.can_dump and c.state == 'running' and has(user, P.ALLOW_MODIFY_DOCKERS) %}
           <a class="btn icon sm ghost" title="Szybki zrzut bazy SQL (.sql.gz)" href="/nodes/{{ node.id }}/containers/{{ c.short_id }}/dump{{ epa }}" hx-boost="false"><i class="bi bi-file-earmark-arrow-down" style="color: var(--cyan)"></i></a>
           {% endif %}
-          {% if has(user, P.ALLOW_CONTAINER_FILES) and c.state == "running" %}
+          {% if has(user, P.ALLOW_CONTAINER_FILES) and (c.state == "running" or c.mounts) %}
           <a class="btn icon sm ghost" title="{{ t('containers.files') }}" href="/nodes/{{ node.id }}/containers/{{ c.short_id }}/files{{ epa }}"><i class="bi bi-folder2-open"></i></a>
           {% endif %}
           {% if has(user, P.ALLOW_CONTAINER_TERMINAL) and c.state == "running" %}

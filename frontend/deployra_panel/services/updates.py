@@ -3,9 +3,10 @@
 Panel co kilka godzin pyta źródło wydań (GitHub Releases `owner/repo` albo własny
 JSON). Gdy jest nowsza wersja, pokazuje baner „Dostępna aktualizacja” z wyborem:
 aktualizuj / później / pomiń tę wersję. „Aktualizuj” uruchamia zadanie, które
-po kolei zleca aktualizację węzłom, bramce i na końcu samemu panelowi (węzeł
-podmienia się sam, panel i bramka mają obok siebie kontener `deployra-updater`),
-i czeka, aż każdy wstanie w nowej wersji. Panel podmienia się ostatni — po restarcie kończy zadanie
+po kolei zleca aktualizację węzłom, bramkom i na końcu samemu panelowi. Węzeł podmienia się sam;
+panel i bramkę podmienia węzeł Deployry z tego samego hosta Dockera (bez kontenera-aktualizatora i bez
+docker.sock w panelu), a starsze instalacje używają jeszcze sidecara `deployra-updater`. Zadanie czeka,
+aż każdy komponent wstanie w nowej wersji. Panel podmienia się ostatni — po restarcie kończy zadanie
 powiadomieniem.
 """
 
@@ -36,6 +37,8 @@ POLL = 4.0
 REMOTE_TIMEOUT = 25 * 60  # budowanie ze źródeł na słabym serwerze potrafi trwać
 DONE_GRACE = 120  # tyle czekamy po „zaktualizowano”, aż komponent zgłosi nową wersję
 SNOOZE = 24 * 3600
+PEER_SINCE = "1.3.0"  # od tej wersji węzeł umie podmienić panel i bramkę z tego samego hosta
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 REPO = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
 GITHUB = "https://api.github.com/repos/"
 
@@ -223,18 +226,24 @@ def describe(info: dict[str, Any]) -> str:
 
 
 async def components(panel: Any, log_lines: int = 0) -> list[dict[str, Any]]:
-    """Panel, bramka i sparowane węzły z wersją i stanem aktualizatora."""
+    """Panel, bramki i sparowane węzły z wersją i stanem aktualizatora (własnego albo przez węzeł obok)."""
     items: list[dict[str, Any]] = [
         {"key": "panel", "name": t("upd.comp_panel"), "icon": "window-stack", "online": True, "version": __version__,
          "update": panel.updates.info(log_lines), "client": None, "address": panel.db.setting("panel_domain") or None},
     ]  # fmt: skip
     remote: list[tuple[str, str, str, Any, str | None]] = []
-    hub, hub_client = panel.gateway(), panel.hub_client()
-    if hub_client:
-        remote.append(("gateway", t("upd.comp_gateway"), "diagram-3", hub_client, (hub or {}).get("public_host")))
-    edge = panel.edge_row()
-    if edge and edge.get("secret"):
-        remote.append(("edge", t("upd.comp_edge"), "signpost-split", panel.gateway_client(), edge.get("public_host")))
+    hub = panel.gateway()
+    gateways = [g for g in panel.gateways() if g.get("secret")]
+    for gw in gateways:
+        if hub and gw["id"] == hub["id"]:
+            key, name, icon = "gateway", t("upd.comp_gateway"), "diagram-3"
+        elif gw.get("role") == "edge":
+            key, name, icon = "edge", t("upd.comp_edge"), "signpost-split"
+        else:
+            key, name, icon = f"gw-{gw['id']}", t("upd.comp_gateway"), "diagram-3"
+        if len(gateways) > 1 and gw.get("public_host"):
+            name = f"{name} · {gw['public_host']}"
+        remote.append((key, name, icon, panel.client_for_gateway(gw), gw.get("public_host")))
     for node in panel.db.all("nodes"):
         if node["status"] == "paired" and node.get("secret"):
             address = node.get("tunnel_ip") if node["transport"] == "tunnel" else urlparse(node.get("api_url") or "").hostname
@@ -242,21 +251,65 @@ async def components(panel: Any, log_lines: int = 0) -> list[dict[str, Any]]:
 
     async def fetch(key: str, name: str, icon: str, client: Any, address: str | None) -> dict[str, Any]:
         item = {"key": key, "name": name, "icon": icon, "online": False, "version": None, "update": None, "client": client, "error": None,
-                "address": address}  # fmt: skip
+                "address": address, "peers": []}  # fmt: skip
         try:
             data = await asyncio.wait_for(client.get("/api/update", params={"log": log_lines} if log_lines else None), 8)
             item.update(online=True, version=data.get("version"), update={k: v for k, v in data.items() if k not in ("service", "version")})
         except RemoteError as exc:
             item["error"] = exc.detail
+            return item
         except (httpx.HTTPError, asyncio.TimeoutError):
             item["error"] = t("upd.not_responding")
+            return item
+        if key.startswith("node-") and not is_newer(PEER_SINCE, item["version"] or "0.0.0"):
+            try:
+                item["peers"] = (await asyncio.wait_for(client.get("/api/update/peers"), 8)).get("peers") or []
+            except (RemoteError, httpx.HTTPError, asyncio.TimeoutError):
+                pass
         return item
 
     items += await asyncio.gather(*(fetch(*args) for args in remote))
+    _link_peers(items)
     target = target_version(panel)
     for item in items:
         item["behind"] = bool(item["version"] and is_newer(target, item["version"]))
     return items
+
+
+def _link_peers(items: list[dict[str, Any]]) -> None:
+    """Panel i bramki bez własnego aktualizatora → węzeł na tym samym hoście, który podmieni ich kontener.
+
+    Dokładnie: po ID kontenera (komponent podaje własne, węzeł 1.3.0+ listuje sąsiadów). Gdy węzeł jest starszy,
+    zgadujemy po adresie (bramka i węzeł pod tym samym IP, panel obok węzła lokalnego) — węzeł zostanie wtedy
+    najpierw zaktualizowany, a kontener znaleziony po aktualizacji."""
+    nodes = [i for i in items if i["key"].startswith("node-") and i["online"]]
+    for item in items:
+        if item["key"].startswith("node-") or not item["online"] or (item["update"] or {}).get("available"):
+            continue
+        component = "panel" if item["key"] == "panel" else "gateway"
+        own = (item["update"] or {}).get("container")
+        via, peer = None, None
+        for node in nodes:
+            peer = next((p for p in node["peers"] if own and p["id"] == own), None)
+            if peer:
+                via = node
+                break
+        if not via:
+            for node in nodes:
+                local = node["address"] in LOCAL_HOSTS
+                if (component == "panel" and local) or (component == "gateway" and item["address"] and item["address"] == node["address"]):
+                    via = node
+                    peer = next((p for p in node["peers"] if p["component"] == component), None) if len(node["peers"]) else None
+                    break
+        if not via or not ((via["update"] or {}).get("available") or peer):
+            continue
+        item["via"] = {"key": via["key"], "name": via["name"], "client": via["client"], "component": component,
+                       "container": peer["id"] if peer else None, "peer": peer["name"] if peer else None}  # fmt: skip
+        update = dict(item["update"] or {})
+        update.update(available=True, mode="node")
+        if peer and peer.get("state") in ("queued", "running", "error", "done"):
+            update.update(state=peer["state"], target=peer.get("target"), step=peer.get("step"), message=peer.get("message", ""))
+        item["update"] = update
 
 
 # --- aktualizacja ------------------------------------------------------------------------------
@@ -286,20 +339,20 @@ async def run(panel: Any, job: Job, target: str, only: set[str] | None = None) -
         job.log(t("upd.nothing"))
         return {"updated": []}
 
-    # najpierw węzły (równolegle), potem bramka, na końcu panel — on zrestartuje się ostatni
+    # najpierw węzły (równolegle) — także te, które potem podmienią panel albo bramkę — potem bramki, na końcu panel
     nodes = [c for c in todo if c["key"].startswith("node-")]
     results: dict[str, bool] = {}
     if nodes:
         done = await asyncio.gather(*(_remote(job, c, target) for c in nodes))
         results.update({c["name"]: ok for c, ok in zip(nodes, done)})
-    for item in (c for c in todo if c["key"] in ("edge", "gateway")):
-        results[item["name"]] = await _remote(job, item, target)
+    for item in (c for c in todo if c["key"] in ("edge", "gateway") or c["key"].startswith("gw-")):
+        results[item["name"]] = await (_peer(panel, job, item, target) if item.get("via") else _remote(job, item, target))
     failed = [name for name, ok in results.items() if not ok]
     me = next((c for c in todo if c["key"] == "panel"), None)
     if me and failed:
         job.log(t("upd.panel_stays"))
     elif me:
-        results[me["name"]] = await _self(panel, job, target)
+        results[me["name"]] = await (_peer(panel, job, me, target) if me.get("via") else _self(panel, job, target))
         failed = [name for name, ok in results.items() if not ok]
     if failed:
         raise JobFailed(t("upd.failed", names=", ".join(failed)))
@@ -345,6 +398,74 @@ async def _remote(job: Job, item: dict[str, Any], target: str) -> bool:
             done_at = done_at or time.monotonic()
             if time.monotonic() - done_at > DONE_GRACE:
                 job.log(t("upd.still_old", name=name, version=data.get("version"), target=target))
+                return False
+    job.log(t("upd.wait_timeout", name=name, minutes=REMOTE_TIMEOUT // 60))
+    return False
+
+
+async def _peer(panel: Any, job: Job, item: dict[str, Any], target: str) -> bool:
+    """Panel albo bramka bez własnego aktualizatora: kontener podmienia węzeł z tego samego hosta."""
+    via, name = item["via"], item["name"]
+    client = via["client"]
+    container, peer_name = via.get("container"), via.get("peer")
+    if not container:  # węzeł był starszy — po jego aktualizacji szukamy kontenera jeszcze raz
+        try:
+            peers = (await asyncio.wait_for(client.get("/api/update/peers"), 10)).get("peers") or []
+        except (RemoteError, httpx.HTTPError, asyncio.TimeoutError):
+            peers = []
+        own = (item["update"] or {}).get("container")
+        found = [p for p in peers if p["id"] == own] or [p for p in peers if p["component"] == via["component"]]
+        if len(found) != 1:
+            job.log(t("upd.no_updater", name=name))
+            return False
+        container, peer_name = found[0]["id"], found[0]["name"]
+    if item["key"] == "panel":
+        panel.db.set_setting("update_pending", {"target": target, "job_id": job.id, "started": time.time(), "via": via["name"]})
+    try:
+        await client.post("/api/update/peer", json={"container": container, "version": target})
+    except (RemoteError, httpx.HTTPError) as exc:
+        job.log(f"✖ {name}: {getattr(exc, 'detail', None) or t('upd.not_responding')}")
+        if item["key"] == "panel":
+            panel.db.set_setting("update_pending", None)
+        return False
+    job.log(t("upd.via_node", name=name, node=via["name"], current=item["version"], version=target))
+    deadline = time.monotonic() + REMOTE_TIMEOUT
+    last, done_at = None, None
+    while time.monotonic() < deadline:
+        await asyncio.sleep(POLL)
+        if item.get("client"):  # bramka: liczy się wersja, którą sama zgłasza
+            try:
+                data = await asyncio.wait_for(item["client"].get("/api/update"), 10)
+                if same_version(data.get("version"), target):
+                    job.log(t("upd.running_version", name=name, version=target))
+                    return True
+            except (RemoteError, httpx.HTTPError, asyncio.TimeoutError):
+                pass
+        try:
+            peers = (await asyncio.wait_for(client.get("/api/update/peers", params={"log": peer_name}), 10)).get("peers") or []
+        except (RemoteError, httpx.HTTPError, asyncio.TimeoutError):
+            continue
+        peer = next((p for p in peers if p["name"] == peer_name), None)
+        if not peer or not same_version(peer.get("target"), target):
+            continue
+        message = describe(peer)
+        if message and message != last:
+            job.log(f"{name}: {message}")
+            last = message
+        if peer.get("state") == "error":
+            for line in (peer.get("log") or [])[-15:]:
+                job.log(f"    {line}")
+            if item["key"] == "panel":
+                panel.db.set_setting("update_pending", None)
+            return False
+        if peer.get("state") == "done":
+            done_at = done_at or time.monotonic()
+            if item["key"] == "panel" or time.monotonic() - done_at > DONE_GRACE:
+                if item["key"] == "panel":  # stary panel nadal żyje, choć węzeł zgłosił koniec — obraz się nie zmienił
+                    job.log(t("upd.panel_not_replaced", version=__version__))
+                    panel.db.set_setting("update_pending", None)
+                else:
+                    job.log(t("upd.still_old", name=name, version=item["version"], target=target))
                 return False
     job.log(t("upd.wait_timeout", name=name, minutes=REMOTE_TIMEOUT // 60))
     return False
@@ -423,6 +544,14 @@ def finish_pending(panel: Any) -> None:
             job.status = "error"
             job.error = err_msg
             job.finished = time.time()
+            job.log(f"✖ Panel: {err_msg}")
+            if hasattr(panel.jobs, "save_job"):
+                panel.jobs.save_job(job)
+    elif value.get("via"):  # węzeł podmienił panel, ale wstała stara wersja = pomocnik się wycofał
+        err_msg = t("upd.rolled_back_via", node=value["via"])
+        panel.notify(t("upd.notify_failed", version=target, error=err_msg), "err")
+        if job:
+            job.status, job.error, job.finished = "error", err_msg, time.time()
             job.log(f"✖ Panel: {err_msg}")
             if hasattr(panel.jobs, "save_job"):
                 panel.jobs.save_job(job)

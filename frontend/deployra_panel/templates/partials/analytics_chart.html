@@ -1,9 +1,8 @@
-<div class="card-head">
+<div class="card-head compact">
   <h3><i class="bi bi-graph-up-arrow"></i> {{ t("analytics.title") }}</h3>
-  <span class="spacer"></span>
-  <div class="seg">
+  <div class="seg sm">
     {% for d, label in [(1, "24 h"), (7, t("analytics.days", count=7)), (30, t("analytics.days", count=30)), (90, t("analytics.days", count=90))] %}
-    <label class="{{ 'on' if d == days }}" style="{{ 'background: var(--grad); color: #fff' if d == days }}" hx-get="/analytics/chart?{{ query }}&days={{ d }}" hx-target="closest .card" hx-swap="innerHTML">{{ label }}</label>
+    <label class="{{ 'on' if d == days }}" hx-get="/analytics/chart?{{ query }}&days={{ d }}" hx-target="closest .card" hx-swap="innerHTML">{{ label }}</label>
     {% endfor %}
   </div>
 </div>
@@ -11,20 +10,18 @@
   {% if data is none %}
   <div class="muted small">{{ t("analytics.no_data") }}</div>
   {% else %}
-  <div class="grid grid-4" style="margin-bottom: 14px">
-    <div><div class="small muted">{{ t("analytics.uniques") }}</div><div style="font-size: 1.5rem; font-weight: 700; color: #67e8f9">{{ short(data.summary.uniques) }}</div></div>
-    {% if days != 1 %}
-    <div><div class="small muted">{{ t("analytics.returning") }}</div><div style="font-size: 1.5rem; font-weight: 700; color: #f9a8d4">{{ short(data.summary.returning) }} <small class="muted" style="font-size: .9rem">{{ (data.summary.returning_pct ~ "%") if data.summary.returning_pct is not none else "" }}</small></div></div>
-    {% endif %}
-    <div><div class="small muted">{{ t("analytics.requests") }}</div><div style="font-size: 1.5rem; font-weight: 700">{{ short(data.summary.requests) }}</div></div>
-    {% if days != 1 %}<div><div class="small muted">{{ t("analytics.transfer") }}</div><div style="font-size: 1.5rem; font-weight: 700">{{ data.summary.bytes | bytes }}</div></div>{% endif %}
-  </div>
-  <div class="chart-wrap">
-    {{ svg }}
-  </div>
-  <div class="chart-legend small muted">
-    <span><span class="dot" style="background: #22d3ee"></span> {{ t("analytics.legend_uniques") }}</span>
-    {% if days == 1 %}<span><span class="dot" style="background: #8b5cf6"></span> {{ t("analytics.legend_requests") }}</span>{% else %}<span><span class="dot" style="background: #f472b6"></span> {{ t("analytics.legend_returning") }}</span>{% endif %}
+  <div class="visits">
+    <div class="visits-stats">
+      <div><span class="small muted"><span class="dot" style="background: var(--cyan)"></span> {{ t("analytics.uniques") }}</span><b class="c-cyan">{{ short(data.summary.uniques) }}</b></div>
+      {% if days != 1 %}
+      <div><span class="small muted"><span class="dot" style="background: var(--magenta)"></span> {{ t("analytics.returning") }}</span><b class="c-pink">{{ short(data.summary.returning) }}{% if data.summary.returning_pct is not none %} <small class="muted">{{ data.summary.returning_pct }}%</small>{% endif %}</b></div>
+      <div><span class="small muted">{{ t("analytics.requests") }}</span><b>{{ short(data.summary.requests) }}</b></div>
+      <div><span class="small muted">{{ t("analytics.transfer") }}</span><b>{{ data.summary.bytes | bytes }}</b></div>
+      {% else %}
+      <div><span class="small muted"><span class="dot" style="background: var(--violet)"></span> {{ t("analytics.requests") }}</span><b>{{ short(data.summary.requests) }}</b></div>
+      {% endif %}
+    </div>
+    <div class="visits-chart">{{ svg }}</div>
   </div>
   {% endif %}
 </div>

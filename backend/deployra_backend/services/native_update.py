@@ -27,10 +27,22 @@ class BackendUpdates:
         return self.sidecar if self.own.mode is None and self.sidecar.mode is not None else self.own
 
     def info(self, log_lines: int = 0) -> dict[str, Any]:
-        return self._pick().info(log_lines)
+        out = self._pick().info(log_lines)
+        if not out["available"]:
+            out["reason"] = self.updater.reason or "no_updater"  # panel pokaże, czego brakuje (socket, wolumen, obraz…)
+        return out
 
     def request(self, version: str) -> dict[str, Any]:
         return self._pick().request(version)
+
+    def peers(self) -> list[dict[str, Any]]:
+        return self.updater.peers()
+
+    def peer_log(self, name: str, lines: int = 30) -> list[str]:
+        return self.updater.peer_log(name, lines)
+
+    def request_peer(self, container: str, version: str) -> dict[str, Any]:
+        return self.updater.launch_peer(container, version)
 
 
 def update_agent(config: Config, docker: Callable[[], Any] | None = None) -> UpdateAgent | BackendUpdates:

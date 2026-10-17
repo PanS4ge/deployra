@@ -128,8 +128,14 @@ async def sites(request: Request, kind_slug: str, archived: bool = False, panel:
     certs = {c["id"]: c for c in panel.db.all("certificates")}
     apps = {a["id"]: a for a in panel.db.all("apps")}
     hops = await proxy_state.passthrough(panel, rows, nodes) if kind == "proxy" else {}
+    from ..services import proxy_health
+
+    health = proxy_health.known(panel, [r for r in rows if r["enabled"]]) if kind == "proxy" else {}
+    enabled = [r["id"] for r in rows if r["enabled"]]
+    chunks = [enabled[i:i + proxy_health.CHUNK] for i in range(0, len(enabled), proxy_health.CHUNK)]
     return render(request, "proxy/sites.html", title=t(KIND_TITLE[kind]), tab=kind_slug, kind=kind, sites=rows, nodes=nodes,
-                  certs=certs, apps=apps, hops=hops, archived=archived, archived_count=archived_count)  # fmt: skip
+                  certs=certs, apps=apps, hops=hops, archived=archived, archived_count=archived_count, health=health,
+                  health_chunks=chunks)  # fmt: skip
 
 
 # --- formularz hosta ---------------------------------------------------------------------------

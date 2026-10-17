@@ -1,0 +1,35 @@
+{% from "_macros.html" import empty %}
+{% if error %}<div class="card"><div class="card-body"><div class="callout warn"><i class="bi bi-plug"></i> {{ error }}</div></div></div>
+{% elif not players %}<div class="card">{{ empty("people", t("mc.no_players")) }}</div>
+{% else %}
+{% set can = has(user, P.ALLOW_CONTAINER_TERMINAL) %}
+<div class="grid grid-auto">
+  {% for p in players %}{% set act = "/minecraft/" ~ s.id ~ "/player" %}
+  <div class="card">
+    <div class="card-body stack" style="gap: 10px">
+      <div class="row" style="gap: 10px">
+        <img class="mc-head" src="https://mc-heads.net/avatar/{{ (p.uuid or p.name) | urlencode }}/40" width="40" height="40" alt="" loading="lazy">
+        <div style="min-width: 0"><b class="trunc">{{ p.name }}</b><div class="small muted mono trunc">{{ p.world }} · {{ p.x }}, {{ p.y }}, {{ p.z }}{% if p.ping is not none %} · {{ p.ping }} ms{% endif %}</div></div>
+        <span class="spacer"></span>{% if p.op %}<span class="badge violet">OP</span>{% endif %}
+      </div>
+      <div class="small row" style="gap: 8px"><i class="bi bi-heart-fill" style="color: var(--err)"></i><div style="flex: 1"><div class="bar hp"><span style="width: {{ [100, ((p.health or 0) / (p.max_health or 20) * 100) | round] | min }}%"></span></div></div><span class="mono">{{ "%.0f" | format(p.health or 0) }}/{{ "%.0f" | format(p.max_health or 20) }}</span></div>
+      <div class="small row" style="gap: 8px"><i class="bi bi-egg-fried" style="color: var(--warn)"></i><div style="flex: 1"><div class="bar food"><span style="width: {{ [100, (p.food or 0) * 5] | min }}%"></span></div></div><span class="mono">{{ p.food or 0 }}/20</span></div>
+      {% if can %}
+      <div class="seg sm">
+        {% for mode in ("survival", "creative", "adventure", "spectator") %}
+        <label class="{{ 'on' if (p.gamemode or '') | lower == mode }}" hx-post="{{ act }}" hx-swap="none" hx-vals="{{ {'name': p.name, 'action': mode} | jsonattr }}">{{ t("mc.gm." ~ mode) }}</label>
+        {% endfor %}
+      </div>
+      <div class="row" style="gap: 4px; flex-wrap: wrap">
+        {% for action, icon in [("heal", "heart-pulse"), ("feed", "egg-fried"), ("op" if not p.op else "deop", "star"), ("whitelist_remove" if p.whitelisted else "whitelist_add", "shield-check")] %}
+        <button class="btn xs ghost" hx-post="{{ act }}" hx-swap="none" hx-vals="{{ {'name': p.name, 'action': action} | jsonattr }}"><i class="bi bi-{{ icon }}"></i> {{ t("mc.pa." ~ action) }}</button>
+        {% endfor %}
+        <button class="btn xs ghost danger" hx-post="{{ act }}" hx-swap="none" hx-vals="{{ {'name': p.name, 'action': 'kick'} | jsonattr }}" hx-confirm="{{ t('mc.kick_confirm', name=p.name) }}"><i class="bi bi-box-arrow-right"></i> {{ t("mc.pa.kick") }}</button>
+        <button class="btn xs ghost danger" hx-post="{{ act }}" hx-swap="none" hx-vals="{{ {'name': p.name, 'action': 'ban'} | jsonattr }}" hx-confirm="{{ t('mc.ban_confirm', name=p.name) }}" data-danger><i class="bi bi-slash-circle"></i> {{ t("mc.pa.ban") }}</button>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

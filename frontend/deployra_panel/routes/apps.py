@@ -23,7 +23,7 @@ from ..deps import current_user, require
 from ..i18n import t
 from ..permissions import Permission
 from ..services import charts, deploy, migrate, relay, resources
-from ..web import redirect, render, toast
+from ..web import redirect, render, templates, toast
 
 router = APIRouter(dependencies=[Depends(current_user)])
 MAX_UPLOAD = 1024 * 1024 * 1024  # 1 GB
@@ -166,11 +166,25 @@ def _errors(exc: Exception) -> str:
 
 @router.get("/apps")
 def apps(request: Request, panel: Panel = Depends(get_panel)):
-    rows = panel.db.fetchall("SELECT a.*, n.name AS node_name FROM apps a LEFT JOIN nodes n ON n.id = a.node_id ORDER BY a.name")
-    from ..services import uptime
+    import time
 
+    from ..services import app_icons, uptime
+
+    rows = panel.db.fetchall("SELECT a.*, n.name AS node_name FROM apps a LEFT JOIN nodes n ON n.id = a.node_id ORDER BY a.name")
     stats = uptime.stats_for(panel, [("app", a["id"]) for a in rows])
-    return render(request, "apps/list.html", title=t("nav.apps"), apps=rows, stats=stats)
+    items = []
+    for a in rows:
+        usage = resources.LATEST.get(a["node_id"]) or {}
+        fresh = time.time() - usage.get("ts", 0) < 180  # pętla zasobów co 60 s; starszy odczyt = brak danych
+        a["usage"] = (usage.get("apps") or {}).get(a["slug"]) if fresh else None
+        s = stats.get(("app", a["id"]))
+        items.append({
+            "id": a["id"], "name": a["name"].lower(), "node": (a["node_name"] or "").lower(), "status": a["status"],
+            "cpu": (a["usage"] or {}).get("cpu", -1), "mem": (a["usage"] or {}).get("mem", -1),
+            "uptime": s["uptime_24h"] if s and s.get("uptime_24h") is not None else -1,
+            "text": " ".join([a["name"], a["slug"], a["node_name"] or "", *(a.get("domains") or []), app_icons.app_image(panel, a) or ""]).lower(),
+        })  # fmt: skip
+    return render(request, "apps/list.html", title=t("nav.apps"), apps=rows, stats=stats, items=items)
 
 
 COMMON_PORTS = {
@@ -255,6 +269,13 @@ async def create_app(request: Request, panel: Panel = Depends(get_panel), user: 
         app_id = deploy.create_app_row(panel, name or slug, node["id"], spec, options)
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc), "err", status=400)
+    if spec.env.get("DEPLOYRA_PAIR_CODE") == "auto":  # szablon Minecrafta: plugin sparuje się sam przy pierwszym starcie
+        from ..services import minecraft
+        from .minecraft import panel_url
+
+        _, code = minecraft.create(panel, name or slug, app_id)
+        spec.env.update(DEPLOYRA_PAIR_CODE=code, DEPLOYRA_PANEL_URL=panel_url(request, panel))
+        panel.db.update("apps", app_id, spec=deploy.store(panel, spec, options))
     app = panel.db.get("apps", app_id)
     job = start_deploy(panel, app)
     panel.notify(t("msg.notify_deploying", user=user["email"], slug=slug, node=node["name"]))
@@ -262,6 +283,34 @@ async def create_app(request: Request, panel: Panel = Depends(get_panel), user: 
 
 
 # --- szczegóły ---------------------------------------------------------------------------
+
+
+def move_targets(panel: Panel, app: dict, spec: AppSpec) -> list[dict]:
+    """Kafelki „Przenieś”: bieżący węzeł + pozostałe z RAM-em, dyskiem, CPU i oceną, czy aplikacja się zmieści."""
+    import time
+
+    MB = 1024 * 1024
+    usage = (resources.LATEST.get(app["node_id"]) or {}).get("apps", {}).get(app["slug"]) or {}
+    need = round(usage["mem"] / MB) if usage.get("mem") else spec.memory_mb
+    out = []
+    for n in panel.db.fetchall("SELECT * FROM nodes ORDER BY name"):
+        latest = resources.LATEST.get(n["id"]) or {}
+        host = latest.get("host") or {}
+        online = n["status"] == "paired" and time.time() - latest.get("ts", 0) < 180
+        free = resources.free_mb(host) if online else None
+        disk_free = round((host.get("disk_total") - host.get("disk_used")) / MB) if online and host.get("disk_total") else None
+        if n["id"] == app["node_id"]:
+            fit = "here"
+        elif n["status"] != "paired":
+            fit = "offline"
+        elif free is None or not need:
+            fit = "unknown"
+        else:
+            fit = "ok" if free >= need * 1.2 + 64 else ("tight" if free >= need else "no")
+        out.append({"node": n, "online": online, "free": free, "total": round(host["ram_total"] / MB) if host.get("ram_total") else None,
+                    "ram": host.get("ram"), "cpu": host.get("cpu"), "disk_free": disk_free, "fit": fit})  # fmt: skip
+    out.sort(key=lambda x: (x["fit"] != "here", x["fit"] in ("no", "offline"), x["node"]["name"]))
+    return [{**x, "need": need} for x in out]
 
 
 @router.get("/apps/{app_id}")
@@ -280,17 +329,70 @@ def app_page(request: Request, job: str = "", app: dict = Depends(_app), panel: 
     from deployra_common.container_profiles import detect_profile
 
     monitor = uptime.monitor_for(panel, "app", app["id"])
-    others = [(n, resources.node_free(n["id"])) for n in _nodes(panel) if n["id"] != app["node_id"]]
+    others = move_targets(panel, app, spec)
     img = spec.source.image if spec.source.kind == "image" else ""
-    app_profile = detect_profile(f"app-{app['slug']}", img)
+    app_profile = detect_profile(img, spec.env, [{"container": spec.container_port}] if spec.container_port else [])
     return render(
         request, "apps/detail.html", title=app["name"], app=app, spec=spec, options=options, node=node, site=site, cert=cert,
         job=live_job, hook_url=hook_url, hook_secret=panel.sealer.unseal(app.get("webhook_secret")),
         monitor=monitor, monitor_stats=uptime.stats_for(panel, [("app", app["id"])]).get(("app", app["id"])),
         settings=panel.db.settings(), other_nodes=others, auto_capable=migrate.auto_capable(spec),
         acls=panel.db.fetchall("SELECT id, name FROM access_lists ORDER BY name"),
-        app_profile=app_profile,
+        app_profile=app_profile, mc_server=panel.db.fetchone("SELECT id FROM minecraft_servers WHERE app_id = ?", [app["id"]]),
     )  # fmt: skip
+
+
+@router.get("/apps/{app_id}/icon")
+async def app_icon(app: dict = Depends(_app), panel: Panel = Depends(get_panel)):
+    from fastapi import Response
+
+    from ..services import app_icons
+
+    found = await app_icons.get(panel, app)
+    if not found:
+        return Response(status_code=404, headers={"Cache-Control": "private, max-age=3600"})
+    data, kind = found
+    # SVG z cudzej strony: bez skryptów nawet po otwarciu adresu wprost
+    headers = {"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff",
+               "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"}  # fmt: skip
+    return Response(content=data, media_type=kind, headers=headers)
+
+
+@router.post("/apps/{app_id}/icon")
+async def set_app_icon(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                       user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
+    from ..services import app_icons
+
+    form = await request.form()
+    mode = str(form.get("mode") or "auto")
+    value = app.get("icon")
+    if mode == "auto":
+        value = None
+    elif mode == "url":
+        url = str(form.get("url") or "").strip()
+        if not re.match(r"^https?://\S{4,1000}$", url):
+            return toast(t("apps.icon_bad_url"), "err", status=400)
+        value = f"url:{url}"
+    elif mode == "upload":
+        upload = form.get("file")
+        if not hasattr(upload, "read"):
+            return toast(t("apps.icon_bad_file"), "err", status=400)
+        data = await upload.read(app_icons.MAX_BYTES + 1)
+        try:
+            value = app_icons.save_upload(panel, app["id"], data, getattr(upload, "content_type", "") or "")
+        except ValueError:
+            return toast(t("apps.icon_bad_file"), "err", status=400)
+    if mode != "upload":  # wgrany plik nie jest już potrzebny (nowy wgrany zastępuje stary sam)
+        for old in app_icons.icon_dir(panel).glob(f"custom-{app['id']}-*"):
+            old.unlink(missing_ok=True)
+    panel.db.update("apps", app["id"], icon=value)
+    app_icons.forget(panel, app["id"])
+    return redirect(request, f"/apps/{app['id']}/edit", t("apps.icon_saved"))
+
+
+@router.get("/apps/{app_id}/badge")
+def app_badge(request: Request, app: dict = Depends(_app)):
+    return templates.TemplateResponse(request, "partials/app_badge.html", {"app": app})
 
 
 @router.post("/apps/{app_id}/access")
@@ -310,52 +412,84 @@ async def set_access(request: Request, app: dict = Depends(_app), panel: Panel =
     return toast(message, level if level != "ok" else "ok")
 
 
-@router.get("/apps/{app_id}/logs")
-async def app_logs(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
-                   user: dict = Depends(require(Permission.ALLOW_SEEKING_CONTAINER))):
+async def app_container(panel: Panel, app: dict) -> tuple[dict | None, str, str | None]:
+    """(węzeł, endpoint, ID kontenera aplikacji) — ten sam dobór co przy akcjach zasilania (etykieta, app-<slug>, port, nazwa)."""
+    from ..services.uptime import app_containers
+    from .docker import _p
+
     node = panel.node(app["node_id"])
     if not node:
-        return redirect(request, f"/apps/{app['id']}", "Węzeł przypisany do aplikacji nie istnieje.", "err")
+        return None, "local", None
     try:
         spec, _ = deploy.load(panel, app)
-        ep = getattr(spec, "endpoint", "local") or "local"
-    except Exception:
+        ep = spec.endpoint or "local"
+    except Exception:  # noqa: BLE001 — uszkodzony spec nie blokuje podglądu
         ep = "local"
-    epa = "" if ep == "local" else f"?ep={ep}"
-    slug = app["slug"]
     try:
-        containers = await panel.node_client(node).get(f"/api/containers{epa}")
-        match = next((c for c in (containers or []) if c.get("name") == f"app-{slug}" or c.get("app") == slug or slug in (c.get("name") or "")), None)
-        if match:
-            cid = match.get("id") or match.get("Id") or match.get("name")
-            return redirect(request, f"/nodes/{node['id']}/containers/{cid}#logs{epa}")
-    except Exception:
-        pass
-    return redirect(request, f"/apps/{app['id']}", f"Aplikacja «{app['name']}» nie ma jeszcze aktywnego kontenera na węźle.", "err")
+        mine = app_containers(await panel.node_client(node).get(_p("/api/containers", ep)) or [], app)
+    except Exception:  # noqa: BLE001 — węzeł offline
+        return node, ep, None
+    mine.sort(key=lambda c: c.get("state") != "running")  # najpierw działający
+    return node, ep, (mine[0]["id"] if mine else None)
+
+
+async def _to_container(request: Request, panel: Panel, app: dict, suffix: str = "", anchor: str = ""):
+    from .docker import _q
+
+    node, ep, cid = await app_container(panel, app)
+    if not node:
+        return redirect(request, f"/apps/{app['id']}", t("apps.node_missing"), "err")
+    if not cid:
+        return redirect(request, f"/apps/{app['id']}", t("apps.no_container", name=app["name"]), "err")
+    return redirect(request, f"/nodes/{node['id']}/containers/{cid}{suffix}{_q(ep)}{anchor}")
+
+
+@router.get("/apps/{app_id}/logs")
+async def app_logs(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                   user: dict = Depends(require(Permission.ALLOW_SEEKING_CONTAINER))):  # fmt: skip
+    return await _to_container(request, panel, app, anchor="#logs")
 
 
 @router.get("/apps/{app_id}/files")
 async def app_files(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
-                    user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES))):
-    node = panel.node(app["node_id"])
-    if not node:
-        return redirect(request, f"/apps/{app['id']}", "Węzeł przypisany do aplikacji nie istnieje.", "err")
-    try:
-        spec, _ = deploy.load(panel, app)
-        ep = getattr(spec, "endpoint", "local") or "local"
-    except Exception:
-        ep = "local"
-    epa = "" if ep == "local" else f"?ep={ep}"
-    slug = app["slug"]
-    try:
-        containers = await panel.node_client(node).get(f"/api/containers{epa}")
-        match = next((c for c in (containers or []) if c.get("name") == f"app-{slug}" or c.get("app") == slug or slug in (c.get("name") or "")), None)
-        if match:
-            cid = match.get("id") or match.get("Id") or match.get("name")
-            return redirect(request, f"/nodes/{node['id']}/containers/{cid}/files{epa}")
-    except Exception:
-        pass
-    return redirect(request, f"/apps/{app['id']}", f"Aplikacja «{app['name']}» nie ma jeszcze aktywnego kontenera na węźle.", "err")
+                    user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES))):  # fmt: skip
+    return await _to_container(request, panel, app, suffix="/files")
+
+
+async def _app_target_or_toast(panel: Panel, app: dict):
+    node, ep, cid = await app_container(panel, app)
+    if not node or not cid:
+        return None, toast(t("apps.no_container", name=app["name"]), "err", status=404)
+    return (node, ep, cid), None
+
+
+@router.post("/apps/{app_id}/quick/{action_id}")
+async def app_quick_action(action_id: str, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                           user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
+    from .docker import quick_action
+
+    target, error = await _app_target_or_toast(panel, app)
+    return error or await quick_action(panel, *target, action_id)
+
+
+@router.get("/apps/{app_id}/dump")
+async def app_dump(app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                   user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
+    from .docker import dump_download
+
+    target, error = await _app_target_or_toast(panel, app)
+    if error:
+        raise HTTPException(404, t("apps.no_container", name=app["name"]))
+    return await dump_download(panel, *target)
+
+
+@router.post("/apps/{app_id}/backup-dump")
+async def app_backup_dump(app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                          user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
+    from .docker import dump_to_storage
+
+    target, error = await _app_target_or_toast(panel, app)
+    return error or await dump_to_storage(panel, *target)
 
 
 # --- przejęcie kontenera spoza Deployry -----------------------------------------------------------

@@ -3,22 +3,41 @@
 {% block actions %}{% if has(user, P.ALLOW_DEPLOYMENT) %}<a class="btn primary" href="/apps/new"><i class="bi bi-rocket-takeoff"></i> {{ t("apps.new") }}</a>{% endif %}{% endblock %}
 {% block content %}
 {% if apps %}
-<div class="grid grid-auto">
-  {% for a in apps %}{% set s = stats.get(("app", a.id)) %}
-  <div class="card link" onclick="location.href='/apps/{{ a.id }}'">
-    <div class="card-head" style="align-items: center; gap: 10px">
-      {{ app_icon(a, 24) }}
-      <h3 class="trunc" style="flex: 1">{{ a.name }}</h3>
-      {{ status_badge(a.status) }}
+<div class="stack" x-data="appList({{ items | jsonattr }})">
+  <div class="toolbar">
+    <div class="search"><i class="bi bi-search"></i><input class="input" type="search" x-model="q" placeholder="{{ t('apps.search') }}" autocomplete="off"></div>
+    <div class="seg sm">
+      {% for value, label in [("", t("common.all")), ("running", t("status.running")), ("stopped", t("status.stopped")), ("error", t("status.error"))] %}
+      <label :class="status === '{{ value }}' && 'on'" @click="status = '{{ value }}'">{{ label }}</label>
+      {% endfor %}
     </div>
-    <div class="card-body stack" style="gap: 8px">
-      <div class="small dim row" style="gap: 6px"><i class="bi bi-hdd-network"></i> {{ a.node_name or "—" }} <span class="muted">· {{ a.kind }}</span></div>
-      {% for d in (a.domains or [])[:2] %}<a class="small mono trunc" href="https://{{ d }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">{{ d }} <i class="bi bi-box-arrow-up-right"></i></a>{% endfor %}
-      {% if s %}<div class="row between">{{ heartbeat(s.beats[-20:]) }}{{ uptime_badge(s.uptime_24h) }}</div>{% endif %}
-      {% if a.last_error and a.status == "error" %}<div class="small" style="color: #fda4af">{{ a.last_error[:140] }}</div>{% endif %}
-    </div>
+    <select class="select sm" x-model="sort" aria-label="{{ t('apps.sort') }}">
+      {% for value, label in [("name", t("common.name")), ("status", t("common.state")), ("node", t("apps.node")), ("cpu", "CPU"), ("mem", "RAM"), ("uptime", "Uptime")] %}
+      <option value="{{ value }}">{{ t("apps.sort") }}: {{ label }}</option>
+      {% endfor %}
+    </select>
   </div>
-  {% endfor %}
+  <div class="grid grid-auto">
+    {% for a in apps %}{% set s = stats.get(("app", a.id)) %}
+    <div class="card link app-card" x-show="visible({{ a.id }})" :style="{ order: order({{ a.id }}) }">
+      <div class="card-head" style="gap: 10px">
+        {{ app_icon(a, 24) }}
+        <h3 class="trunc"><a class="card-link" href="/apps/{{ a.id }}">{{ a.name }}</a></h3>
+        {{ status_badge(a.status) }}
+      </div>
+      <div class="card-body stack" style="gap: 8px">
+        <div class="small dim row between">
+          <span class="row" style="gap: 6px"><i class="bi bi-hdd-network"></i> {{ a.node_name or "—" }} <span class="muted">· {{ a.kind }}</span></span>
+          {% if a.usage %}<span class="usage mono" title="{{ t('apps.usage_hint') }}"><i class="bi bi-cpu"></i> {{ "%.0f" | format(a.usage.cpu or 0) }}% <i class="bi bi-memory"></i> {{ a.usage.mem | bytes }}</span>{% endif %}
+        </div>
+        {% for d in (a.domains or [])[:2] %}<a class="small mono trunc above" href="https://{{ d }}" target="_blank" rel="noopener">{{ d }} <i class="bi bi-box-arrow-up-right"></i></a>{% endfor %}
+        {% if s %}<div class="row between">{{ heartbeat(s.beats[-20:]) }}{{ uptime_badge(s.uptime_24h) }}</div>{% endif %}
+        {% if a.last_error and a.status == "error" %}<div class="small" style="color: #fda4af">{{ a.last_error[:140] }}</div>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="card" x-show="!shown" x-cloak>{{ empty("search", t("apps.no_match")) }}</div>
 </div>
 {% else %}
 <div class="card">{{ empty("rocket-takeoff", t("apps.empty_title"), t("apps.empty_text")) }}</div>

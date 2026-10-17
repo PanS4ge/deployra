@@ -79,28 +79,6 @@
 {%- endmacro %}
 
 {% macro app_icon(app, size=24) -%}
-  {%- set domain = (app.domains or [])[0] if (app.domains and app.domains|length > 0) else None -%}
-  {%- set slug = (app.slug or app.name or "") | lower | replace("_", "-") -%}
-  <div class="app-icon-wrap" style="width: {{ size }}px; height: {{ size }}px; display: inline-flex; align-items: center; justify-content: center; flex: none; position: relative;">
-    {% if domain %}
-    <img src="https://icons.duckduckgo.com/ip3/{{ domain }}.ico"
-         alt=""
-         width="{{ size }}"
-         height="{{ size }}"
-         style="width: {{ size }}px; height: {{ size }}px; object-fit: contain; border-radius: 4px;"
-         loading="lazy"
-         onerror="this.onerror=null; this.src='https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/{{ slug }}.png'; this.onerror=function(){ this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-block'; };">
-    <i class="bi bi-box" style="font-size: {{ (size * 0.8) | int }}px; color: var(--violet-2); display: none;"></i>
-    {% else %}
-    <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/{{ slug }}.png"
-         alt=""
-         width="{{ size }}"
-         height="{{ size }}"
-         style="width: {{ size }}px; height: {{ size }}px; object-fit: contain; border-radius: 4px;"
-         loading="lazy"
-         onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-block';">
-    <i class="bi bi-box" style="font-size: {{ (size * 0.8) | int }}px; color: var(--violet-2); display: none;"></i>
-    {% endif %}
-  </div>
+  <span class="app-icon" style="--s: {{ size }}px"><i class="bi bi-box"></i><img src="/apps/{{ app.id }}/icon?v={{ icon_v(app) }}" alt="" loading="lazy" onerror="this.remove()"></span>
 {%- endmacro %}
 

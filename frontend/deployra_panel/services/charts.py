@@ -84,50 +84,50 @@ def area_chart(
     height: int = 200,
     scale_max: float | None = None,
 ) -> Markup:
-    """Wykres: lista serii (nazwa, wartości, kolor, czy wypełniać). Podpowiedzi przez <title>. `scale_max` — stała skala (np. 100 dla %)."""
+    """Wykres na całą szerokość karty: lista serii (nazwa, wartości, kolor, czy wypełniać), podpowiedzi przez <title>.
+
+    Obszar danych to SVG rozciągany bez zachowania proporcji (linie mają `non-scaling-stroke`), a podpisy osi są
+    zwykłym HTML-em — dzięki temu wykres wypełnia kartę bez pustych pasów i bez rozciągniętych liter.
+    `height` — wysokość obszaru danych w px; `width` zostaje dla zgodności wywołań. `scale_max` — stała skala (np. 100 dla %).
+    """
     n = len(labels)
     if n == 0:
         return Markup('<div class="muted small">{}</div>').format(t("common.no_data"))
-    left, right, top, bottom = 48, 16, 14, 32
-    inner_w, inner_h = width - left - right, height - top - bottom
+    view_w, view_h = 1000, 100
     peak = max([max(values or [0]) for _, values, _, _ in series] + [1])
     nice = scale_max or _nice_max(peak)
-    step = inner_w / max(n - 1, 1)
-    # preserveAspectRatio domyślne (xMidYMid meet) zapobiega rozciąganiu czcionek i osi na ekranach 4:3
-    parts = [f'<svg class="chart" viewBox="0 0 {width} {height}" style="aspect-ratio: {width}/{height};" role="img">']
-    # siatka i oś Y
-    for i in range(5):
-        y = top + inner_h * i / 4
-        value = nice * (4 - i) / 4
-        parts.append(f'<line x1="{left}" x2="{width - right}" y1="{y:.1f}" y2="{y:.1f}" class="grid" vector-effect="non-scaling-stroke"/>')
-        parts.append(f'<text x="{left - 8}" y="{y + 4:.1f}" class="axis" text-anchor="end">{short_number(value)}</text>')
-    # serie
-    for index, (name, values, color, fill) in enumerate(series):
-        pts = [(left + i * step, top + inner_h - (v / nice) * inner_h) for i, v in enumerate(values)]
-        line = _smooth_path(pts, min_y=top, max_y=top + inner_h)
+    step = view_w / max(n - 1, 1)
+    svg = [f'<svg class="chart-svg" viewBox="0 0 {view_w} {view_h}" preserveAspectRatio="none" role="img">']
+    for i in range(1, 4):
+        y = view_h * i / 4
+        svg.append(f'<line x1="0" x2="{view_w}" y1="{y:.1f}" y2="{y:.1f}" class="grid" vector-effect="non-scaling-stroke"/>')
+    for index, (_name, values, color, fill) in enumerate(series):
+        pts = [(i * step, view_h - (v / nice) * view_h) for i, v in enumerate(values)]
+        line = _smooth_path(pts, min_y=0, max_y=view_h)
         if fill:
             gid = f"ch{next(_ids)}"
-            parts.append(
-                f'<defs><linearGradient id="{gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{color}" stop-opacity=".35"/>'
-                f'<stop offset="1" stop-color="{color}" stop-opacity="0"/></linearGradient></defs>'
-            )
-            parts.append(f'<path d="{line} L{pts[-1][0]:.1f},{top + inner_h:.1f} L{pts[0][0]:.1f},{top + inner_h:.1f} Z" fill="url(#{gid})"/>')
+            svg.append(f'<defs><linearGradient id="{gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{color}" stop-opacity=".35"/>'
+                       f'<stop offset="1" stop-color="{color}" stop-opacity="0"/></linearGradient></defs>')  # fmt: skip
+            svg.append(f'<path d="{line} L{pts[-1][0]:.1f},{view_h} L{pts[0][0]:.1f},{view_h} Z" fill="url(#{gid})"/>')
         dash = ' stroke-dasharray="5 4"' if index > 0 and not fill else ""
-        parts.append(f'<path d="{line}" fill="none" stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"{dash}/>')
-    # podpisy osi X (maks. ~8)
-    every = max(1, round(n / 8))
-    for i, label in enumerate(labels):
-        if i == n - 1 or (i % every == 0 and n - 1 - i >= max(every // 2, 1)):  # bez nakładania na ostatnią
-            anchor = "start" if i == 0 else ("end" if i == n - 1 else "middle")
-            x_pos = left if i == 0 else (width - right if i == n - 1 else left + i * step)
-            parts.append(f'<text x="{x_pos:.1f}" y="{height - 8}" class="axis" text-anchor="{anchor}">{html.escape(label)}</text>')
-    # pionowe paski z podpowiedziami
+        svg.append(f'<path d="{line}" fill="none" stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"{dash}/>')
     for i, label in enumerate(labels):
         tip = "\n".join([label] + [f"{name}: {short_number(values[i])}" for name, values, _, _ in series])
-        x = left + i * step - step / 2
-        parts.append(f'<rect x="{max(x, left):.1f}" y="{top}" width="{step:.1f}" height="{inner_h}" class="hover"><title>{html.escape(tip)}</title></rect>')
-    parts.append("</svg>")
-    return Markup("".join(parts))
+        x = max(i * step - step / 2, 0)
+        svg.append(f'<rect x="{x:.1f}" y="0" width="{min(step, view_w - x):.1f}" height="{view_h}" class="hover"><title>{html.escape(tip)}</title></rect>')
+    svg.append("</svg>")
+    y_axis = "".join(f'<span style="top: {25 * i}%">{short_number(nice * (4 - i) / 4)}</span>' for i in range(5))
+    every = max(1, round(n / 8))
+    x_axis = []
+    for i, label in enumerate(labels):
+        if i == n - 1 or (i % every == 0 and n - 1 - i >= max(every // 2, 1)):  # bez nakładania na ostatnią
+            pos = 100 * i / max(n - 1, 1)
+            shift = "0" if i == 0 else ("-100%" if i == n - 1 else "-50%")
+            x_axis.append(f'<span style="left: {pos:.2f}%; transform: translateX({shift})">{html.escape(label)}</span>')
+    return Markup(
+        f'<div class="chart" style="--chart-h: {int(height)}px"><div class="chart-y">{y_axis}</div>'
+        f'<div class="chart-plot">{"".join(svg)}</div><div class="chart-x">{"".join(x_axis)}</div></div>'
+    )
 
 
 def _nice_max(value: float) -> float:

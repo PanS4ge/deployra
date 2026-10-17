@@ -1,0 +1,5 @@
+<span id="mc-status" class="row" style="gap: 8px" hx-get="/minecraft/{{ s.id }}/status" hx-trigger="every 15s [!document.hidden]" hx-swap="outerHTML">
+  {% if not s.secret %}<span class="badge warn">{{ t("mc.not_paired") }}</span>
+  {% elif online %}<span class="badge ok">online</span><span class="small dim"><i class="bi bi-people"></i> {{ info.players_online or 0 }}/{{ info.players_max or "?" }}{% if info.tps %} · TPS {{ info.tps }}{% endif %}</span>
+  {% else %}<span class="badge">offline</span>{% if s.last_seen %}<span class="small muted">{{ s.last_seen | ago }}</span>{% endif %}{% endif %}
+</span>

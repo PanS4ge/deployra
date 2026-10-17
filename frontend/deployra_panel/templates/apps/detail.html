@@ -1,18 +1,19 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge, copy_pill, uptime_badge, heartbeat, app_icon %}
+{% from "_macros.html" import status_badge, copy_pill, uptime_badge, heartbeat, app_icon, meter %}
 {% block crumbs %}<div class="crumbs"><a href="/apps">{{ t("nav.apps") }}</a> /</div>{% endblock %}
 {% block heading %}
-<span class="row align-center" style="gap: 10px; display: inline-flex">
+<span class="row" style="gap: 10px; display: inline-flex">
   {{ app_icon(app, 28) }}
   <span>{{ title }}</span>
 </span>
 {% endblock %}
 {% block actions %}
-{{ status_badge(app.status) }}
-{% if spec.source.kind in ("image", "git", "runtime") %}
-<a class="btn ghost" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}#logs" title="{{ t('apps.logs') }}"><i class="bi bi-journal-text"></i> {{ t("apps.logs") }}</a>
-<a class="btn ghost" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}/files" title="Pliki w kontenerze"><i class="bi bi-folder2-open"></i> Pliki</a>
+{% include "partials/app_badge.html" %}
+{% if spec.source.kind in ("image", "git", "runtime", "compose") %}
+{% if has(user, P.ALLOW_SEEKING_CONTAINER) %}<a class="btn ghost" href="/apps/{{ app.id }}/logs"><i class="bi bi-journal-text"></i> {{ t("apps.logs") }}</a>{% endif %}
+{% if has(user, P.ALLOW_CONTAINER_FILES) %}<a class="btn ghost" href="/apps/{{ app.id }}/files"><i class="bi bi-folder2-open"></i> {{ t("containers.files") }}</a>{% endif %}
 {% endif %}
+{% if mc_server %}<a class="btn ghost" href="/minecraft/{{ mc_server.id }}"><i class="bi bi-controller"></i> Minecraft</a>{% endif %}
 {% if has(user, P.ALLOW_DEPLOYMENT) %}<button class="btn primary" hx-post="/apps/{{ app.id }}/deploy" hx-swap="none"><span class="spin"></span><i class="bi bi-rocket-takeoff"></i> {{ t("apps.redeploy") }}</button>{% endif %}
 {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}<a class="btn" href="/apps/{{ app.id }}/edit"><i class="bi bi-sliders"></i> {{ t("nav.settings") }}</a>{% endif %}
 {% endblock %}
@@ -148,17 +149,20 @@
           <i class="bi {{ app_profile.icon }}" style="color: {{ app_profile.color }}"></i>
           <b>{{ app_profile.title }}</b>
         </span>
+        {% if app_profile.kind == "minecraft" and not mc_server %}
+        <form hx-post="/minecraft/add" hx-swap="none"><input type="hidden" name="name" value="{{ app.name }}"><input type="hidden" name="app_id" value="{{ app.id }}"><button class="btn sm ghost"><i class="bi bi-link-45deg"></i> {{ t("mc.link_app") }}</button></form>
+        {% endif %}
         <span class="row" style="gap: 6px; flex-wrap: wrap">
-          {% if app_profile.can_dump and spec.endpoint == 'local' %}
-          <a class="btn sm ghost" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}/dump" hx-boost="false" title="Pobierz zrzut bazy (.sql.gz)">
-            <i class="bi bi-file-earmark-arrow-down" style="color: var(--cyan)"></i> Zrzut bazy
+          {% if app_profile.can_dump %}
+          <a class="btn sm ghost" href="/apps/{{ app.id }}/dump" hx-boost="false">
+            <i class="bi bi-file-earmark-arrow-down" style="color: var(--cyan)"></i> {{ t("containers.dump") }}
           </a>
-          <button class="btn sm ghost" title="Zapisz zrzut w magazynie kopii (S3/FTP/SFTP)" hx-post="/nodes/{{ node.id }}/containers/app-{{ app.slug }}/backup-dump" hx-swap="none">
-            <span class="spin"></span><i class="bi bi-cloud-arrow-up"></i> Kopia do storage
+          <button class="btn sm ghost" title="{{ t('containers.dump_storage_hint') }}" hx-post="/apps/{{ app.id }}/backup-dump" hx-swap="none">
+            <span class="spin"></span><i class="bi bi-cloud-arrow-up"></i> {{ t("containers.dump_storage") }}
           </button>
           {% endif %}
-          {% for a in app_profile.actions %}
-          <button class="btn sm ghost" title="{{ a.description }}" hx-post="/nodes/{{ node.id }}/containers/app-{{ app.slug }}/action/quick/{{ a.id }}" hx-swap="none">
+          {% for a in app_profile.actions if not a.is_dump %}
+          <button class="btn sm ghost" title="{{ a.description }}" hx-post="/apps/{{ app.id }}/quick/{{ a.id }}" hx-swap="none"{% if a.confirm %} hx-confirm="{{ a.confirm }}"{% endif %}>
             <span class="spin"></span><i class="bi {{ a.icon }}"></i> {{ a.label }}
           </button>
           {% endfor %}
@@ -171,10 +175,6 @@
       {% endif %}
       <div class="row between"><span class="small dim">{{ t("apps.containers_hint") }}</span>
         <span class="row" style="gap: 6px">
-          {% if spec.source.kind in ("image", "git", "runtime") %}
-          <a class="btn sm" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}#logs"><i class="bi bi-journal-text"></i> {{ t("apps.logs") }}</a>
-          <a class="btn sm" href="/nodes/{{ node.id }}/containers/app-{{ app.slug }}/files"><i class="bi bi-folder2-open"></i> Pliki</a>
-          {% endif %}
           <a class="btn sm" href="/nodes/{{ node.id }}/containers{{ '' if spec.endpoint == 'local' else '?ep=' ~ spec.endpoint }}"><i class="bi bi-box"></i> {{ t("nodes.tab_containers") }}</a>
         </span></div>
       {% if has(user, P.ALLOW_DEPLOYMENT_DELETE) %}
@@ -187,18 +187,35 @@
   </div>
 
   {% if spec.endpoint == "local" and has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
-  <div class="card">
-    <div class="card-head"><h3><i class="bi bi-truck"></i> {{ t("move.title") }}</h3></div>
+  {% set movable = other_nodes | selectattr("fit", "in", ["ok", "tight", "unknown"]) | list %}
+  <div class="card move-card">
+    <div class="card-head compact"><h3><i class="bi bi-truck"></i> {{ t("move.title") }}</h3>{% if other_nodes and other_nodes[0].need %}<span class="small muted">{{ t("move.needs", mb=other_nodes[0].need) }}</span>{% endif %}</div>
     <div class="card-body stack">
-      {% if other_nodes %}
-      <form class="stack" hx-post="/apps/{{ app.id }}/move" hx-swap="none" hx-confirm="{{ t('move.confirm', app=app.name) }}">
-        <div class="row" style="gap: 8px">
-          <select class="select" name="node_id" style="flex: 1">
-            {% for n, free in other_nodes %}<option value="{{ n.id }}">{{ n.name }}{% if free is not none %} · {{ t("res.free_mb", mb=free) }}{% endif %}</option>{% endfor %}
-          </select>
-          <button class="btn"><span class="spin"></span><i class="bi bi-truck"></i> {{ t("move.button") }}</button>
+      {% if other_nodes | length > 1 %}
+      <form class="stack" hx-post="/apps/{{ app.id }}/move" hx-swap="none" hx-confirm="{{ t('move.confirm', app=app.name) }}" x-data="{ pick: '{{ movable[0].node.id if movable else '' }}' }">
+        <div class="node-pick">
+          {% for tg in other_nodes %}{% set off = tg.fit in ("here", "no", "offline") %}
+          <label class="node-tile {{ 'off' if off }} {{ 'here' if tg.fit == 'here' }}" :class="pick == '{{ tg.node.id }}' && 'on'">
+            <input type="radio" name="node_id" value="{{ tg.node.id }}" x-model="pick" {{ "disabled" if off }}>
+            <span class="row between"><b class="trunc">{{ tg.node.name }}</b>
+              {% if tg.fit == "here" %}<span class="badge">{{ t("move.here") }}</span>
+              {% elif tg.fit == "ok" %}<span class="badge ok">{{ t("move.fits") }}</span>
+              {% elif tg.fit == "tight" %}<span class="badge warn">{{ t("move.tight") }}</span>
+              {% elif tg.fit == "no" %}<span class="badge err">{{ t("move.no_room") }}</span>
+              {% elif tg.fit == "offline" %}<span class="badge err">offline</span>
+              {% else %}<span class="badge">{{ t("common.no_data") }}</span>{% endif %}</span>
+            {% if tg.free is not none %}
+            <span class="small dim">RAM · {{ t("move.free_of", free=(tg.free / 1024) | round(1), total=((tg.total or 0) / 1024) | round(1)) }}</span>
+            {{ meter(tg.ram) }}
+            <span class="small muted row between"><span>CPU {{ "%.0f" | format(tg.cpu or 0) }}%</span>{% if tg.disk_free is not none %}<span>{{ t("res.disk") }} {{ t("move.free_gb", gb=(tg.disk_free / 1024) | round(1)) }}</span>{% endif %}</span>
+            {% endif %}
+          </label>
+          {% endfor %}
         </div>
-        <label class="check small"><input type="checkbox" name="delete_old" value="1"><span class="sw"></span><span>{{ t("move.delete_old", node=node.name) }}</span></label>
+        <div class="row between" style="flex-wrap: wrap; gap: 10px">
+          <label class="check small"><input type="checkbox" name="delete_old" value="1"><span class="sw"></span><span>{{ t("move.delete_old", node=node.name) }}</span></label>
+          <button class="btn primary sm" :disabled="!pick"><span class="spin"></span><i class="bi bi-truck"></i> {{ t("move.button") }}</button>
+        </div>
       </form>
       {% else %}<div class="small muted">{{ t("move.no_other_nodes") }}</div>{% endif %}
       {% if auto_capable %}

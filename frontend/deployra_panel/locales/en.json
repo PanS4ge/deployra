@@ -255,7 +255,19 @@
         "cpus": "CPU limit",
         "slug": "slug"
       }
-    }
+    },
+    "node_missing": "The app's node no longer exists.",
+    "no_container": "App “{name}” has no container on its node yet.",
+    "search": "Search: name, domain, node, image…",
+    "sort": "Sort",
+    "usage_hint": "Average CPU and RAM over the last minute",
+    "no_match": "Nothing matches",
+    "icon": "Icon",
+    "icon_auto": "Automatic",
+    "icon_upload": "Upload",
+    "icon_bad_url": "Enter an http(s) image address",
+    "icon_bad_file": "Icon: PNG, JPG, WEBP, GIF or ICO up to 256 KB",
+    "icon_saved": "Icon saved"
   },
   "auth": {
     "login": "Sign in",
@@ -448,7 +460,29 @@
     "unmonitor": "Stop monitoring",
     "unpublished": "(not published)",
     "volumes": "Volumes (source:target)",
-    "with_volumes": "with anonymous volumes"
+    "with_volumes": "with anonymous volumes",
+    "quick_actions": "Quick actions",
+    "quick_failed": "Error ({code}): {output}",
+    "quick_done": "Done",
+    "dump": "Database dump",
+    "dump_storage": "Copy to storage",
+    "dump_storage_hint": "Save the database dump to backup storage (S3/FTP/SFTP)",
+    "dump_failed": "Database dump failed: {error}",
+    "dump_saved": "Dump saved to backup storage: {name}",
+    "no_backup_storage": "No backup storage — Settings → Backups",
+    "no_logs": "No logs",
+    "not_found": "Container not found",
+    "not_found_text": "Container “{name}” does not exist on node {node}.",
+    "logs_stream_failed": "Cannot fetch the log stream: {error}",
+    "node_silent": "Node {node} is not responding",
+    "bad_port": "Port must be between 1 and 65535",
+    "mounted": "Mounted folders",
+    "files_mounts_only": "The container is stopped — mounted folders are available.",
+    "parent_dir": "Parent directory",
+    "refresh": "Refresh",
+    "size": "Size",
+    "download": "Download",
+    "truncated": "Large file — showing the first 2 MB, editing disabled."
   },
   "dashboard": {
     "apps_error": "with errors: {count}",
@@ -627,7 +661,8 @@
     "denied_request": "denied: bad request",
     "error_status": "Error {status}",
     "offline": "No connection to the panel",
-    "session_ended": "session ended"
+    "session_ended": "session ended",
+    "saved": "Saved"
   },
   "logs": {
     "bad_level": "Level: {levels}",
@@ -669,7 +704,14 @@
     "start": "Moving {app}: {source} → {target}",
     "target_cleanup_failed": "Could not remove the copy from the new node: {error}",
     "title": "Move to another server",
-    "uploaded": "Bundle sent to the new node"
+    "uploaded": "Bundle sent to the new node",
+    "needs": "app uses ~{mb} MB RAM",
+    "here": "here",
+    "fits": "fits",
+    "tight": "tight",
+    "no_room": "not enough RAM",
+    "free_of": "{free} of {total} GB free",
+    "free_gb": "{gb} GB free"
   },
   "msg": {
     "account_created": "Account created — welcome to Deployra!",
@@ -826,7 +868,8 @@
     "saved_plain": "Saved",
     "sftp_port_saved": "SFTP port changed to {port}",
     "address_saved": "Node address saved",
-    "gateway_saved": "Node gateway saved"
+    "gateway_saved": "Node gateway saved",
+    "title_not_found": "Not found"
   },
   "nav": {
     "apps": "Apps",
@@ -1567,7 +1610,9 @@
     "unskipped": "The skipped version will be offered again",
     "up_to_date_toast": "You're on the latest version ({version})",
     "update_failed": "the update failed",
-    "wait_timeout": "✖ {name}: timed out waiting ({minutes} min)"
+    "wait_timeout": "✖ {name}: timed out waiting ({minutes} min)",
+    "via_node": "{name}: {current} → {version} (replaced by node {node})",
+    "rolled_back_via": "the new version did not start, node {node} restored the previous one — the update log is on the node"
   },
   "updater": {
     "bad_version": "invalid version number",
@@ -1617,14 +1662,14 @@
     "later": "Later",
     "latest": "Latest",
     "live_view": "Live view",
-    "manual_hint": "Without an updater: {names}. Update by hand: in Portainer, stack → <b>Pull and redeploy</b>, or <code>docker compose pull</code> and <code>up -d</code>.",
+    "manual_hint": "No updater: {names}. Update them once by hand (Portainer → stack → <b>Pull and redeploy</b>, or <code>docker compose pull</code> and <code>up -d</code>) — since 1.3.0 the Deployra node on the same machine replaces the panel and gateway itself.",
     "mode": {
       "image": "registry images",
       "native": "systemd service",
       "source": "from source (git + build)"
     },
     "no_source": "Enter a release source next to this so the panel can check for new versions.",
-    "no_updater_hint": "Run the component from a compose file in deploy/ (the *-updater service) or update it manually",
+    "no_updater_hint": "Update once by hand; since 1.3.0 the Deployra node on the same machine replaces the panel and gateway",
     "none": "none",
     "older": "outdated",
     "order_hint": "The update runs in the background: nodes first, then the gateway, the panel last.",
@@ -1643,7 +1688,16 @@
     "version": "Version",
     "whats_new": "What's new in {version}",
     "whats_new_short": "What's new",
-    "you_have": "Installed"
+    "you_have": "Installed",
+    "mode_node": "via node {node}",
+    "reason": {
+      "disabled": "self-update disabled (DEPLOYRA_SELF_UPDATE)",
+      "no_container": "can't find its own container — set DEPLOYRA_CONTAINER",
+      "no_docker": "no access to docker.sock",
+      "not_backend": "image without the deployra.component=backend label (old image)",
+      "local_image": "locally built image — update from source",
+      "no_updater": "no updater"
+    }
   },
   "uptime": {
     "changed": "changed {ago}",
@@ -1757,5 +1811,92 @@
     "bad_ip": "{value} isn't an IP address matching the record type",
     "edge": "edge gateway",
     "known_hint": "this address is a Deployra server"
+  },
+  "mc": {
+    "not_found": "No such Minecraft server",
+    "offline": "The server is not connected (stopped or without the DeployraBridge plugin)",
+    "bridge_error": "The plugin reported an error: {error}",
+    "plugin": "Plugin",
+    "new_on_node": "New server on a node",
+    "add_external": "Add external server",
+    "name_placeholder": "e.g. Survival on a hosting",
+    "not_paired": "not paired",
+    "paired": "paired",
+    "external": "external hosting",
+    "last_seen": "last seen {when}",
+    "empty_title": "No Minecraft servers",
+    "empty_text": "Deploy a server on a node or connect a hosted server with the DeployraBridge plugin.",
+    "pair_title": "Pairing",
+    "pair_expires": "code valid for 24 h",
+    "pair_auto": "A server on a node pairs itself on its first start.",
+    "pair_step1": "Put the plugin into plugins/ and start the server.",
+    "pair_step2": "In the server console run:",
+    "http_warning": "The panel runs without HTTPS — signatures protect commands, but set a panel domain with a certificate.",
+    "tab": {
+      "console": "Console",
+      "players": "Players",
+      "properties": "Game settings",
+      "files": "Files",
+      "papi": "PlaceholderAPI",
+      "settings": "Connection"
+    },
+    "macro": {
+      "day": "Day",
+      "night": "Night",
+      "clear": "Weather",
+      "save": "Save world",
+      "list": "Players",
+      "whitelist_on": "Whitelist"
+    },
+    "macros": "Macros",
+    "macro_label": "Name",
+    "macros_reset": "Restore default macros",
+    "bad_command": "Enter one command (up to 1000 characters)",
+    "bad_player": "Invalid player name or action",
+    "bad_path": "Invalid path",
+    "done": "Done",
+    "no_players": "Nobody is playing",
+    "gm": {
+      "survival": "Survival",
+      "creative": "Creative",
+      "adventure": "Adventure",
+      "spectator": "Spectator"
+    },
+    "pa": {
+      "heal": "Heal",
+      "feed": "Feed",
+      "op": "OP",
+      "deop": "Remove OP",
+      "whitelist_add": "Whitelist",
+      "whitelist_remove": "Unwhitelist",
+      "kick": "Kick",
+      "ban": "Ban"
+    },
+    "kick_confirm": "Kick {name}?",
+    "ban_confirm": "Ban {name}?",
+    "restart_hint": "changes apply after a server restart",
+    "other_properties": "Other ({count})",
+    "properties_saved": "server.properties saved",
+    "files_offline": "The server is stopped — set up FTP in the Connection tab to access files",
+    "files_via_ftp": "The server is stopped — files over FTP.",
+    "file_too_big": "File larger than 8 MB — use the hosting's FTP",
+    "upload_limit": "up to 8 MB per file",
+    "container_files": "Container files",
+    "player_optional": "player (optional)",
+    "papi_missing": "PlaceholderAPI is not installed on the server",
+    "ftp_hint": "FTP is used only while the server is stopped.",
+    "ftp_user": "User",
+    "ftp_test": "Test FTP",
+    "ftp_missing": "Save the FTP details first",
+    "ftp_failed": "FTP: {error}",
+    "ftp_ok": "FTP works: {welcome}",
+    "settings_saved": "Saved",
+    "pairing": "Pairing",
+    "repair": "New pairing code",
+    "repair_confirm": "The current connection will stop working and the plugin must be paired again. Continue?",
+    "pair_reset": "New pairing code generated",
+    "delete_confirm": "Remove {name} from the panel? The server and its files stay.",
+    "deleted": "Removed {name}",
+    "link_app": "Connect to the Minecraft panel"
   }
 }

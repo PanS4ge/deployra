@@ -141,86 +141,73 @@ class MkdirRequest(BaseModel):
     path: str
 
 
-@router.get("/containers/{cid}/files")
-def container_files_list(cid: str, path: str = "/", client: Any = Depends(dk)) -> dict:
+def _files_call(fn: Any, *args: Any) -> Any:
+    """Wspólne mapowanie błędów menedżera plików na kody HTTP."""
     try:
-        return docker_svc.list_container_files(client, cid, path)
-    except FileNotFoundError as e:
-        raise HTTPException(404, str(e))
-    except Exception as e:
-        raise HTTPException(500, str(e))
+        return fn(*args)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except IsADirectoryError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except docker_svc.StoppedContainer as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
+@router.get("/containers/{cid}/files")
+def container_files_list(cid: str, path: str = "/", ep: str = "local", client: Any = Depends(dk), ctx: Context = Depends(get_ctx)) -> dict:
+    srv_dir = ctx.config.srv_dir if ep == "local" else None  # pliki /srv/deployra widzimy bezpośrednio tylko na hoście węzła
+    return _files_call(docker_svc.list_container_files, client, cid, path, srv_dir)
 
 
 @router.get("/containers/{cid}/files/read")
 def container_files_read(cid: str, path: str, client: Any = Depends(dk)) -> dict:
-    try:
-        return docker_svc.read_container_file(client, cid, path)
-    except FileNotFoundError as e:
-        raise HTTPException(404, str(e))
-    except IsADirectoryError as e:
-        raise HTTPException(400, str(e))
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    return _files_call(docker_svc.read_container_file, client, cid, path)
 
 
 @router.get("/containers/{cid}/files/download")
 def container_files_download(cid: str, path: str, client: Any = Depends(dk)) -> Response:
-    try:
-        filename, data = docker_svc.get_container_file_bytes(client, cid, path)
-        return Response(
-            content=data,
-            media_type="application/octet-stream",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-    except FileNotFoundError as e:
-        raise HTTPException(404, str(e))
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    from urllib.parse import quote
+
+    filename, data = _files_call(docker_svc.get_container_file_bytes, client, cid, path)
+    disposition = f"attachment; filename*=UTF-8''{quote(filename)}"  # polskie znaki nie psują nagłówka
+    return Response(content=data, media_type="application/octet-stream", headers={"Content-Disposition": disposition})
 
 
 @router.post("/containers/{cid}/files/write")
 def container_files_write(cid: str, body: FileWriteRequest, client: Any = Depends(dk)) -> dict:
-    try:
-        return docker_svc.write_container_file(client, cid, body.path, body.content)
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    return _files_call(docker_svc.write_container_file, client, cid, body.path, body.content)
 
 
 @router.post("/containers/{cid}/files/upload")
-async def container_files_upload(
-    cid: str,
-    dir_path: str = Form("/"),
-    files: list[UploadFile] = File(...),
-    client: Any = Depends(dk),
-) -> dict:
+async def container_files_upload(cid: str, dir_path: str = Form("/"), files: list[UploadFile] = File(...), client: Any = Depends(dk)) -> dict:
+    import posixpath
+
     uploaded = []
     clean_dir = "/" + dir_path.strip("/")
     for f in files:
-        if not f.filename:
+        name = posixpath.basename((f.filename or "").replace("\\", "/"))
+        if not name or name in (".", ".."):
             continue
         content = await f.read()
-        target_path = f"{clean_dir.rstrip('/')}/{f.filename}"
-        docker_svc.write_container_file(client, cid, target_path, content)
-        uploaded.append({"name": f.filename, "size": len(content)})
+        await asyncio.to_thread(_files_call, docker_svc.write_container_file, client, cid, f"{clean_dir.rstrip('/')}/{name}", content)
+        uploaded.append({"name": name, "size": len(content)})
     return {"ok": True, "dir": clean_dir, "uploaded": uploaded}
 
 
 @router.delete("/containers/{cid}/files")
 def container_files_delete(cid: str, path: str, client: Any = Depends(dk)) -> dict:
-    try:
-        return docker_svc.delete_container_file(client, cid, path)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    return _files_call(docker_svc.delete_container_file, client, cid, path)
 
 
 @router.post("/containers/{cid}/files/mkdir")
 def container_files_mkdir(cid: str, body: MkdirRequest, client: Any = Depends(dk)) -> dict:
-    try:
-        return docker_svc.mkdir_container(client, cid, body.path)
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    return _files_call(docker_svc.mkdir_container, client, cid, body.path)
 
 
 @router.get("/containers/{cid}/logs")

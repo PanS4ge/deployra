@@ -1,0 +1,1 @@
+{% from "_macros.html" import status_badge %}<span id="app-badge" hx-get="/apps/{{ app.id }}/badge" hx-trigger="app-changed from:body delay:1500ms">{{ status_badge(app.status) }}</span>

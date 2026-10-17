@@ -82,6 +82,18 @@
       "container_port": 80,
       "env": {"DB_PASSWORD": "${RANDOM}"},
       "compose": "services:\n  wordpress:\n    image: wordpress:6\n    restart: unless-stopped\n    environment:\n      WORDPRESS_DB_HOST: db\n      WORDPRESS_DB_USER: wordpress\n      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}\n      WORDPRESS_DB_NAME: wordpress\n    volumes:\n      - wp-content:/var/www/html\n    depends_on: [db]\n  db:\n    image: mariadb:11\n    restart: unless-stopped\n    environment:\n      MARIADB_DATABASE: wordpress\n      MARIADB_USER: wordpress\n      MARIADB_PASSWORD: ${DB_PASSWORD}\n      MARIADB_RANDOM_ROOT_PASSWORD: \"1\"\n    volumes:\n      - wp-db:/var/lib/mysql\nvolumes:\n  wp-content:\n  wp-db:\n"
+    },
+    {
+      "id": "minecraft",
+      "name": "Minecraft (Paper)",
+      "description": {"pl": "Serwer Minecraft z panelem w Deployrze (konsola, gracze, pliki)", "en": "Minecraft server managed from Deployra (console, players, files)"},
+      "icon": "controller",
+      "kind": "compose",
+      "expose_service": "minecraft",
+      "container_port": 25565,
+      "env": {"TYPE": "PAPER", "VERSION": "LATEST", "MEMORY": "1G", "DEPLOYRA_PANEL_URL": "auto", "DEPLOYRA_PAIR_CODE": "auto"},
+      "compose": "services:\n  minecraft:\n    image: itzg/minecraft-server:latest\n    restart: unless-stopped\n    tty: true\n    stdin_open: true\n    ports:\n      - \"25565:25565\"\n    environment:\n      EULA: \"TRUE\"\n      TYPE: ${TYPE}\n      VERSION: ${VERSION}\n      MEMORY: ${MEMORY}\n      PLUGINS: ${DEPLOYRA_PANEL_URL}/minecraft/download/DeployraBridge.jar\n      DEPLOYRA_PANEL_URL: ${DEPLOYRA_PANEL_URL}\n      DEPLOYRA_PAIR_CODE: ${DEPLOYRA_PAIR_CODE}\n    volumes:\n      - mc-data:/data\nvolumes:\n  mc-data:\n",
+      "memory_mb": 1536
     }
   ]
 }

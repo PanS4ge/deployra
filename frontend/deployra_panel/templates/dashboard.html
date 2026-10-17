@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge %}
+{% from "_macros.html" import status_badge, app_icon %}
 {% block actions %}{% if has(user, P.ALLOW_DEPLOYMENT) %}<a class="btn primary" href="/apps/new"><i class="bi bi-rocket-takeoff"></i> {{ t("dashboard.deploy") }}</a>{% endif %}{% endblock %}
 {% block content %}
 {% if firing %}
@@ -32,7 +32,7 @@
 </div>
 {% endif %}
 
-<div class="grid grid-4">
+<div class="grid grid-4 stats-compact">
   <a class="card stat" href="/apps" style="color: inherit">
     <div class="label"><i class="bi bi-rocket-takeoff"></i> {{ t("nav.apps") }}</div>
     <div class="value">{{ stats.apps_running }}<small> / {{ t("dashboard.apps_running", count=stats.apps) }}</small></div>
@@ -57,38 +57,35 @@
   <div class="card-body small muted">{{ t("dashboard.loading_visits") }}</div>
 </div>
 
-<div class="masonry-2">
+<div class="dash-grid">
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-hdd-network"></i> {{ t("nav.nodes") }}</h3><a class="btn sm ghost" href="/nodes">{{ t("common.all") }}</a></div>
-    <div class="card-body stack">
-      {% for n in nodes if n.status == "paired" %}
-      <div>
-        <div class="row between"><a class="name" href="/nodes/{{ n.id }}">{{ n.name }}</a><span class="small muted">{{ n.tunnel_ip or n.api_url }}</span></div>
-        <div hx-get="/nodes/{{ n.id }}/vitals?compact=1" hx-trigger="load, every 10s [!document.hidden]" hx-swap="innerHTML" hx-disinherit="*"><span class="small muted">…</span></div>
-      </div>
+    <div class="card-head compact"><h3><i class="bi bi-hdd-network"></i> {{ t("nav.nodes") }}</h3><a class="btn sm ghost" href="/nodes">{{ t("common.all") }}</a></div>
+    <div class="card-body node-rows" hx-get="/dashboard/nodes" hx-trigger="load, every 30s [!document.hidden]" hx-swap="innerHTML" hx-disinherit="*">
+      {% for n in nodes if n.status == "paired" %}<div class="node-row"><a class="name" href="/nodes/{{ n.id }}">{{ n.name }}</a><span class="small muted">…</span></div>
       {% else %}<div class="muted small">{{ t("dashboard.no_nodes") }}</div>{% endfor %}
     </div>
   </div>
 
-  <div class="card" hx-get="/dashboard/tunnel" hx-trigger="load, every 30s [!document.hidden]" hx-swap="innerHTML" hx-disinherit="*">
-    <div class="card-head"><h3><i class="bi bi-diagram-3"></i> {{ t("dashboard.tunnel") }}</h3></div>
-    <div class="card-body small muted">{{ t("dashboard.checking_gateway") }}</div>
-  </div>
-
-  <div class="card">
-    <div class="card-head"><h3><i class="bi bi-rocket-takeoff"></i> {{ t("dashboard.recent_apps") }}</h3><a class="btn sm ghost" href="/apps">{{ t("common.all") }}</a></div>
-    <div class="card-body stack" style="gap: 10px">
-      {% for a in apps %}
-      <div class="row between"><a class="name" href="/apps/{{ a.id }}">{{ a.name }}</a>{{ status_badge(a.status) }}</div>
-      {% else %}<div class="muted small">{{ t("dashboard.no_apps") }}</div>{% endfor %}
+  <div class="stack-cards">
+    <div class="card">
+      <div class="card-head compact"><h3><i class="bi bi-rocket-takeoff"></i> {{ t("dashboard.recent_apps") }}</h3><a class="btn sm ghost" href="/apps">{{ t("common.all") }}</a></div>
+      <div class="card-body list-rows">
+        {% for a in apps %}
+        <div class="row between"><a class="name row trunc" style="gap: 8px" href="/apps/{{ a.id }}">{{ app_icon(a, 18) }}<span class="trunc">{{ a.name }}</span></a>{{ status_badge(a.status) }}</div>
+        {% else %}<div class="muted small">{{ t("dashboard.no_apps") }}</div>{% endfor %}
+      </div>
+    </div>
+    <div class="card" hx-get="/dashboard/tunnel" hx-trigger="load, every 30s [!document.hidden]" hx-swap="innerHTML" hx-disinherit="*">
+      <div class="card-head compact"><h3><i class="bi bi-diagram-3"></i> {{ t("tunnel.card_title") }}</h3></div>
+      <div class="card-body small muted">{{ t("dashboard.checking_gateway") }}</div>
     </div>
   </div>
 
   <div class="card">
-    <div class="card-head"><h3><i class="bi bi-activity"></i> {{ t("dashboard.recent_jobs") }}</h3><a class="btn sm ghost" href="/jobs">{{ t("common.all") }}</a></div>
-    <div class="card-body stack" style="gap: 10px">
+    <div class="card-head compact"><h3><i class="bi bi-activity"></i> {{ t("dashboard.recent_jobs") }}</h3><a class="btn sm ghost" href="/jobs">{{ t("common.all") }}</a></div>
+    <div class="card-body list-rows">
       {% for j in jobs %}
-      <div class="row between"><a href="/jobs/{{ j.id }}" class="trunc" style="max-width: 70%">{{ j.title }}</a>
+      <div class="row between"><a href="/jobs/{{ j.id }}" class="trunc" style="max-width: 72%">{{ j.title }}</a>
         {% if j.status == "ok" %}<span class="badge ok">ok</span>{% elif j.status == "error" %}<span class="badge err">{{ t("jobs.error") }}</span>{% else %}<span class="badge info">{{ t("jobs.running") }}</span>{% endif %}</div>
       {% else %}<div class="muted small">{{ t("dashboard.no_jobs") }}</div>{% endfor %}
     </div>

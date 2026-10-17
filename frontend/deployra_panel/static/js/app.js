@@ -34,6 +34,94 @@
     });
   });
 
+  // ---------- Menedżer plików kontenera (edytor w modalu) ----------
+  document.addEventListener("alpine:init", () => {
+    Alpine.data("containerFiles", (urls) => {
+      const q = (path) => new URLSearchParams(urls.ep === "local" ? {path} : {path, ep: urls.ep}).toString();
+      return {
+        showEditor: false, showUpload: false, showMkdir: false, loading: false, saving: false,
+        filePath: "", fileContent: "", isBinary: false, isTruncated: false, fileSize: 0,
+        browser() { return document.getElementById("files-browser"); },
+        currentPath() { return new URL(this.browser().dataset.url, location.origin).searchParams.get("path") || "/"; },
+        downloadUrl() { return `${urls.download}?${q(this.filePath)}`; },
+        sizeText() { const s = this.fileSize; return s > 1048576 ? (s / 1048576).toFixed(2) + " MB" : s > 1024 ? (s / 1024).toFixed(1) + " KB" : s + " B"; },
+        async openFile(path) {
+          Object.assign(this, {filePath: path, showEditor: true, loading: true, fileContent: ""});
+          try {
+            const res = await fetch(`${urls.read}?${q(path)}`);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || res.status);
+            Object.assign(this, {fileContent: data.content || "", isBinary: !!data.is_binary, isTruncated: !!data.truncated, fileSize: data.size || 0});
+          } catch (err) {
+            window.toast(String(err.message || err), "err");
+            this.showEditor = false;
+          } finally {
+            this.loading = false;
+          }
+        },
+        async saveFile() {
+          this.saving = true;
+          try {
+            const res = await fetch(urls.write, {method: "POST", body: new URLSearchParams({path: this.filePath, content: this.fileContent}),
+              headers: {"X-CSRF-Token": document.querySelector("meta[name=csrf-token]").content}});
+            if (!res.ok) throw new Error(res.status);
+            window.toast(I18N.saved || "OK", "ok");
+            this.showEditor = false;
+            htmx.ajax("GET", this.browser().dataset.url, {target: "#files-browser"});
+          } catch (err) {
+            window.toast(String(err.message || err), "err");
+          } finally {
+            this.saving = false;
+          }
+        },
+      };
+    });
+  });
+
+  // ---------- Lista aplikacji: wyszukiwarka, filtr stanu, sortowanie (kolejność przez CSS `order`) ----------
+  document.addEventListener("alpine:init", () => {
+    Alpine.data("appList", (items) => {
+      const load = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch (_) { return fallback; } };
+      const save = (key, value) => { try { localStorage.setItem(key, value); } catch (_) { /* tryb prywatny */ } };
+      const STOPPED = ["stopped", "exited", "paused", "created"];
+      const RANK = { error: 0, deploying: 1, pending: 1, stopped: 2, paused: 2, running: 3 };
+      const byName = (a, b) => a.name.localeCompare(b.name);
+      const desc = (key) => (a, b) => (b[key] - a[key]) || byName(a, b);  // brak danych (-1) na końcu
+      const SORTS = {
+        name: byName,
+        status: (a, b) => ((RANK[a.status] ?? 2) - (RANK[b.status] ?? 2)) || byName(a, b),
+        node: (a, b) => a.node.localeCompare(b.node) || byName(a, b),
+        cpu: desc("cpu"),
+        mem: desc("mem"),
+        uptime: (a, b) => ((a.uptime < 0) - (b.uptime < 0)) || (a.uptime - b.uptime) || byName(a, b),  // najsłabsze najpierw
+      };
+      return {
+        q: "", status: load("apps.status", ""), sort: load("apps.sort", "name"), ranks: {}, matches: {},
+        init() {
+          this.$watch("sort", (v) => { save("apps.sort", v); this.recompute(); });
+          this.$watch("status", (v) => { save("apps.status", v); this.recompute(); });
+          this.$watch("q", () => this.recompute());
+          this.recompute();
+        },
+        recompute() {
+          const words = this.q.toLowerCase().split(/\s+/).filter(Boolean);
+          const matches = {};
+          for (const it of items) {
+            const okStatus = !this.status || (this.status === "stopped" ? STOPPED.includes(it.status) : it.status === this.status);
+            matches[it.id] = okStatus && words.every((w) => it.text.includes(w));
+          }
+          const ranks = {};
+          [...items].sort(SORTS[this.sort] || byName).forEach((it, i) => { ranks[it.id] = i; });
+          this.matches = matches;
+          this.ranks = ranks;
+        },
+        visible(id) { return this.matches[id] !== false; },
+        order(id) { return this.ranks[id] || 0; },
+        get shown() { return Object.values(this.matches).some(Boolean); },
+      };
+    });
+  });
+
   window.toast = (message, level = "ok") => {
     if (window.Alpine) Alpine.store("toasts").push(message, level);
   };
@@ -94,6 +182,17 @@
   document.addEventListener("htmx:sseBeforeMessage", (e) => {
     const box = e.detail.elt.closest(".log") || e.detail.elt;
     if (box.classList.contains("log")) follow.set(box, box.scrollHeight - box.scrollTop - box.clientHeight < 60);
+  });
+  // dopisywanie linii przez hx-swap-oob (konsola Minecrafta): ten sam limit i przewijanie co przy SSE
+  document.addEventListener("htmx:oobBeforeSwap", (e) => {
+    const box = e.detail.target;
+    if (box && box.classList.contains("log")) follow.set(box, box.scrollHeight - box.scrollTop - box.clientHeight < 60);
+  });
+  document.addEventListener("htmx:oobAfterSwap", (e) => {
+    const box = e.detail.target;
+    if (!box || !box.classList.contains("log")) return;
+    while (box.childElementCount > MAX_LINES) box.firstElementChild.remove();
+    if (follow.get(box) !== false) box.scrollTop = box.scrollHeight;
   });
   document.addEventListener("htmx:sseMessage", (e) => {
     const box = e.detail.elt.closest(".log") || e.detail.elt;

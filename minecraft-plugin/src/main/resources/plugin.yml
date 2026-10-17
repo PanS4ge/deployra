@@ -1,15 +1,17 @@
 name: DeployraBridge
-version: 1.0.0
+version: 1.1.0
 main: io.deployra.minecraft.DeployraPlugin
-description: Remote control and monitoring bridge for Deployra on shared Minecraft hostings.
-author: Deployra / PanS4ge
+description: Manage this Minecraft server from the Deployra panel (outbound connection, no open ports).
+author: Deployra
+website: https://github.com/PanS4ge/deployra
 api-version: 1.13
+softdepend: [PlaceholderAPI]
 commands:
   deployra:
-    description: Deployra Bridge administration command
+    description: Pair with the Deployra panel or show the connection status
     permission: deployra.admin
-    usage: /deployra [reload|token|status]
+    usage: /deployra [status|pair <panel-url> <code>|unpair]
 permissions:
   deployra.admin:
-    description: Allows managing Deployra Bridge
+    description: Allows pairing the server with Deployra
     default: op

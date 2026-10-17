@@ -22,7 +22,7 @@ def _beat(directory, age=0, mode="image"):
 
 def test_agent_sidecar_flow(tmp_path):
     agent = UpdateAgent(tmp_path / "upd")
-    assert agent.info() == {"available": False, "mode": None, "state": "idle", "target": None, "step": None, "message": "", "updated": None}
+    assert agent.info() == {"available": False, "mode": None, "state": "idle", "target": None, "step": None, "message": "", "updated": None, "container": None}
     with pytest.raises(LookupError, match="brak aktualizatora"):
         agent.request("1.2.0")
 

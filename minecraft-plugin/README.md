@@ -1,85 +1,37 @@
-# DeployraBridge — Minecraft Remote Bridge
+# DeployraBridge
 
-Lekki plugin (51 KB, **0 zewnętrznych zależności runtime**, bytecode Java 8) pozwalający kompleksowo zarządzać serwerem Minecraft z poziomu **Deployry** lub dowolnego zewnętrznego REST API na **współdzielonych hostingach** (Craftserve, TitanAxe, Pterodactyl, Falix itp.), gdzie nie masz dostępu do konta root ani gniazda Dockera.
+Plugin Paper / Spigot / Purpur (1.8.8–1.21.x, bajtkod Java 8), dzięki któremu serwer Minecraft widać w panelu Deployry:
+konsola z makrami, gracze (tryb gry, leczenie, OP, whitelist, kick, ban), `server.properties`, pliki i PlaceholderAPI.
 
-Działa na **wszystkich wersjach Minecrafta od 1.8.8 aż po 1.21.x** (Paper, Spigot, Purpur, Tuinity).
+## Bezpieczeństwo
 
----
+- **Serwer nie otwiera żadnego portu.** Plugin sam łączy się z panelem po HTTPS i czeka na polecenia (długie zapytanie).
+- **Parowanie jednorazowym kodem** (ważny 24 h). Panel wydaje w zamian losowy sekret, który zostaje w `plugins/DeployraBridge/config.yml`;
+  w panelu jest zaszyfrowany kluczem panelu.
+- **Podpisy HMAC-SHA256 w obie strony** (czas, jednorazowy nonce, skrót treści) — podrobione albo powtórzone polecenie zostanie odrzucone.
+- Komendy idą jako konsola na głównym wątku serwera; pliki są ograniczone do katalogu serwera (bez wychodzenia przez `..` ani dowiązania).
 
-## 🚀 Jak zainstalować na hostingu współdzielonym?
+## Instalacja na hostingu (Craftserve, Pterodactyl, …)
 
-1. Wrzuć plik `DeployraBridge-1.0.0.jar` do folderu `plugins/` na swoim serwerze Minecraft.
-2. Zrestartuj serwer Minecraft (lub wpisz `reload confirm`).
-3. Plugin utworzy folder `plugins/DeployraBridge/` z plikiem `config.yml` i automatycznie wygeneruje unikalny token bezpieczeństwa.
-4. Otwórz `plugins/DeployraBridge/config.yml`:
-   ```yaml
-   # Przypisz port przydzielony Ci przez hosting (np. port dodatkowy w panelu Pterodactyl/Craftserve)
-   port: 25585
-   host: "0.0.0.0"
+1. W panelu: **Minecraft → Dodaj serwer zewnętrzny**. Panel pokaże polecenie z kodem.
+2. Wgraj `DeployraBridge.jar` (do pobrania w panelu) do `plugins/` i uruchom serwer.
+3. W konsoli serwera wpisz polecenie z panelu: `deployra pair https://panel.example.com <kod>`.
 
-   # Wygenerowany unikalny token bezpieczeństwa
-   token: "dep_9a7b6c5d..."
+`/deployra status` pokazuje stan połączenia, `/deployra unpair` usuwa sekret.
 
-   max-log-lines: 150
-   enable-remote-commands: true
-   ```
-5. Przeładuj konfigurację w konsoli serwera: `/deployra reload`.
+Pliki wyłączonego serwera: w zakładce **Połączenie** można podać FTP hostingu — panel użyje go, gdy plugin jest offline.
 
----
+## Serwer jako aplikacja Deployry
 
-## 🎮 Zintegrowane funkcje w panelu Deployra
+**Aplikacje → Nowa → Minecraft (Paper)** stawia `itzg/minecraft-server` na węźle (port gry 25565). Obraz pobiera plugin z panelu
+(`PLUGINS=`), a ten paruje się sam kodem ze zmiennej `DEPLOYRA_PAIR_CODE`. Wymaga silnika z pluginami (Paper, Spigot, Purpur) —
+Vanilla, Fabric i Forge nie są obsługiwane.
 
-### 1. Widok gracza w stylu Aternos (Player Details)
-* **Awatar 3D / głowa gracza** ładowana z sieci Minotar / mc-heads.
-* **UUID gracza** z przyciskiem szybkiego kopiowania.
-* **Wybór trybu gry (Gamemode)**: Survival, Creative, Adventure, Spectator.
-* **Pasek serduszek (Health)**: interaktywny wskaźnik serduszek z przyciskami **Ulecz (Heal)** oraz **Zabij (Kill)**.
-* **Pasek głodu (Hunger)**: wskaźnik poziomu sytości z przyciskami **Nakarm (Feed)** oraz **Wygłodź (Starve)**.
-* **Przełączniki kontroli (Control toggles)**:
-  * **Biała lista (Whitelisted)**
-  * **Operator (OP)**
-  * **Zbanowany (Banned)**
-  * **Wyrzuć (Kick)**
+## Budowanie
 
-### 2. Opcje serwera (server.properties)
-* Wizualny edytor parametrów serwera:
-  * Miejsca (Slots / max-players)
-  * Tryb gry (Gamemode)
-  * Trudność (Difficulty)
-  * Biała lista (Whitelist)
-  * Nieoryginalne (Cracked / online-mode)
-  * Latanie (Allow Flight)
-  * Wymuś tryb gry (Force Gamemode)
-  * PVP, Command Blocks, Nether, Monsters, Animals
-  * Ochrona spawnu (Spawn Protection)
-  * Paczka zasobów (Resource Pack) oraz MOTD
-* Zmiany zapisują się bezpośrednio przez klienta **FTP** lub mostek pluginu.
+```bash
+sh build.sh
+```
 
-### 3. Zintegrowany Menedżer Plików (FTP Client)
-* Wbudowany klient FTP / FTPS w panelu Deployry do przeglądania folderów, pobierania, edycji i usuwania plików.
-* Fallback do bridge pluginu, jeśli port FTP jest zablokowany.
-* Wbudowany edytor plików tekstowych (`.yml`, `.properties`, `.json`, `.log`).
-
-### 4. Obsługa PlaceholderAPI (PAPI)
-* Plugin automatycznie wykrywa obecność PlaceholderAPI na serwerze przez bezpieczną refleksję (brak twardej zależności).
-* Inspektor placeholderów na żywo w Deployrze — wpisz dowolny placeholder (np. `%server_tps%`, `%player_ping%`, `%vault_eco_balance%`) i sprawdź jego bieżącą wartość.
-
-### 5. Predefiniowane Makra (Quick Actions)
-* Zestaw domyślnych makr (`Dzień`, `Noc`, `Czyste niebo`, `Zapisz świat`, `Przeładuj`, `Ulecz wszystkich`, `Nakarm wszystkich`, `Wyczyść przedmioty`, `Whitelist ON/OFF`, `TPS`).
-* Możliwość definiowania własnych makr z komendą, ikoną i kolorem.
-
----
-
-## 🔌 API Endpoints w `DeployraBridge`
-
-Wszystkie żądania autoryzowane wymagają nagłówka `Authorization: Bearer <token>` lub `X-Deployra-Key: <token>`.
-
-* `GET /health` — status i wersja serwera
-* `GET /api/info` — metryki: TPS, RAM, liczba graczy, uptime
-* `POST /api/command` — zdalne wykonanie komendy w konsoli z przechwyceniem odpowiedzi
-* `GET /api/players` — lista graczy online z UUID, pozycją XYZ, pingiem, HP i głodem
-* `POST /api/players/action` — manipulacja graczem (`heal`, `feed`, `kill`, `gamemode`, `op`, `whitelist`, `ban`, `pardon`, `kick`)
-* `GET /api/properties` / `POST /api/properties` — odczyt i zapis `server.properties`
-* `GET /api/files/list` / `GET /api/files/read` / `POST /api/files/write` / `POST /api/files/delete` / `POST /api/files/mkdir` — operacje na plikach
-* `GET /api/papi/status` — sprawdzenie PlaceholderAPI i lista zarejestrowanych rozszerzeń
-* `POST /api/papi/parse` — ewaluacja listy placeholderów
+Skrypt kompiluje `javac --release 8` względem jarów API w `libs/` (paper-api i jego zależności; nie są w repozytorium) i zapisuje
+`frontend/deployra_panel/static/downloads/DeployraBridge.jar`. Alternatywnie `mvn package` (pom.xml pobiera paper-api z repo.papermc.io).

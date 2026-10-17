@@ -1,0 +1,27 @@
+{% if error %}<div class="card"><div class="card-body"><div class="callout warn"><i class="bi bi-plug"></i> {{ error }}</div></div></div>
+{% else %}
+{% set can = has(user, P.ALLOW_CONTAINER_FILES_WRITE) %}
+<form class="card" hx-post="/minecraft/{{ s.id }}/properties" hx-swap="none">
+  <div class="card-head compact"><h3><i class="bi bi-sliders"></i> server.properties</h3><span class="small muted">{{ t("mc.restart_hint") }}</span></div>
+  <div class="card-body form-grid">
+    {% for key, kind in fields if key in props %}
+    {% if kind == "bool" %}
+    <label class="check small"><input type="hidden" name="p:{{ key }}" value="false"><input type="checkbox" name="p:{{ key }}" value="true" {{ "checked" if props[key] == "true" }} {{ "disabled" if not can }}><span class="sw"></span><span class="mono">{{ key }}</span></label>
+    {% elif "|" in kind %}
+    <div class="field"><label class="mono">{{ key }}</label><select class="select" name="p:{{ key }}" {{ "disabled" if not can }}>{% for opt in kind.split("|") %}<option {{ "selected" if props[key] == opt }}>{{ opt }}</option>{% endfor %}</select></div>
+    {% else %}
+    <div class="field {{ 'full' if key == 'motd' }}"><label class="mono">{{ key }}</label><input class="input mono" name="p:{{ key }}" value="{{ props[key] }}" {{ 'type=number' if kind == 'number' }} {{ "disabled" if not can }}></div>
+    {% endif %}
+    {% endfor %}
+    {% if others %}
+    <details class="full">
+      <summary class="small muted" style="cursor: pointer">{{ t("mc.other_properties", count=others | length) }}</summary>
+      <div class="form-grid" style="margin-top: 10px">
+        {% for key in others %}<div class="field"><label class="mono small">{{ key }}</label><input class="input mono" name="p:{{ key }}" value="{{ props[key] }}" {{ "disabled" if not can }}></div>{% endfor %}
+      </div>
+    </details>
+    {% endif %}
+  </div>
+  {% if can %}<div class="card-body row" style="justify-content: flex-end; border-top: 1px solid var(--border)"><button class="btn primary sm"><span class="spin"></span><i class="bi bi-check2"></i> {{ t("common.save") }}</button></div>{% endif %}
+</form>
+{% endif %}

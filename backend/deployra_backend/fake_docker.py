@@ -156,6 +156,12 @@ class FakeAPI:
 
     def start(self, cid: str) -> None:
         c = self._find(cid)
+        if c["labels"].get("deployra.system") == "files":  # pomocnik menedżera plików: listing podpiętego folderu
+            c["state"] = "exited"
+            self.oneoff_runs.append({"image": c["image"], "command": c["command"], "volumes_from": c["host_config"].get("volumes_from")})
+            script = " ".join(c["command"] or [])
+            c["output"] = b"dir\t0\tworld\nfile\t12\tserver.properties\n" if "TARGET" in script else b""
+            return
         if c["labels"].get("deployra.system") in ("install", "transfer"):  # jednorazowe kontenery kończą się od razu
             c["state"] = "exited"
             self.oneoff_runs.append({"image": c["image"], "command": c["command"], "binds": (c["host_config"].get("binds") or {})})
@@ -221,6 +227,8 @@ class FakeAPI:
 
     def logs(self, cid: str, tail: Any = None, stream: bool = False, follow: bool = False, timestamps: bool = False, **_: Any):
         c = self._find(cid)
+        if c.get("output") is not None:
+            return c["output"]
         if stream:
             return _LogStream(c["name"], int(tail or 0), bool(follow) and c["state"] == "running", timestamps, self.log_lines.get(c["name"]))
         return b"blad: brak konfiguracji\n" if c["image"] in self.crash_images else f"[{c['name']}] działa\n".encode()

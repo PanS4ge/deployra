@@ -249,6 +249,10 @@ def detect_profile(
             can_dump=False,
         )
 
+    # Minecraft (np. itzg/minecraft-server) — zarządzanie przez plugin DeployraBridge w sekcji Minecraft
+    if "minecraft" in img or "EULA" in env_map or 25565 in ports_set:
+        return ContainerProfile(kind="minecraft", title="Minecraft", category="game", icon="bi-controller", color="#34d399")
+
     # 7. Caddy
     if "caddy" in img:
         actions = [

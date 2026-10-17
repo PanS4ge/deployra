@@ -38,6 +38,7 @@ from .. import __version__
 MOUNTINFO = re.compile(r"/containers/([0-9a-f]{64})/")
 SCRIPT = "/usr/local/bin/deployra-updater.sh"
 SOCKETS = ("/var/run/docker.sock", "/run/docker.sock")
+PEERS = ("panel", "gateway")  # komponenty bez docker.sock — podmienia je backend z tego samego hosta
 CACHE_SECONDS = 60
 VERIFY_SECONDS = 180
 # wartości, które kontener dziedziczy po obrazie — nowy obraz ma dać swoje
@@ -70,22 +71,30 @@ class SelfUpdater:
         self.docker = docker
         self.dir = config.data_dir / "update"
         self._cache: tuple[float, dict | None] = (-CACHE_SECONDS, None)
+        self.reason: str | None = None  # dlaczego aktualizator jest niedostępny (pokazywane w panelu)
 
     def me(self, fresh: bool = False) -> dict | None:
         """`docker inspect` własnego kontenera albo None (nie w Dockerze / brak dostępu do docker.sock)."""
         at, info = self._cache
         if not fresh and time.monotonic() - at < CACHE_SECONDS:
             return info
-        info = None
+        info, reason = None, None
         cid = container_id(self.config) if self.config.self_update else None
-        if cid:
+        if not self.config.self_update:
+            reason = "disabled"
+        elif not cid:
+            reason = "no_container"
+        else:
             try:
                 found = self.docker().api.inspect_container(cid)
                 if ((found.get("Config") or {}).get("Labels") or {}).get("deployra.component") == "backend":
                     info = found
+                else:
+                    reason = "not_backend"
             except Exception:  # noqa: BLE001 — brak Dockera = brak samodzielnej aktualizacji
-                info = None
+                reason = "no_docker"
         self._cache = (time.monotonic(), info)
+        self.reason = reason
         return info
 
     def mode(self) -> str | None:
@@ -98,20 +107,11 @@ class SelfUpdater:
         labels = info["Config"].get("Labels") or {}
         if labels.get("com.docker.compose.project.working_dir") and Path(SCRIPT).is_file():
             return "source"  # lokalny build z repozytorium → git + build
+        self.reason = "local_image"
         return None
 
-    def launch(self, version: str) -> None:
-        info = self.me(fresh=True)
-        if not info:
-            raise LookupError(tr("srv.upd.no_updater"))
-        api = self.docker().api
-        name = info["Name"].lstrip("/")
-        helper = f"{name}-update"
-        for old in api.containers(all=True, filters={"name": f"^/{helper}$"}):
-            if old.get("State") == "running":
-                raise LookupError(tr("srv.upd.running", version=version))
-            api.remove_container(old["Id"], force=True)
-
+    def _helper_setup(self, info: dict) -> tuple[dict, dict, str]:
+        """Wolumen danych, socket Dockera i sieć dla kontenera pomocniczego (z obrazu backendu)."""
         mounts = {m.get("Destination"): m for m in info.get("Mounts") or []}
         data = mounts.get(str(self.config.data_dir).replace("\\", "/"))
         if not data:
@@ -125,13 +125,92 @@ class SelfUpdater:
         if os.environ.get("DOCKER_HOST"):  # np. docker-socket-proxy po TCP
             env["DOCKER_HOST"] = os.environ["DOCKER_HOST"]
             network = (info.get("HostConfig") or {}).get("NetworkMode") or "default"
+        return binds, env, network
+
+    def _clear_helper(self, api: Any, helper: str, version: str) -> None:
+        for old in api.containers(all=True, filters={"name": f"^/{helper}$"}):
+            if old.get("State") == "running":
+                raise LookupError(tr("srv.upd.running", version=version))
+            api.remove_container(old["Id"], force=True)
+
+    # --- panel i bramka na tym samym hoście Dockera (bez własnego aktualizatora) ---
+
+    def peers(self) -> list[dict]:
+        """Kontenery panelu i bramki, które ten backend może podmienić na nową wersję."""
+        if not self.me():
+            return []
+        try:
+            found = self.docker().api.containers(filters={"label": "deployra.component"})
+        except Exception:  # noqa: BLE001
+            return []
+        out = []
+        for c in found:
+            component = (c.get("Labels") or {}).get("deployra.component")
+            if component not in PEERS:
+                continue
+            name = ((c.get("Names") or ["/"])[0]).lstrip("/")
+            status = read_kv(self.dir / "peers" / name / "status")
+            out.append({"id": c["Id"], "name": name, "component": component, "image": c.get("Image"), "state": status.get("state", "idle"),
+                        "target": status.get("version"), "step": status.get("step"), "message": status.get("message", ""),
+                        "updated": status.get("updated")})  # fmt: skip
+        return out
+
+    def peer_log(self, name: str, lines: int = 30) -> list[str]:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", name):
+            return []
+        try:
+            return (self.dir / "peers" / name / "log").read_text(encoding="utf-8", errors="replace").splitlines()[-lines:]
+        except OSError:
+            return []
+
+    def launch_peer(self, container: str, version: str) -> dict:
+        version = normalize(version)
+        info = self.me(fresh=True)
+        if not info:
+            raise LookupError(tr("srv.upd.no_updater"))
+        api = self.docker().api
+        try:
+            target = api.inspect_container(container)
+        except Exception as exc:  # noqa: BLE001
+            raise LookupError(tr("srv.upd.no_peer", name=container)) from exc
+        component = ((target.get("Config") or {}).get("Labels") or {}).get("deployra.component")
+        if component not in PEERS:
+            raise LookupError(tr("srv.upd.no_peer", name=container))
+        repo, _ = split_ref(target["Config"]["Image"])
+        if "/" not in repo:
+            raise LookupError(tr("srv.upd.local_image"))
+        name = target["Name"].lstrip("/")
+        helper = f"{name}-update"
+        self._clear_helper(api, helper, version)
+        binds, env, network = self._helper_setup(info)
+        directory = self.dir / "peers" / name
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "log").write_text("", encoding="utf-8")
+        append_log(directory, f"Update of {name} ({component}) to {version} requested — starting {helper}")
+        write_status(directory, "running", version, "launching")
+        host_config = api.create_host_config(binds=binds, network_mode=network, auto_remove=True)
+        command = ["python", "-m", "deployra_backend.services.self_update", target["Id"], version, component]
+        created = api.create_container(info["Image"], command=command, name=helper, environment=env,
+                                       labels={"deployra.system": "updater"}, host_config=host_config)  # fmt: skip
+        api.start(created["Id"])
+        return {"name": name, "component": component, "target": version}
+
+    def launch(self, version: str) -> None:
+        info = self.me(fresh=True)
+        if not info:
+            raise LookupError(tr("srv.upd.no_updater"))
+        api = self.docker().api
+        name = info["Name"].lstrip("/")
+        helper = f"{name}-update"
+        self._clear_helper(api, helper, version)
+        binds, env, network = self._helper_setup(info)
 
         if self.mode() == "source":
             labels = info["Config"]["Labels"]
             workdir = labels["com.docker.compose.project.working_dir"]
             repo = posixpath.dirname(workdir)  # konteksty budowania to .. względem deploy/
             binds[repo] = {"bind": repo, "mode": "rw"}
-            env.update(DEPLOYRA_UPDATE_DIR=posixpath.join(data["Destination"], "update"), DEPLOYRA_IMAGES="deployra",
+            env.update(DEPLOYRA_UPDATE_DIR=posixpath.join(env["DEPLOYRA_DATA"], "update"), DEPLOYRA_IMAGES="deployra",
                        DEPLOYRA_UPDATE_SERVICES=labels.get("com.docker.compose.service", ""), UPD_PROJECT=labels.get("com.docker.compose.project", ""),
                        UPD_WORKDIR=workdir, UPD_FILES=labels.get("com.docker.compose.project.config_files", ""),
                        UPD_ENVFILES=labels.get("com.docker.compose.project.environment_file", ""), UPD_IMAGE=info["Image"])  # fmt: skip
@@ -207,8 +286,12 @@ def _endpoint(network: dict, cid: str) -> dict:
     return out
 
 
-def apply(api: Any, data_dir: Path, cid: str, version: str, wait: float = VERIFY_SECONDS, poll: float = 2.0) -> bool:
+def apply(api: Any, data_dir: Path, cid: str, version: str, wait: float = VERIFY_SECONDS, poll: float = 2.0, component: str = "backend",
+          settle: float = 20.0) -> bool:  # fmt: skip
+    """Podmienia kontener na nową wersję. `component` = backend (sam siebie) albo panel/bramka z tego hosta."""
     directory = Path(data_dir) / "update"
+    if component != "backend":  # stan sąsiada osobno — nie miesza się z aktualizacją samego backendu
+        directory = directory / "peers" / api.inspect_container(cid)["Name"].lstrip("/")
     directory.mkdir(parents=True, exist_ok=True)
     version = normalize(version)
 
@@ -271,7 +354,10 @@ def apply(api: Any, data_dir: Path, cid: str, version: str, wait: float = VERIFY
         api.start(new_id)
         log(f"Started the new container ({new_id[:12]}), waiting for it to report in")
         status("running", "verifying")
-        problem = _wait_booted(api, new_id, directory, version, started, wait, poll)
+        if component == "backend":
+            problem = _wait_booted(api, new_id, directory, version, started, wait, poll)
+        else:
+            problem = _wait_healthy(api, new_id, wait, poll, settle)
     except Exception as exc:  # noqa: BLE001
         problem = str(exc) or type(exc).__name__
     if problem:
@@ -295,7 +381,7 @@ def apply(api: Any, data_dir: Path, cid: str, version: str, wait: float = VERIFY
     except Exception:  # noqa: BLE001
         pass
     try:
-        for img in api.images(filters={"label": "deployra.component"}):
+        for img in api.images(filters={"label": f"deployra.component={component}"}):
             iid = img.get("Id")
             if iid and iid != new_image.get("Id"):
                 try:
@@ -324,6 +410,27 @@ def _wait_booted(api: Any, cid: str, directory: Path, version: str, since: int, 
         time.sleep(poll)
 
 
+def _wait_healthy(api: Any, cid: str, wait: float, poll: float, settle: float) -> str | None:
+    """Panel i bramka nie piszą znaku życia do naszego katalogu: liczy się healthcheck obrazu albo stabilna praca."""
+    deadline = time.monotonic() + wait
+    started = time.monotonic()
+    while True:
+        info = api.inspect_container(cid)
+        state = info.get("State") or {}
+        if state.get("Status") in ("exited", "dead") or (info.get("RestartCount") or 0) > 0:
+            return f"container {state.get('Status')} (exit code {state.get('ExitCode')})"
+        health = (state.get("Health") or {}).get("Status")
+        if health == "healthy":
+            return None
+        if health == "unhealthy":
+            return "healthcheck: unhealthy"
+        if health is None and time.monotonic() - started >= settle:
+            return None
+        if time.monotonic() > deadline:
+            return f"no sign of life within {int(wait)} s"
+        time.sleep(poll)
+
+
 def _restore(api: Any, new_id: str | None, old_id: str, name: str, log: Callable[[str], None]) -> None:
     try:
         if new_id:
@@ -342,12 +449,13 @@ def _restore(api: Any, new_id: str | None, old_id: str, name: str, log: Callable
 def main(argv: list[str]) -> int:
     import docker
 
-    if len(argv) != 3:
-        print("usage: python -m deployra_backend.services.self_update <container> <version>", file=sys.stderr)
+    if len(argv) not in (3, 4):
+        print("usage: python -m deployra_backend.services.self_update <container> <version> [backend|panel|gateway]", file=sys.stderr)
         return 2
     client = docker.from_env(timeout=300)
     data = Path(os.environ.get("DEPLOYRA_DATA", "/var/lib/deployra"))
-    return 0 if apply(client.api, data, argv[1], argv[2]) else 1
+    component = argv[3] if len(argv) == 4 else "backend"
+    return 0 if apply(client.api, data, argv[1], argv[2], component=component) else 1
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@
           {% elif kind == "redirect" %}{{ s.redirect.code }} → {{ s.redirect.domain }}{% endif %}
         </td>
         <td>{% if s.enabled %}<span class="badge ok"><i class="bi bi-check2"></i> {{ t("proxy.active") }}</span>{% else %}<span class="badge">{{ t("proxy.disabled") }}</span>{% endif %}</td>
-        {% if kind == "proxy" %}<td class="nowrap"><div id="health-{{ s.id }}">{% if s.enabled %}<span class="muted small">…</span>{% else %}<span class="muted small">—</span>{% endif %}</div></td>{% endif %}
+        {% if kind == "proxy" %}<td class="nowrap"><div id="health-{{ s.id }}">{% if s.enabled and health.get(s.id) %}{% with r = health[s.id] %}{% include "partials/health_cell.html" %}{% endwith %}{% elif s.enabled %}<span class="muted small">…</span>{% else %}<span class="muted small">—</span>{% endif %}</div></td>{% endif %}
         <td><div id="spark-{{ s.id }}"><span class="muted small">…</span></div></td>
         <td>
           {% if s.ingress == "cloudflare" %}<span class="badge ok" title="{{ t('proxy.cf_https') }}"><i class="bi bi-cloud-check"></i></span>
@@ -72,7 +72,7 @@
   </div>
   {% set ids = sites | map(attribute="id") | join(",") %}
   <div hx-get="/analytics/sparks?ids={{ ids }}" hx-trigger="load" hx-swap="none"></div>
-  {% if kind == "proxy" %}<div hx-get="/proxy/health?ids={{ ids }}" hx-trigger="load, every 60s [!document.hidden]" hx-swap="none"></div>{% endif %}
+  {% if kind == "proxy" %}{% for chunk in health_chunks %}<div hx-get="/proxy/health?ids={{ chunk | join(',') }}" hx-trigger="load, every 60s [!document.hidden]" hx-swap="none"></div>{% endfor %}{% endif %}
   {% else %}
   {{ empty("signpost-split", t("proxy.empty_title"), t("proxy.empty_text")) }}
   {% endif %}

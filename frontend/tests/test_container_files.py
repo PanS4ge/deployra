@@ -58,9 +58,12 @@ def test_container_files_view_and_read(panel: Panel, client: TestClient, node_id
     assert "app" in res.text
 
     # 2. HTMX żądanie do partiala
-    res_partial = client.get(f"/nodes/{node_id}/containers/cid123/files?path=/app", headers={"HX-Request": "true"})
+    res_partial = client.get(f"/nodes/{node_id}/containers/cid123/files?path=/app", headers={"HX-Request": "true", "HX-Target": "files-browser"})
     assert res_partial.status_code == 200
-    assert "files-table-container" in res_partial.text
+    assert 'id="files-browser"' in res_partial.text and "<html" not in res_partial.text
+    # Wstecz w przeglądarce (przywracanie historii) dostaje pełną stronę, nie sam fragment
+    restored = client.get(f"/nodes/{node_id}/containers/cid123/files?path=/app", headers={"HX-Request": "true", "HX-History-Restore-Request": "true"})
+    assert "<html" in restored.text
 
     # 3. Odczyt zawartości pliku
     res_read = client.get(f"/nodes/{node_id}/containers/cid123/files/read?path=/app/test.txt")
@@ -136,3 +139,27 @@ def test_container_files_permissions(panel: Panel, client: TestClient, node_id: 
         headers={"X-CSRF-Token": csrf1},
     )
     assert res_rw_write.status_code == 200
+
+
+class MountsNodeClient(MockFilesNodeClient):
+    async def get(self, path, params=None, **_):
+        if "/files" in path:
+            return {"path": "/", "mode": "mounts", "running": False,
+                    "mounts": [{"type": "bind", "name": "", "source": "/home/mc/data", "destination": "/data", "rw": True}],
+                    "items": [{"name": "/data", "path": "/data", "type": "mount", "is_dir": True, "size": 0,
+                               "mount": {"source": "/home/mc/data", "destination": "/data"}},
+                              {"name": "a&b #1.txt", "path": "/a&b #1.txt", "type": "file", "is_dir": False, "size": 3}]}
+        return {"Id": "cid123456789", "Name": "/mc", "State": {"Status": "exited", "Running": False}}
+
+
+def test_container_files_stopped_shows_mounts_and_encodes_paths(panel: Panel, client: TestClient, node_id: int, monkeypatch):
+    monkeypatch.setattr(panel, "node_client", lambda n: MountsNodeClient())
+    admin_id = panel.db.insert("users", email="admin@deployra.local", password_hash="hash", name="Admin", permissions="0")
+    sid, _ = panel.sessions.create(admin_id, "127.0.0.1", "pytest")
+    client.cookies.set(SESSION_COOKIE, sid)
+
+    page = client.get(f"/nodes/{node_id}/containers/cid123/files?ep=ct-101").text
+    assert "/home/mc/data" in page and "mount-bar" in page
+    assert "files?path=%2Fdata&amp;ep=ct-101" in page  # ep scalony z path, ścieżka zakodowana
+    assert "path=%2Fa%26b+%231.txt&amp;ep=ct-101" in page  # znaki specjalne w nazwie nie psują linku
+    assert "openFile('" not in page  # ścieżka nie trafia do kodu JS (XSS)

@@ -1,0 +1,14 @@
+{% from "_macros.html" import meter %}
+{% for r in rows %}
+<div class="node-row">
+  <a class="name trunc" href="/nodes/{{ r.node.id }}">{{ r.node.name }}</a>
+  {% if r.error %}
+  <span class="small muted trunc node-row-wide"><span class="dot err"></span> {{ r.error }}</span>
+  {% else %}
+  <span class="small dim nowrap"><span class="dot ok"></span> {{ r.v.uptime | duration }}</span>
+  {% for label, value in [("CPU", r.v.cpu), ("RAM", r.v.ram), (t("stats.disk"), r.v.disk)] %}
+  <span class="mini-meter" title="{{ label }} {{ '%.0f' | format(value) if value is not none else '—' }}%"><span class="muted">{{ label }}</span>{{ meter(value) }}<span class="mono">{{ "%.0f" | format(value) if value is not none else "—" }}%</span></span>
+  {% endfor %}
+  {% endif %}
+</div>
+{% else %}<div class="muted small">{{ t("dashboard.no_nodes") }}</div>{% endfor %}

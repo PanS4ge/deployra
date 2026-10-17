@@ -27,7 +27,8 @@ from .services import access
 from .web import is_htmx, render, toast
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-PUBLIC_PREFIXES = ("/static/", "/hooks/", "/healthz", "/login", "/setup", "/language", "/favicon.ico", "/mcp")
+PUBLIC_PREFIXES = ("/static/", "/hooks/", "/healthz", "/login", "/setup", "/language", "/favicon.ico", "/mcp",
+                   "/minecraft/bridge/", "/minecraft/download/")  # plugin Minecrafta: podpis HMAC zamiast sesji
 
 
 def create_app(config: Config | None = None, panel: Panel | None = None) -> FastAPI:

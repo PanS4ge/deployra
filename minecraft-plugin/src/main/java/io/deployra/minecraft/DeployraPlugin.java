@@ -1,141 +1,127 @@
 package io.deployra.minecraft;
 
+import java.io.File;
+import java.util.Map;
+import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.io.File;
-import java.security.SecureRandom;
-import java.util.logging.Logger;
-
-public class DeployraPlugin extends JavaPlugin implements CommandExecutor {
-
-    private DeployraHttpServer httpServer;
-    private LogCaptureHandler logCapture;
-    private String currentToken;
-    private int currentPort;
+/**
+ * DeployraBridge — zarządzanie serwerem Minecraft z panelu Deployra.
+ * Plugin łączy się z panelem sam (żaden port na serwerze nie jest otwierany); parowanie: /deployra pair <adres> <kod>.
+ */
+public final class DeployraPlugin extends JavaPlugin {
+    private ConsoleCapture console;
+    private BridgeClient bridge;
+    private Operations operations;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        loadAndStartServer();
-
-        if (getCommand("deployra") != null) {
-            getCommand("deployra").setExecutor(this);
+        console = new ConsoleCapture(getConfig().getInt("max-log-lines", 1000));
+        console.install(Bukkit.getServer().getClass().getClassLoader());
+        File serverDir = new File(".").getAbsoluteFile();
+        try {
+            operations = new Operations(this, console, new ServerFiles(serverDir), new ServerProperties(serverDir));
+        } catch (Exception e) {
+            getLogger().severe("Cannot open the server directory: " + e.getMessage());
+            getServer().getPluginManager().disablePlugin(this);
+            return;
         }
-
-        getLogger().info("==================================================");
-        getLogger().info("DeployraBridge v" + getDescription().getVersion() + " has been ENABLED!");
-        getLogger().info("HTTP Server port: " + currentPort);
-        getLogger().info("Token: " + currentToken);
-        getLogger().info("Control URL: http://<server-ip>:" + currentPort + "/health");
-        getLogger().info("==================================================");
+        bridge = new BridgeClient(this, operations);
+        bridge.start();
+        Bukkit.getScheduler().runTaskTimer(this, new Runnable() {
+            @Override
+            public void run() {
+                bridge.setInfo(operations.info());
+            }
+        }, 20L, 300L);
+        String code = System.getenv("DEPLOYRA_PAIR_CODE");
+        String url = System.getenv("DEPLOYRA_PANEL_URL");
+        if (!paired() && code != null && !code.isEmpty() && !"auto".equals(code) && url != null && url.startsWith("http")) {
+            pairAsync(url, code, Bukkit.getConsoleSender());  // serwer postawiony z panelu (aplikacja) paruje się sam
+        }
+        getLogger().info(paired() ? "Deployra: paired with " + panelUrl() : "Deployra: not paired — use /deployra pair <panel-url> <code>");
     }
 
     @Override
     public void onDisable() {
-        if (httpServer != null) {
-            httpServer.stop();
-            httpServer = null;
+        if (bridge != null) {
+            bridge.stop();
         }
-
-        if (logCapture != null) {
-            try {
-                Logger.getLogger("").removeHandler(logCapture);
-                getLogger().removeHandler(logCapture);
-            } catch (Exception ignored) {}
-            logCapture = null;
+        if (console != null) {
+            console.uninstall();
         }
-
-        getLogger().info("DeployraBridge has been DISABLED.");
     }
 
-    private void loadAndStartServer() {
-        reloadConfig();
+    boolean paired() {
+        return !secret().isEmpty() && serverId() > 0 && panelUrl().startsWith("http");
+    }
 
-        int port = getConfig().getInt("port", 25585);
-        String host = getConfig().getString("host", "0.0.0.0");
-        String token = getConfig().getString("token", "").trim();
-        int maxLogs = getConfig().getInt("max-log-lines", 150);
-        boolean remoteCommands = getConfig().getBoolean("enable-remote-commands", true);
+    String panelUrl() {
+        return getConfig().getString("panel-url", "");
+    }
 
-        if (token.isEmpty()) {
-            token = generateRandomToken();
-            getConfig().set("token", token);
-            saveConfig();
-            getLogger().info("Generated new secret Deployra token: " + token);
-        }
+    String secret() {
+        return getConfig().getString("secret", "");
+    }
 
-        this.currentToken = token;
-        this.currentPort = port;
+    int serverId() {
+        return getConfig().getInt("server-id", 0);
+    }
 
-        // Initialize log capture
-        if (logCapture == null) {
-            logCapture = new LogCaptureHandler(maxLogs);
-            try {
-                Logger.getLogger("").addHandler(logCapture);
-                getLogger().addHandler(logCapture);
-            } catch (Exception e) {
-                getLogger().warning("Could not attach log capture handler: " + e.getMessage());
+    private void pairAsync(final String url, final String code, final CommandSender sender) {
+        final Map<String, Object> info = operations.info();
+        Bukkit.getScheduler().runTaskAsynchronously(this, new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    final Map<String, Object> answer = BridgeClient.pair(url, code, info);
+                    Bukkit.getScheduler().runTask(DeployraPlugin.this, new Runnable() {
+                        @Override
+                        public void run() {
+                            getConfig().set("panel-url", url.replaceAll("/+$", ""));
+                            getConfig().set("server-id", ((Number) answer.get("server_id")).intValue());
+                            getConfig().set("secret", Json.str(answer.get("secret"), ""));
+                            saveConfig();
+                            sender.sendMessage(ChatColor.GREEN + "Deployra: paired.");
+                        }
+                    });
+                } catch (Exception e) {
+                    sender.sendMessage(ChatColor.RED + "Deployra: pairing failed — " + e.getMessage());
+                }
             }
-        }
-
-        // Start HTTP server
-        try {
-            if (httpServer != null) {
-                httpServer.stop();
-            }
-            httpServer = new DeployraHttpServer(this, host, port, token, remoteCommands, logCapture);
-            httpServer.start();
-        } catch (Exception e) {
-            getLogger().severe("FAILED TO START DEPLOYRA HTTP BRIDGE: " + e.getMessage());
-            e.printStackTrace();
-        }
+        });
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!sender.hasPermission("deployra.admin")) {
-            sender.sendMessage(ChatColor.RED + "You do not have permission to use this command.");
+        if (!(sender instanceof ConsoleCommandSender) && !sender.isOp()) {
+            sender.sendMessage(ChatColor.RED + "Deployra: console or OP only.");
             return true;
         }
-
-        if (args.length == 0 || args[0].equalsIgnoreCase("status")) {
-            sender.sendMessage(ChatColor.GREEN + "--- DeployraBridge Status ---");
-            sender.sendMessage(ChatColor.YELLOW + "Status: " + ChatColor.WHITE + (httpServer != null ? "ACTIVE" : "STOPPED"));
-            sender.sendMessage(ChatColor.YELLOW + "Port: " + ChatColor.WHITE + currentPort);
-            sender.sendMessage(ChatColor.YELLOW + "Online players: " + ChatColor.WHITE + getServer().getOnlinePlayers().size());
-            sender.sendMessage(ChatColor.GRAY + "Use '/deployra token' to view authorization token.");
-            return true;
+        String sub = args.length > 0 ? args[0].toLowerCase() : "status";
+        if ("pair".equals(sub)) {
+            if (args.length != 3 || !args[1].startsWith("http")) {
+                sender.sendMessage(ChatColor.YELLOW + "/deployra pair <panel-url> <code>");
+                return true;
+            }
+            if (args[1].startsWith("http://")) {
+                sender.sendMessage(ChatColor.YELLOW + "Deployra: the panel URL is not HTTPS — commands are still signed, but use HTTPS if you can.");
+            }
+            sender.sendMessage("Deployra: pairing…");
+            pairAsync(args[1], args[2], sender);
+        } else if ("unpair".equals(sub)) {
+            getConfig().set("secret", "");
+            getConfig().set("server-id", 0);
+            saveConfig();
+            sender.sendMessage(ChatColor.YELLOW + "Deployra: unpaired.");
+        } else {
+            sender.sendMessage("Deployra " + getDescription().getVersion() + ": " + bridge.status() + (paired() ? " (" + panelUrl() + ")" : ""));
         }
-
-        if (args[0].equalsIgnoreCase("token")) {
-            sender.sendMessage(ChatColor.GREEN + "Deployra Secret Token: " + ChatColor.GOLD + currentToken);
-            sender.sendMessage(ChatColor.GRAY + "Use this token in Deployra or API requests.");
-            return true;
-        }
-
-        if (args[0].equalsIgnoreCase("reload")) {
-            sender.sendMessage(ChatColor.YELLOW + "Reloading DeployraBridge configuration and restarting HTTP server...");
-            loadAndStartServer();
-            sender.sendMessage(ChatColor.GREEN + "DeployraBridge successfully reloaded on port " + currentPort + "!");
-            return true;
-        }
-
-        sender.sendMessage(ChatColor.RED + "Usage: /deployra [status|token|reload]");
         return true;
-    }
-
-    private static String generateRandomToken() {
-        SecureRandom random = new SecureRandom();
-        byte[] bytes = new byte[16];
-        random.nextBytes(bytes);
-        StringBuilder sb = new StringBuilder("dep_");
-        for (byte b : bytes) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
     }
 }

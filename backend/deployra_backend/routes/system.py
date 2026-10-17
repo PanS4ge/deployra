@@ -9,6 +9,7 @@ import shutil
 import socket
 import subprocess
 import time
+from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -235,6 +236,36 @@ def update_start(body: UpdateRequest, ctx: Context = Depends(get_ctx)) -> dict:
         raise HTTPException(400, str(exc)) from None
     logger.info(tr("node.log.update_requested", version=info["target"], mode=info["mode"]))
     return {"service": NAME, "version": __version__, **info}
+
+
+class PeerUpdateRequest(BaseModel):
+    container: str
+    version: str
+
+
+@router.get("/update/peers")
+def update_peers(log: str = "", ctx: Context = Depends(get_ctx)) -> dict:
+    """Panel i bramka na tym hoście Dockera, które ten węzeł umie podmienić (aktualizacje bez sidecara)."""
+    peers = ctx.updates.peers() if hasattr(ctx.updates, "peers") else []
+    if log:
+        for peer in peers:
+            if peer["name"] == log:
+                peer["log"] = ctx.updates.peer_log(log)
+    return {"service": NAME, "version": __version__, "peers": peers}
+
+
+@router.post("/update/peer")
+def update_peer(body: PeerUpdateRequest, ctx: Context = Depends(get_ctx)) -> dict:
+    if not hasattr(ctx.updates, "request_peer"):
+        raise HTTPException(409, tr("srv.upd.no_updater"))
+    try:
+        result = ctx.updates.request_peer(body.container, body.version)
+    except LookupError as exc:
+        raise HTTPException(409, str(exc)) from None
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
+    logger.info(tr("node.log.update_requested", version=result["target"], mode=f"peer:{result['name']}"))
+    return result
 
 
 @router.get("/endpoints")

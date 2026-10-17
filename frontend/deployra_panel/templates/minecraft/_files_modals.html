@@ -1,0 +1,45 @@
+<div class="modal-backdrop" x-show="showEditor" x-cloak @keydown.escape.window="showEditor = false">
+  <div class="card modal" style="max-width: 900px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column" @click.outside="showEditor = false">
+    <div class="card-head">
+      <h3 class="trunc"><i class="bi bi-file-earmark-code"></i> <span class="mono" x-text="filePath"></span></h3>
+      <span class="spacer"></span><span class="badge" x-text="sizeText()"></span>
+      <button type="button" class="btn icon sm ghost" @click="showEditor = false"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="card-body" style="flex: 1; min-height: 0; overflow-y: auto">
+      <div x-show="loading" class="muted small" style="text-align: center; padding: 40px"><span class="spin" style="display: inline-block"></span></div>
+      <div x-show="!loading && isBinary" class="callout warn"><i class="bi bi-file-earmark-binary"></i> {{ t("containers.binary_file_hint") }}</div>
+      <textarea x-show="!loading && !isBinary" class="input mono code-editor" x-model="fileContent" spellcheck="false" {% if not has(user, P.ALLOW_CONTAINER_FILES_WRITE) %}readonly{% endif %}></textarea>
+    </div>
+    <div class="card-body row between" style="border-top: 1px solid var(--border)">
+      <a class="btn ghost sm" :href="downloadUrl()" hx-boost="false" download><i class="bi bi-download"></i> {{ t("containers.download") }}</a>
+      <div class="row" style="gap: 8px">
+        <button type="button" class="btn ghost sm" @click="showEditor = false">{{ t("common.cancel") }}</button>
+        {% if has(user, P.ALLOW_CONTAINER_FILES_WRITE) %}<button class="btn primary sm" :disabled="isBinary || saving" @click="saveFile()"><i class="bi bi-check2"></i> {{ t("common.save") }}</button>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% if has(user, P.ALLOW_CONTAINER_FILES_WRITE) %}
+<div class="modal-backdrop" x-show="showUpload" x-cloak @keydown.escape.window="showUpload = false">
+  <form class="card modal" style="max-width: 480px" action="/minecraft/{{ s.id }}/files/upload" method="post" enctype="multipart/form-data" @click.outside="showUpload = false">
+    <input type="hidden" name="dir_path" :value="currentPath()">
+    <div class="card-head"><h3><i class="bi bi-upload"></i> {{ t("containers.upload_file") }}</h3></div>
+    <div class="card-body stack"><div class="mono small muted" x-text="currentPath()"></div><input class="input" type="file" name="files" multiple required><div class="small muted">{{ t("mc.upload_limit") }}</div></div>
+    <div class="card-body row" style="justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border)">
+      <button type="button" class="btn ghost sm" @click="showUpload = false">{{ t("common.cancel") }}</button>
+      <button class="btn primary sm"><i class="bi bi-upload"></i> {{ t("containers.upload_file") }}</button>
+    </div>
+  </form>
+</div>
+<div class="modal-backdrop" x-show="showMkdir" x-cloak @keydown.escape.window="showMkdir = false">
+  <form class="card modal" style="max-width: 420px" hx-post="/minecraft/{{ s.id }}/files/mkdir" hx-swap="none" @htmx:after-request="showMkdir = false" @click.outside="showMkdir = false">
+    <input type="hidden" name="dir_path" :value="currentPath()">
+    <div class="card-head"><h3><i class="bi bi-folder-plus"></i> {{ t("containers.new_folder") }}</h3></div>
+    <div class="card-body stack"><div class="mono small muted" x-text="currentPath()"></div><input class="input" name="name" placeholder="{{ t('containers.folder_name') }}" required></div>
+    <div class="card-body row" style="justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border)">
+      <button type="button" class="btn ghost sm" @click="showMkdir = false">{{ t("common.cancel") }}</button>
+      <button class="btn primary sm"><i class="bi bi-check2"></i> {{ t("common.save") }}</button>
+    </div>
+  </form>
+</div>
+{% endif %}

@@ -157,3 +157,71 @@ def test_finish_pending_after_restart(admin):
     panel.db.set_setting("update_pending", {"target": NEWER, "started": time.time() - 7200})
     updates.finish_pending(panel)
     assert panel.db.setting("update_pending") is None
+
+
+def test_link_peers_finds_node_on_same_host():
+    no_updater = {"available": False, "mode": None}
+    panel_item = {"key": "panel", "name": "Panel", "online": True, "version": "1.2.4", "update": {**no_updater, "container": "abc"}, "address": "deploy.example.com"}
+    gateway_item = {"key": "gateway", "name": "Bramka", "online": True, "version": "1.2.4", "update": no_updater, "address": "138.2.182.146"}
+    node = {"key": "node-1", "name": "oracle1", "online": True, "version": "1.3.0", "update": {"available": True, "mode": "image"}, "client": object(),
+            "address": "138.2.182.146", "peers": [{"id": "abc", "name": "deployra-panel", "component": "panel", "state": "idle"},
+                                                  {"id": "g1", "name": "deployra-wg", "component": "gateway", "state": "idle"}]}  # fmt: skip
+    other = {**node, "key": "node-2", "name": "cezary", "address": "10.0.0.2", "peers": []}
+    updates._link_peers([panel_item, gateway_item, other, node])
+    assert panel_item["via"]["name"] == "oracle1" and panel_item["via"]["container"] == "abc"  # po ID kontenera
+    assert gateway_item["via"]["container"] == "g1"  # stara bramka bez ID — po adresie maszyny
+    assert panel_item["update"]["available"] and panel_item["update"]["mode"] == "node"
+
+
+class FakePeerNode:
+    """Węzeł 1.3.0+ podmieniający sąsiedni kontener; `outcome` = done albo error."""
+
+    def __init__(self, outcome="done"):
+        self.outcome, self.requests, self.polls = outcome, [], 0
+
+    async def post(self, path, json=None):
+        assert path == "/api/update/peer"
+        self.requests.append(json)
+        return {"name": "deployra-wg", "component": "gateway", "target": json["version"]}
+
+    async def get(self, path, params=None):
+        self.polls += 1
+        state = "running" if self.polls < 2 else self.outcome
+        return {"peers": [{"id": "new", "name": "deployra-wg", "component": "gateway", "state": state, "target": self.requests[0]["version"],
+                           "step": "pulling", "message": "", "log": ["pull failed"] if state == "error" else []}]}  # fmt: skip
+
+
+class FakeGatewayVersion:
+    def __init__(self):
+        self.polls = 0
+
+    async def get(self, path, params=None):
+        self.polls += 1
+        return {"version": NEWER if self.polls >= 3 else "1.2.4"}
+
+
+@pytest.mark.anyio
+async def test_gateway_and_panel_updated_by_node(admin, monkeypatch):
+    panel = admin.app.state.panel
+    monkeypatch.setattr(updates, "POLL", 0)
+    node, gateway = FakePeerNode(), FakeGatewayVersion()
+    item = {"key": "gateway", "name": "Bramka", "client": gateway, "online": True, "version": "1.2.4", "update": {"available": True, "mode": "node"},
+            "via": {"key": "node-1", "name": "oracle1", "client": node, "component": "gateway", "container": "g1", "peer": "deployra-wg"}}  # fmt: skip
+    job = Job("update", "test")
+    assert await updates._peer(panel, job, item, NEWER)
+    assert node.requests == [{"container": "g1", "version": NEWER}] and "podmienia węzeł oracle1" in "\n".join(job.lines)
+
+    failing = FakePeerNode("error")
+    me = {"key": "panel", "name": "Panel", "client": None, "online": True, "version": __version__, "update": {"available": True, "mode": "node"},
+          "via": {"key": "node-1", "name": "oracle1", "client": failing, "component": "panel", "container": "p1", "peer": "deployra-wg"}}  # fmt: skip
+    job = Job("update", "test")
+    assert not await updates._peer(panel, job, me, NEWER)
+    assert "pull failed" in "\n".join(job.lines) and panel.db.setting("update_pending") is None
+
+
+def test_finish_pending_reports_rollback_by_node(admin):
+    panel = admin.app.state.panel
+    panel.db.set_setting("update_pending", {"target": NEWER, "started": time.time(), "via": "oracle1"})
+    updates.finish_pending(panel)  # panel wstał w starej wersji → węzeł przywrócił poprzedni kontener
+    assert panel.db.setting("update_pending") is None
+    assert panel.db.scalar("SELECT COUNT(*) FROM notifications WHERE message LIKE ?", ["%oracle1%"]) == 1

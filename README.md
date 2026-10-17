@@ -95,8 +95,11 @@ version appears it shows a banner: **Update / Later / Skip this version**. “Up
 then the gateway, the panel last — each step waits until the component is back on the new version. If anything fails, the panel stays put.
 
 A node replaces itself: the backend briefly starts a copy of itself that pulls the new image, swaps the container, restores the old
-one if the new version doesn't come up, and then disappears. The panel and the gateway get no `docker.sock`, so a small `*-updater`
-container does their swap (~1 MB RAM when idle, no network). Modes:
+one if the new version doesn't come up, and then disappears. The panel and the gateway get no `docker.sock`, so since 1.3.0 **the
+Deployra node on the same machine** swaps their container (the panel sends the request, the node recreates the container on the new
+version, checks the healthcheck and rolls back on failure). A node older than 1.3.0 is updated first. A gateway on a machine without
+a node and older installs still use the `*-updater` container; with neither, use “Pull and redeploy”. The components table shows how
+each component will be updated, and for “none” — why. Modes:
 
 - **GHCR images** (default): `docker compose pull` + `up -d`;
 - **from source** (`DEPLOYRA_IMAGES=deployra` in `deploy/.env`): `git` fast-forwards the repository to the `vX.Y.Z` tag, then `build` + `up -d`;
@@ -181,6 +184,19 @@ Every minute the panel collects CPU, RAM and disk of each node and CPU/RAM of ev
 
 Protection against overflow: the first deploy checks that the node has enough free RAM (the app's limit or 64 MB) and disk, and suggests
 a node with more room. The wizard shows free RAM next to every node; runtimes come with a default memory limit.
+
+## Minecraft
+
+The **Minecraft** section manages servers running the **DeployraBridge** plugin (Paper/Spigot/Purpur 1.8.8–1.21): console with
+macros, players (game mode, heal, OP, whitelist, kick, ban), `server.properties`, files and PlaceholderAPI.
+
+- **Server on a node**: Apps → New → **Minecraft (Paper)** (`itzg/minecraft-server`, game port 25565). The plugin downloads from the
+  panel and pairs itself.
+- **External hosting**: Minecraft → Add external server, install the plugin, run `deployra pair <panel-url> <code>` in the console.
+  Optional hosting FTP is used for files while the server is stopped.
+
+The server opens no port: the plugin connects to the panel itself (long polling over HTTPS) and requests and responses are signed
+with HMAC and replay protection. Details: `minecraft-plugin/README.md`.
 
 ## Moving apps between nodes
 

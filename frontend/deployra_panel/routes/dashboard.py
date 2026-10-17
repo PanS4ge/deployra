@@ -12,7 +12,7 @@ from deployra_common.client import RemoteError
 from ..context import Panel, get_panel
 from ..deps import current_user
 from ..i18n import t
-from ..services import alerts
+from ..services import alerts, resources
 from ..web import render
 
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -41,9 +41,29 @@ async def dashboard(request: Request, panel: Panel = Depends(get_panel)):
         {"done": stats["apps"] > 0, "title": t("onboarding.app"), "text": t("onboarding.app_text"), "href": "/apps/new", "icon": "rocket-takeoff"},
     ]
     return render(
-        request, "dashboard.html", title=t("nav.dashboard"), stats=stats, nodes=nodes, apps=apps[-6:][::-1], gateway=gateway,
-        onboarding=onboarding, jobs=panel.jobs.list()[:6], firing=alerts.firing(panel),
+        request, "dashboard.html", title=t("nav.dashboard"), stats=stats, nodes=nodes, apps=apps[-8:][::-1], gateway=gateway,
+        onboarding=onboarding, jobs=panel.jobs.list()[:9], firing=alerts.firing(panel),
     )  # fmt: skip
+
+
+@router.get("/dashboard/nodes")
+async def nodes_card(request: Request, panel: Panel = Depends(get_panel)):
+    """Wszystkie węzły jednym żądaniem: odczyt z pętli zasobów (co 60 s), a gdy go brak — krótkie pytanie do agenta."""
+    import time
+
+    async def vitals(node: dict) -> tuple[dict | None, str | None]:
+        latest = resources.LATEST.get(node["id"])
+        if latest and time.time() - latest.get("ts", 0) < 90 and latest.get("host"):
+            return latest["host"], None
+        try:
+            return await asyncio.wait_for(panel.node_client(node).get("/api/vitals"), timeout=5), None
+        except (RemoteError, httpx.HTTPError, asyncio.TimeoutError) as exc:
+            return None, getattr(exc, "detail", None) or t("msg.node_not_responding")
+
+    nodes = [n for n in panel.db.all("nodes") if n["status"] == "paired"]
+    results = await asyncio.gather(*(vitals(n) for n in nodes))
+    rows = [{"node": n, "v": v, "error": e} for n, (v, e) in zip(nodes, results, strict=True)]
+    return render(request, "partials/dashboard_nodes.html", rows=rows)
 
 
 @router.get("/dashboard/tunnel")

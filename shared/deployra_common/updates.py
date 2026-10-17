@@ -29,6 +29,25 @@ from typing import Any
 
 from .i18n import tr
 
+MOUNTINFO = re.compile(r"/containers/([0-9a-f]{64})/")
+_own: list[str | None] = []
+
+
+def own_container(proc: Path = Path("/proc")) -> str | None:
+    """ID kontenera, w którym działa ten proces (DEPLOYRA_CONTAINER albo /proc/self/mountinfo) — po nim węzeł
+    na tym samym hoście rozpoznaje panel i bramkę, które może zaktualizować."""
+    if not _own:
+        found = os.environ.get("DEPLOYRA_CONTAINER") or None
+        if not found:
+            try:
+                match = MOUNTINFO.search((proc / "self" / "mountinfo").read_text(encoding="utf-8", errors="replace"))
+                found = match.group(1) if match else None
+            except OSError:
+                found = None
+        _own.append(found)
+    return _own[0]
+
+
 VERSION = re.compile(r"^v?(\d{1,4})\.(\d{1,4})\.(\d{1,4})(?:-([0-9A-Za-z][0-9A-Za-z.-]{0,30}))?$")
 HEARTBEAT_MAX = 180  # s — starszy znacznik życia = aktualizator nie działa
 STATES = ("idle", "queued", "running", "done", "error")
@@ -138,6 +157,7 @@ class UpdateAgent:
             "step": status.get("step") or None,
             "message": status.get("message", ""),
             "updated": updated,
+            "container": own_container(),
         }
         if log_lines:
             try:

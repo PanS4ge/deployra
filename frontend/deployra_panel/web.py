@@ -62,9 +62,10 @@ def _to_ts(value: Any) -> float | None:
     if isinstance(value, (int, float)):
         return float(value)
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+        ts = datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
     except ValueError:
         return None
+    return ts if ts > 0 else None  # Docker: 0001-01-01 = „nigdy”
 
 
 def ago(value: Any) -> str:
@@ -175,6 +176,12 @@ def runtime_meta() -> dict[str, dict[str, Any]]:
             for r in RUNTIMES.values()}  # fmt: skip
 
 
+def icon_v(app: dict) -> str:
+    from .services import app_icons
+
+    return app_icons.version(app)
+
+
 def runtimes() -> list[Any]:
     from deployra_common.runtimes import RUNTIMES
 
@@ -184,6 +191,7 @@ def runtimes() -> list[Any]:
 templates.env.globals.update(
     NAME=NAME, VERSION=__version__, P=Permission, PERM_LABELS=LABELS, has=has, gravatar=gravatar, now=time.time,
     update_offer=update_offer, t=tm, LANG=lang, LANGUAGES=catalog.names, JS_I18N=js_i18n, RUNTIMES=runtimes, RUNTIME_META=runtime_meta,
+    icon_v=icon_v,
 )
 
 

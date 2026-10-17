@@ -54,6 +54,7 @@ async def chart(request: Request, domains: str = "", all: int = 0, days: int = 3
                 data["labels"],
                 [(t("analytics.uniques"), [r["uniques"] for r in data["series"]], "#22d3ee", True),
                  (t("analytics.requests"), [r["requests"] for r in data["series"]], "#8b5cf6", False)],
+                height=150,
             )  # fmt: skip
     else:
         data = await analytics.daily(panel, names, days)
@@ -64,6 +65,7 @@ async def chart(request: Request, domains: str = "", all: int = 0, days: int = 3
                 labels,
                 [(t("analytics.uniques"), [r["uniques"] for r in data["series"]], "#22d3ee", True),
                  (t("analytics.returning"), [r["returning"] for r in data["series"]], "#f472b6", False)],
+                height=150,
             )  # fmt: skip
     query = "all=1" if all else f"domains={','.join(names or [])}"
     return render(request, "partials/analytics_chart.html", data=data, svg=svg, days=days, query=query, short=charts.short_number)
