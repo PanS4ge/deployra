@@ -619,6 +619,23 @@ def files_url(node_id: int, cid: str, path: str, ep: str, action: str = "") -> s
     return f"/nodes/{node_id}/containers/{cid}/files{action}?{urlencode(query)}"
 
 
+SYSTEM_MOUNTS = ("/var/run/docker.sock", "/run/docker.sock", "/etc/localtime", "/etc/timezone", "/etc/hosts", "/etc/hostname", "/etc/resolv.conf")
+
+
+def start_path(info: dict) -> str:
+    """Gdzie otworzyć pliki kontenera: folder z danymi aplikacji (podpięty folder albo katalog roboczy), a nie cały system plików."""
+    workdir = ((info.get("Config") or {}).get("WorkingDir") or "").rstrip("/")
+    mounts = [m["Destination"].rstrip("/") for m in info.get("Mounts") or []
+              if m.get("Destination") and m["Destination"] not in SYSTEM_MOUNTS and not m["Destination"].startswith(("/proc", "/sys", "/dev"))
+              and not re.search(r"\.[A-Za-z0-9]{1,5}$", m["Destination"])]  # fmt: skip  — pojedyncze pliki (np. /app/config.yml) pomijamy
+    for mount in mounts:  # katalog roboczy w podpiętym folderze albo folder z danymi w katalogu roboczym — pokaż katalog roboczy
+        if workdir and (workdir == mount or workdir.startswith(mount + "/") or mount.startswith(workdir + "/")):
+            return workdir
+    if mounts:
+        return sorted(mounts, key=lambda m: (m.count("/"), m))[0]
+    return workdir or "/"
+
+
 def _parent(path: str) -> str | None:
     if path in ("", "/"):
         return None
@@ -626,7 +643,7 @@ def _parent(path: str) -> str | None:
 
 
 @router.get("/nodes/{node_id}/containers/{cid}/files")
-async def container_files(request: Request, cid: str, path: str = "/", node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
+async def container_files(request: Request, cid: str, path: str | None = None, node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
                           panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES))):  # fmt: skip
     client = _client(panel, node)
     try:
@@ -638,13 +655,14 @@ async def container_files(request: Request, cid: str, path: str = "/", node: dic
                 slug = cid[4:] if cid.startswith("app-") else cid
                 match = next((c for c in (all_c or []) if c.get("id", "").startswith(cid) or c.get("name") == cid or c.get("app") == slug or c.get("name") == f"app-{slug}"), None)
                 if match:
-                    return redirect(request, files_url(node["id"], match["id"], path, ep))
+                    return redirect(request, files_url(node["id"], match["id"], path or "/", ep))
             except Exception:  # noqa: BLE001 — zostaje zwykłe 404
                 pass
             return render(request, "error.html", status_code=404, title=t("containers.not_found"),
                           message=t("containers.not_found_text", name=cid, node=node["name"]), icon="box-seam")  # fmt: skip
         raise
     c_name = info.get("Name", "").lstrip("/") or cid[:12]
+    path = path or start_path(info)  # bez ?path= — od razu do plików aplikacji
     try:
         data = await client.get(_p(f"/api/containers/{cid}/files", ep), params={"path": path})
     except RemoteError as exc:

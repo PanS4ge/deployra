@@ -235,7 +235,13 @@ def v15(dialect: str) -> list[str]:
     ]
 
 
+def v16(dialect: str) -> list[str]:
+    """Ręczne limity zasobów węzła — kontenery LXC (np. mikr.us) bez lxcfs widzą RAM całego serwera fizycznego."""
+    n = _types(dialect)["int"]
+    return [f"ALTER TABLE nodes ADD COLUMN ram_limit_mb {n}", f"ALTER TABLE nodes ADD COLUMN disk_limit_gb {n}"]
+
+
 MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [
     (1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8), (9, v9), (10, v10), (11, v11), (12, v12), (13, v13),
-    (14, v14), (15, v15),
+    (14, v14), (15, v15), (16, v16),
 ]

@@ -436,3 +436,31 @@ def test_app_access_list(admin, nodes):
     assert admin.post(f"/apps/{app['id']}/access", data={"access_list_id": ""}).status_code == 200
     assert panel.db.get("sites", app["site_id"])["access_list_id"] is None
     assert admin.post(f"/apps/{app['id']}/access", data={"access_list_id": "999"}).status_code == 400
+
+
+def test_manual_node_limits_for_lxc(admin):
+    import time
+
+    from deployra_panel.services import resources
+
+    panel = admin.app.state.panel
+    node_id = panel.db.insert("nodes", name="frog01", transport="direct", api_url="http://127.0.0.1:1", status="paired")
+    gb = 1024**3
+    host = {"ram_total": 125 * gb, "ram_used": 80 * gb, "ram": 64.0, "disk_total": 10 * gb, "disk_used": 9 * gb, "disk": 90.0}
+    containers = [{"name": "app-it-tools", "mem": 300 * 1024 * 1024}, {"name": "e8400", "mem": 212 * 1024 * 1024}]
+    node = panel.db.get("nodes", node_id)
+    assert resources.apply_limits(node, host, containers) is host  # bez limitów nic się nie zmienia
+
+    assert admin.post(f"/nodes/{node_id}/limits", data={"ram_limit_mb": "2048", "disk_limit_gb": ""}).status_code == 204
+    node = panel.db.get("nodes", node_id)
+    limited = resources.apply_limits(node, host, containers)
+    assert limited["ram_total"] == 2048 * 1024 * 1024 and limited["ram_used"] == 512 * 1024 * 1024 and limited["ram"] == 25.0
+    assert limited["disk_total"] == 10 * gb  # dysk bez limitu — z systemu
+    assert resources.free_mb(limited) == 1536
+
+    # zużycie przejętej aplikacji (kontener bez etykiety Deployry) liczone po nazwie
+    resources.LATEST[node_id] = {"ts": time.time(), "host": limited, "apps": {}, "containers": [{"name": "it_tools", "mem": 300 * 1024 * 1024, "cpu": 1.5}]}
+    try:
+        assert resources.app_usage({"node_id": node_id, "slug": "it-tools", "name": "IT-Tools", "host_port": None})["mem"] == 300 * 1024 * 1024
+    finally:
+        resources.LATEST.pop(node_id, None)

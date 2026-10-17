@@ -987,7 +987,11 @@
     "next_step": "Click to get a ready-to-paste terminal command.",
     "detected_ip": "Detected IP",
     "node_address_title": "Node network address",
-    "node_address_hint": "IP address or domain used to connect to this node."
+    "node_address_hint": "IP address or domain used to connect to this node.",
+    "limits_title": "Resource limits",
+    "limits_auto": "automatic",
+    "limits_hint": "LXC-based VPSes (e.g. mikr.us) report the whole physical server's RAM. Enter the limit from your provider — RAM usage is then counted from the node's containers.",
+    "limits_saved": "Limits saved — new values show up within a minute"
   },
   "notifications": {
     "empty": "All quiet in the ether ✦"

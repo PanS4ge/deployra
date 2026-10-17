@@ -163,3 +163,37 @@ def test_container_files_stopped_shows_mounts_and_encodes_paths(panel: Panel, cl
     assert "files?path=%2Fdata&amp;ep=ct-101" in page  # ep scalony z path, ścieżka zakodowana
     assert "path=%2Fa%26b+%231.txt&amp;ep=ct-101" in page  # znaki specjalne w nazwie nie psują linku
     assert "openFile('" not in page  # ścieżka nie trafia do kodu JS (XSS)
+
+
+def test_start_path_prefers_app_folder():
+    from deployra_panel.routes.docker import start_path
+
+    def info(workdir="", *mounts):
+        return {"Config": {"WorkingDir": workdir}, "Mounts": [{"Destination": m} for m in mounts]}
+
+    assert start_path(info("/data", "/data")) == "/data"  # itzg/minecraft-server
+    assert start_path(info("/var/lib/ghost", "/var/lib/ghost/content")) == "/var/lib/ghost"
+    assert start_path(info("", "/var/run/docker.sock", "/etc/localtime", "/srv/app/config.yml", "/config")) == "/config"
+    assert start_path(info("/app")) == "/app"
+    assert start_path(info("", "/data", "/backups/daily")) == "/data"
+    assert start_path(info()) == "/"
+
+
+def test_files_open_in_app_folder_without_path(panel: Panel, client: TestClient, node_id: int, monkeypatch):
+    asked = []
+
+    class Node(MockFilesNodeClient):
+        async def get(self, path, params=None, **_):
+            if "/files" in path:
+                asked.append((params or {}).get("path"))
+                return {"path": params["path"], "items": [], "mounts": []}
+            return {"Id": "cid123456789", "Name": "/mc", "State": {"Running": True}, "Config": {"WorkingDir": "/data"},
+                    "Mounts": [{"Type": "volume", "Destination": "/data"}]}
+
+    monkeypatch.setattr(panel, "node_client", lambda n: Node())
+    admin_id = panel.db.insert("users", email="admin@deployra.local", password_hash="hash", name="Admin", permissions="0")
+    sid, _ = panel.sessions.create(admin_id, "127.0.0.1", "pytest")
+    client.cookies.set(SESSION_COOKIE, sid)
+    client.get(f"/nodes/{node_id}/containers/cid123/files")
+    client.get(f"/nodes/{node_id}/containers/cid123/files?path=/")
+    assert asked == ["/data", "/"]  # bez ?path= — folder aplikacji; jawne „/” nadal działa

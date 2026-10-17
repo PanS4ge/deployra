@@ -56,6 +56,10 @@ async def nodes_card(request: Request, panel: Panel = Depends(get_panel)):
         if latest and time.time() - latest.get("ts", 0) < 90 and latest.get("host"):
             return latest["host"], None
         try:
+            if node.get("ram_limit_mb"):  # ręczny limit RAM: zużycie z kontenerów, czyli z /api/usage
+                usage = await asyncio.wait_for(resources.current(panel, node), timeout=25)
+                if usage and usage.get("host"):
+                    return usage["host"], None
             return await asyncio.wait_for(panel.node_client(node).get("/api/vitals"), timeout=5), None
         except (RemoteError, httpx.HTTPError, asyncio.TimeoutError) as exc:
             return None, getattr(exc, "detail", None) or t("msg.node_not_responding")

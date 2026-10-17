@@ -40,19 +40,59 @@ def free_mb(host: dict[str, Any]) -> int | None:
     return _mb(host["ram_total"] - (host.get("ram_used") or 0))
 
 
+def apply_limits(node: dict[str, Any], host: dict[str, Any] | None, containers: list[dict] | None = None) -> dict[str, Any] | None:
+    """Ręczne limity węzła zamiast tego, co widzi system. W LXC bez lxcfs (mikr.us) /proc/meminfo pokazuje cały serwer
+    fizyczny, więc przy limicie RAM zużycie liczymy z kontenerów Dockera na węźle."""
+    if not host or not (node.get("ram_limit_mb") or node.get("disk_limit_gb")):
+        return host
+    host = dict(host)
+    if node.get("ram_limit_mb"):
+        total = int(node["ram_limit_mb"]) * 1024 * 1024
+        if containers is None:
+            latest = LATEST.get(node["id"]) or {}
+            containers = latest.get("containers") if time.time() - latest.get("ts", 0) < 180 else None
+        used = min(sum(c.get("mem") or 0 for c in containers or []), total)  # bez odczytu kontenerów — 0, nie fałszywe 100%
+        host.update(ram_total=total, ram_used=used, ram=round(used / total * 100, 1), ram_manual=True)
+    if node.get("disk_limit_gb"):
+        total = int(node["disk_limit_gb"]) * 1024**3
+        used = min(host.get("disk_used") or 0, total)
+        host.update(disk_total=total, disk_used=used, disk=round(used / total * 100, 1), disk_manual=True)
+    return host
+
+
 async def fetch(panel: Any, node: dict[str, Any]) -> dict[str, Any] | None:
     client = panel.node_client(node)
+    usage = None
     try:
-        return await asyncio.wait_for(client.get("/api/usage"), timeout=20)
+        usage = await asyncio.wait_for(client.get("/api/usage"), timeout=20)
     except RemoteError as exc:
         if exc.status != 404:
             return None
     except (httpx.HTTPError, asyncio.TimeoutError, OSError):
         return None
-    try:  # starszy węzeł bez /api/usage — same zasoby hosta
-        return {"host": await asyncio.wait_for(client.get("/api/vitals"), timeout=10), "apps": {}, "containers": []}
-    except (RemoteError, httpx.HTTPError, asyncio.TimeoutError, OSError):
+    if usage is None:
+        try:  # starszy węzeł bez /api/usage — same zasoby hosta
+            usage = {"host": await asyncio.wait_for(client.get("/api/vitals"), timeout=10), "apps": {}, "containers": []}
+        except (RemoteError, httpx.HTTPError, asyncio.TimeoutError, OSError):
+            return None
+    usage["host"] = apply_limits(node, usage.get("host"), usage.get("containers") or [])
+    return usage
+
+
+def app_usage(app: dict[str, Any]) -> dict[str, Any] | None:
+    """CPU/RAM aplikacji z ostatniego odczytu: po etykiecie Deployry, a dla przejętych kontenerów — po nazwie i porcie."""
+    from .uptime import app_containers
+
+    latest = LATEST.get(app["node_id"]) or {}
+    if time.time() - latest.get("ts", 0) >= 180:
         return None
+    found = (latest.get("apps") or {}).get(app["slug"])
+    if found:
+        return found
+    mine = [c for c in app_containers([c for c in latest.get("containers") or [] if c.get("name")], app) if c.get("mem") is not None]
+    if not mine:
+        return None
+    return {"cpu": round(sum(c.get("cpu") or 0 for c in mine), 1), "mem": sum(c.get("mem") or 0 for c in mine), "containers": len(mine)}
 
 
 def _upsert_hourly(panel: Any, table: str, key: str, key_id: int, hour: int, values: dict[str, float]) -> None:

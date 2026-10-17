@@ -155,6 +155,9 @@ async def vitals(request: Request, node: dict = Depends(node_or_404), panel: Pan
     else:
         try:
             data = await asyncio.wait_for(panel.node_client(node).get("/api/vitals"), timeout=8)
+            if node.get("ram_limit_mb"):  # zużycie RAM liczone z kontenerów — potrzebny odczyt z /api/usage (najwyżej co 90 s)
+                usage = await asyncio.wait_for(resources.current(panel, node), timeout=25)
+                data = resources.apply_limits(node, data, (usage or {}).get("containers"))
         except (RemoteError, httpx.HTTPError, asyncio.TimeoutError) as exc:
             error = getattr(exc, "detail", None) or t("msg.node_not_responding")
     compact = request.query_params.get("compact") == "1"
@@ -215,6 +218,18 @@ def rename(request: Request, name: str = Form(...), node: dict = Depends(node_or
            user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
     panel.db.update("nodes", node["id"], name=name.strip()[:60] or node["name"])
     return redirect(request, f"/nodes/{node['id']}", t("msg.renamed"))
+
+
+@router.post("/nodes/{node_id}/limits")
+def limits(request: Request, ram_limit_mb: str = Form(""), disk_limit_gb: str = Form(""), node: dict = Depends(node_or_404),
+           panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
+    ram = int(ram_limit_mb) if ram_limit_mb.strip().isdigit() and int(ram_limit_mb) >= 64 else None
+    disk = int(disk_limit_gb) if disk_limit_gb.strip().isdigit() and int(disk_limit_gb) >= 1 else None
+    panel.db.update("nodes", node["id"], ram_limit_mb=ram, disk_limit_gb=disk)
+    latest = resources.LATEST.get(node["id"])
+    if latest:  # ostatni odczyt od razu z nowymi limitami (zużycie kontenerów już w nim jest)
+        latest["host"] = resources.apply_limits({**node, "ram_limit_mb": ram, "disk_limit_gb": disk}, latest.get("host"), latest.get("containers") or [])
+    return redirect(request, f"/nodes/{node['id']}/settings", t("nodes.limits_saved"))
 
 
 @router.post("/nodes/{node_id}/address")

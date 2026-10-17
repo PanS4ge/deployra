@@ -166,17 +166,13 @@ def _errors(exc: Exception) -> str:
 
 @router.get("/apps")
 def apps(request: Request, panel: Panel = Depends(get_panel)):
-    import time
-
     from ..services import app_icons, uptime
 
     rows = panel.db.fetchall("SELECT a.*, n.name AS node_name FROM apps a LEFT JOIN nodes n ON n.id = a.node_id ORDER BY a.name")
     stats = uptime.stats_for(panel, [("app", a["id"]) for a in rows])
     items = []
     for a in rows:
-        usage = resources.LATEST.get(a["node_id"]) or {}
-        fresh = time.time() - usage.get("ts", 0) < 180  # pętla zasobów co 60 s; starszy odczyt = brak danych
-        a["usage"] = (usage.get("apps") or {}).get(a["slug"]) if fresh else None
+        a["usage"] = resources.app_usage(a)
         s = stats.get(("app", a["id"]))
         items.append({
             "id": a["id"], "name": a["name"].lower(), "node": (a["node_name"] or "").lower(), "status": a["status"],
@@ -290,7 +286,7 @@ def move_targets(panel: Panel, app: dict, spec: AppSpec) -> list[dict]:
     import time
 
     MB = 1024 * 1024
-    usage = (resources.LATEST.get(app["node_id"]) or {}).get("apps", {}).get(app["slug"]) or {}
+    usage = resources.app_usage(app) or {}
     need = round(usage["mem"] / MB) if usage.get("mem") else spec.memory_mb
     out = []
     for n in panel.db.fetchall("SELECT * FROM nodes ORDER BY name"):

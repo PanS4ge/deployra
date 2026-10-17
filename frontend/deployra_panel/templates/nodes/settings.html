@@ -21,6 +21,17 @@
       <div class="hint small muted">{{ t("nodes.node_address_hint") }}</div>
     </form>
   </div>
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-memory"></i> {{ t("nodes.limits_title") }}</h3></div>
+    <form class="card-body stack" hx-post="/nodes/{{ node.id }}/limits" hx-swap="none">
+      <div class="row" style="gap: 8px; flex-wrap: wrap">
+        <label class="field" style="flex: 1 1 140px"><span class="small muted">RAM (MB)</span><input class="input mono" name="ram_limit_mb" inputmode="numeric" value="{{ node.ram_limit_mb or '' }}" placeholder="{{ t('nodes.limits_auto') }}"></label>
+        <label class="field" style="flex: 1 1 140px"><span class="small muted">{{ t("stats.disk") }} (GB)</span><input class="input mono" name="disk_limit_gb" inputmode="numeric" value="{{ node.disk_limit_gb or '' }}" placeholder="{{ t('nodes.limits_auto') }}"></label>
+      </div>
+      <div class="hint small muted">{{ t("nodes.limits_hint") }}</div>
+      <div class="row" style="justify-content: flex-end"><button class="btn">{{ t("common.save") }}</button></div>
+    </form>
+  </div>
   {% if gateways %}
   <div class="card">
     <div class="card-head"><h3><i class="bi bi-hdd-network"></i> {{ t("nodes.select_gateway") }}</h3></div>

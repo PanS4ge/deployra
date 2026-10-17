@@ -987,7 +987,11 @@
     "next_step": "Kliknij, a otrzymasz gotowe polecenie do wklejenia w terminalu.",
     "detected_ip": "Wykryte IP",
     "node_address_title": "Adres sieciowy węzła",
-    "node_address_hint": "Adres IP lub domena używana do łączenia się z tym węzłem."
+    "node_address_hint": "Adres IP lub domena używana do łączenia się z tym węzłem.",
+    "limits_title": "Limity zasobów",
+    "limits_auto": "automatycznie",
+    "limits_hint": "VPS-y na LXC (np. mikr.us) pokazują RAM całego serwera fizycznego. Wpisz limit z panelu dostawcy — zużycie RAM policzymy wtedy z kontenerów na węźle.",
+    "limits_saved": "Zapisano limity — nowe wartości pojawią się w ciągu minuty"
   },
   "notifications": {
     "empty": "Cisza w eterze ✦"
