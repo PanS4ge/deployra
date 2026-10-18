@@ -25,12 +25,12 @@ Ruch publiczny idzie **jednym skokiem**: `nginx na bramce → wg0 → węzeł �
 
 | Obszar | Funkcje |
 |---|---|
-| **Aplikacje** | kreator: obraz Dockera, docker-compose, strona statyczna (ZIP + SFTP), repozytorium Git (build z Dockerfile, webhook GitHub/Gitea) · domena, rekord DNS w Cloudflare, Let's Encrypt i test przez tunel w jednym kroku · rollback |
-| **Docker** (zamiast Portainera) | kontenery, logi i statystyki na żywo, terminal w przeglądarce, obrazy, wolumeny, sieci, stacki compose |
+| **Aplikacje** | kreator: obraz Dockera, docker-compose, strona statyczna (ZIP + SFTP), repozytorium Git (build z Dockerfile, webhook GitHub/Gitea) · domena, rekord DNS w Cloudflare, Let's Encrypt i test przez tunel w jednym kroku · rollback · opcjonalnie **bez przestojów** · zmienne na etapie budowania, edytor `.env`, zmienne współdzielone · zadania cykliczne (cron) w kontenerze |
+| **Docker** (zamiast Portainera) | kontenery, logi i statystyki na żywo, terminal w przeglądarce, obrazy, wolumeny, sieci, stacki compose · menedżer plików (także całe foldery: wgrywanie i pobieranie jako ZIP) · szybkie akcje dla baz i webserwerów (zrzut SQL, VACUUM, procesy, `df -h`) |
 | **Proxmox** | backend na hoście Proxmoxa pokazuje **każdy kontener LXC z Dockerem** — bez instalowania agenta w każdym CT |
-| **Proxy** (zamiast NPM) | hosty proxy, przekierowania, hosty 404, streamy TCP/UDP, listy dostępu, własne lokacje, surowy `advanced` nginx z automatycznym rollbackiem |
+| **Proxy** (zamiast NPM) | hosty proxy, przekierowania, hosty 404, streamy TCP/UDP, listy dostępu, własne lokacje, surowy `advanced` nginx z automatycznym rollbackiem · HTTP/3 (QUIC) · **logowanie Deployra** przed dowolną aplikacją |
 | **Import z NPM** | z pliku `database.sqlite` (razem z hasłami list dostępu) albo przez API; mapowanie starych adresów na węzły; certyfikaty przenoszone albo wystawiane na nowo |
-| **Tunel** | hub WireGuard, dołączanie węzłów tokenem, routing podsieci LAN (NAS, Home Assistant…), węzły widzą się nawzajem |
+| **Tunel** | hub WireGuard, dołączanie węzłów tokenem, routing podsieci LAN (NAS, Home Assistant…), węzły widzą się nawzajem · kilka bramek, także czysty nginx bez WireGuarda · węzły za **zewnętrznym WireGuardem** (wg-easy) |
 | **Cloudflare** | rekordy A/AAAA per host (bez wildcarda), certyfikaty wildcard (DNS-01), **Cloudflare Tunnel** (cloudflared — bez publicznego IP i otwartych portów) |
 | **Odwiedziny** | unikalni i powracający per domena, wykresy jak w Cloudflare — bez ciasteczek, bez botów, liczone na bramce z logów nginx |
 | **Ruch i bezpieczeństwo** | topka adresów IP z krajem i ISP (DB-IP Lite), podejrzane adresy (zalew zapytań, skanery, szukanie dziur), bany w nginx i firewallu (ipset), opcjonalny auto-ban z białą listą |
@@ -40,6 +40,8 @@ Ruch publiczny idzie **jednym skokiem**: `nginx na bramce → wg0 → węzeł �
 | **Aplikacje z plików** | wrzucasz ZIP (albo SFTP), a Deployra to uruchamia: PHP + Apache, Python (skrypt, Flask, FastAPI, Django), Node.js (skrypt, Express, Next/Nuxt/Astro), Bun, Deno, Go, Rust, Ruby, Java (.jar), .NET, shell — zależności instalują się same |
 | **Zasoby i alerty** | historia CPU / RAM / dysku węzłów i aplikacji, progi z czasem trwania, wykrywanie OOM i pętli restartów, powiadomienia do panelu, webhooka, Discorda, Slacka, Telegrama, ntfy, Gotify, Pushovera albo e-mailem — kanały wybierasz osobno dla każdej reguły |
 | **Przenoszenie aplikacji** | jednym kliknięciem aplikacja z plikami, wolumenami i kontami SFTP jedzie na inny węzeł, domena przełącza się sama, nieudane przenosiny się wycofują; opcjonalnie automatycznie z węzła, któremu kończy się RAM |
+| **Kopie zapasowe** | stan panelu i **bazy danych aplikacji** (PostgreSQL, MySQL/MariaDB, MongoDB) według harmonogramu na S3/R2/MinIO, SFTP, FTP albo dysk — z retencją, pobieraniem i przywracaniem |
+| **Mapa** | graf całej infrastruktury: panel → bramki → węzły → kontenery LXC → aplikacje → domeny, ze stanem każdego elementu |
 | **Pluginy** | szablony aplikacji do kreatora (wbudowane: Uptime Kuma, Vaultwarden, Gitea, n8n, Grafana, WordPress…), paczki językowe, kod Pythona z własnymi stronami i obsługą zdarzeń |
 | **Aktualizacje** | panel sprawdza wydania, pokazuje baner „Dostępna aktualizacja” i na „Aktualizuj” podmienia w tle węzły, bramkę i siebie (albo robi to sam, jeśli włączysz automat) |
 
@@ -85,6 +87,14 @@ Węzeł generuje własny klucz WireGuard (prywatny nie opuszcza maszyny), dołą
 Backend znajdzie działające CT (`/proc/*/cgroup`), ich gniazda Dockera (`/proc/<pid>/root/run/docker.sock`) i nazwy (`/etc/pve/lxc/*.conf`).
 W panelu na stronie węzła pojawi się przełącznik **Host / CT 101 · nextcloud / …**. Aplikacje wdrożone do CT są osiągalne pod IP kontenera —
 dodaj jego podsieć w „Podsieciach LAN” węzła, żeby bramka do niego trafiła.
+
+### 4. Węzeł za zewnętrznym WireGuardem (wg-easy)
+
+Gdy serwer ma już własny WireGuard, **Węzły → Dodaj węzeł → Zewnętrzny WireGuard**: wpisz adres węzła w tej sieci (np. `10.8.0.1`),
+podsieć i — jeśli węzeł ma dzielić sieć z kontenerem WireGuarda — jego nazwę (`wg-easy`). Panel otworzy stronę z gotowym compose
+(`network_mode: "container:wg-easy"` albo sieć hosta), sprawdzi, czy widzi API węzła i czy bramka ma tunel z trasą do tej sieci
+(**Tunel → Zewnętrzny WireGuard**: klient z wg-easy dla bramki), a na końcu sparuje węzeł kodem z `docker logs deployra-backend`.
+Klientów w wg-easy dodajesz sam.
 
 ## Aktualizacje
 
@@ -145,11 +155,31 @@ Bramka liczy zapytania per adres IP z tych samych logów nginx co statystyki odw
 
 Surowe adresy IP trzymamy 7 dni (`DEPLOYRA_IP_RETENTION_DAYS`) — adres IP to dana osobowa.
 
+## Logowanie Deployra przed aplikacją
+
+Lista dostępu z opcją **Wymagaj logowania Deployra** chroni dowolną aplikację kontem z panelu (forward auth przez nginx
+`auth_request`), także aplikację bez własnego logowania. Można zawęzić dostęp do wybranych użytkowników. Po zalogowaniu panel
+przekierowuje z powrotem jednorazowym tokenem, a aplikacja dostaje własne ciasteczko (działa też na domenach innych niż panel)
+i nagłówek `X-Deployra-User` z e-mailem. Wymaga HTTPS na hoście i ustawionej domeny panelu; z hasłami Basic Auth łączy się tylko
+w trybie „wystarczy jeden warunek”.
+
+## HTTP/3
+
+Host proxy z certyfikatem może mieć włączone **HTTP/3** (QUIC): bramka dodaje `listen 443 quic` i nagłówek `Alt-Svc`, o ile jej
+nginx ma moduł `http_v3` (oficjalne obrazy 1.25+). Na firewallu trzeba otworzyć `443/udp`; gdy UDP nie przechodzi, przeglądarka
+zostaje przy HTTP/2.
+
 ## Logi
 
 **Logi** przeszukują logi kontenerów na wszystkich węzłach naraz — bez Elasticsearcha i bez dodatkowego RAM-u (czytane z Dockera
 na żądanie). Składnia: `błąd timeout` (wszystkie słowa), `"fraza"`, `/regex/`, `-słowo`, `app:`, `container:`, `node:`, `level:error|warn`;
 zakres 15 min – 7 dni, wykres trafień w czasie, kliknięcie kontenera zawęża wyniki.
+
+## Mapa
+
+**Mapa** rysuje infrastrukturę jako graf (force-graph): panel, bramki, węzły, kontenery LXC, aplikacje i domeny, z kolorem stanu
+na obwódce i przepływem ruchu na połączeniach. Kliknięcie otwiera dany element; układ swobodny, warstwowy albo promienisty,
+typy elementów można ukrywać.
 
 ## Aplikacje z plików
 
@@ -168,6 +198,32 @@ instaluje zależności (`pip`, `npm`, `bundle`, `go build`, `cargo`…), a aplik
 Bez portu = proces w tle (bot, worker, skrypt), bez domeny. Polecenie startowe i instalacji można nadpisać.
 `data/` (trwałe dane, np. SQLite) i `.deployra/` (pamięć podręczna) zostają przy wgraniu nowego ZIP-a; nowy ZIP wdraża aplikację
 ponownie (PHP widzi zmiany od razu).
+
+## Wdrożenia bez przestojów
+
+Opcja **Bez przestojów** przy aplikacji (obraz, Git, z plików — z opublikowanym portem): węzeł stawia nowy kontener obok starego
+na wolnym porcie, czeka, aż wstanie i — jeśli podasz **ścieżkę sprawdzania zdrowia** (np. `/up`) — aż odpowie kodem poniżej 500.
+Dopiero wtedy panel przełącza bramkę na nowy port, a stary kontener znika po 10 s (dokończenie trwających połączeń). Gdy nowa wersja
+nie wstanie, stara działa dalej bez przerwy. Domyślnie wyłączone: przez chwilę oba kontenery montują te same wolumeny.
+
+## Zmienne środowiskowe
+
+Każda zmienna aplikacji ma zakres: **działanie** (domyślnie), **budowanie** (argumenty `docker build` — Dockerfile musi mieć `ARG`)
+albo **oba**. Zmienne można edytować jak formularz albo jako tekst `.env` (cudzysłowy, wartości wieloliniowe, komentarze).
+**Ustawienia → Zmienne współdzielone** to nazwane, zaszyfrowane zestawy zmiennych dołączane do wielu aplikacji; własne zmienne
+aplikacji wygrywają z zestawem, a zmiana zestawu wchodzi przy następnym wdrożeniu.
+
+## Zadania cykliczne
+
+Karta **Zadania** na stronie aplikacji: polecenie wykonywane w działającym kontenerze (`sh -c`) według harmonogramu cron
+(`*/15 * * * *`, `@daily`…), z limitem czasu, historią ostatnich 50 uruchomień (kod wyjścia, czas, wynik) i przyciskiem
+„Uruchom teraz”. Tworzenie i uruchamianie zadań wymaga tego samego uprawnienia co terminal kontenera.
+
+## Kopie baz danych
+
+**Ustawienia → Kopia zapasowa → Kopie baz danych**: harmonogram zrzutów kontenera bazy (`pg_dump`, `mysqldump`, `mongodump`)
+do tego samego magazynu co kopia panelu (S3/R2/MinIO, SFTP, FTP, dysk), z liczbą trzymanych kopii. Przy każdym harmonogramie widać
+ostatni wynik i listę plików do pobrania albo **przywrócenia** do kontenera; nieudany zrzut wysyła alert.
 
 ## Zasoby i alerty
 
@@ -289,4 +345,5 @@ Stary kod (NiceGUI) został w historii gita.
 - WireGuard, nginx, lego, cloudflared i sam aktualizator nie były jeszcze uruchomione na prawdziwym serwerze — testy pokrywają logikę.
 - Hosty za proxy Cloudflare (pomarańczowa chmurka, nie tunel) liczą odwiedzających po adresach krawędzi Cloudflare.
 - Stacki w CT na Proxmoxie: pliki compose leżą na hoście, więc montowania ścieżek względnych nie zadziałają — używaj wolumenów nazwanych.
-- Jedna bramka na panel (wiele bramek — w planach).
+- Wdrożenia bez przestojów, logowanie Deployra, HTTP/3 i przywracanie baz są pokryte testami z atrapą Dockera i nginx — przy
+  pierwszym użyciu patrz w log wdrożenia i `nginx -t` na bramce.

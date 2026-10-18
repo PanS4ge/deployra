@@ -25,12 +25,12 @@ Public traffic takes **a single hop**: `nginx on the gateway → wg0 → node �
 
 | Area | What you get |
 |---|---|
-| **Apps** | wizard: Docker image, docker-compose, static site (ZIP + SFTP), Git repository (Dockerfile build, GitHub/Gitea webhook) · domain, Cloudflare DNS record, Let's Encrypt and a test through the tunnel in one step · rollback |
-| **Docker** (instead of Portainer) | containers, live logs and stats, in-browser terminal, images, volumes, networks, compose stacks |
+| **Apps** | wizard: Docker image, docker-compose, static site (ZIP + SFTP), Git repository (Dockerfile build, GitHub/Gitea webhook) · domain, Cloudflare DNS record, Let's Encrypt and a test through the tunnel in one step · rollback · optional **zero downtime** · build-time variables, `.env` editor, shared variables · scheduled tasks (cron) inside the container |
+| **Docker** (instead of Portainer) | containers, live logs and stats, in-browser terminal, images, volumes, networks, compose stacks · file manager (whole folders too: upload and download as ZIP) · quick actions for databases and web servers (SQL dump, VACUUM, processes, `df -h`) |
 | **Proxmox** | a backend on the Proxmox host shows **every LXC container running Docker** — no agent inside each CT |
-| **Proxy** (instead of NPM) | proxy hosts, redirects, 404 hosts, TCP/UDP streams, access lists, custom locations, raw `advanced` nginx with automatic rollback |
+| **Proxy** (instead of NPM) | proxy hosts, redirects, 404 hosts, TCP/UDP streams, access lists, custom locations, raw `advanced` nginx with automatic rollback · HTTP/3 (QUIC) · **Deployra login** in front of any app |
 | **Import from NPM** | from `database.sqlite` (including access list passwords) or through the API; map old targets to nodes; move certificates or reissue them |
-| **Tunnel** | WireGuard hub, join nodes with a token, LAN subnet routing (NAS, Home Assistant…), nodes can reach each other |
+| **Tunnel** | WireGuard hub, join nodes with a token, LAN subnet routing (NAS, Home Assistant…), nodes can reach each other · several gateways, including plain nginx without WireGuard · nodes behind an **external WireGuard** (wg-easy) |
 | **Cloudflare** | per-host A/AAAA records (no wildcard needed), wildcard certificates (DNS-01), **Cloudflare Tunnel** (cloudflared — no public IP, no open ports) |
 | **Visits** | unique and returning visitors per domain, Cloudflare-style charts — no cookies, no bots, counted on the gateway from nginx logs |
 | **Traffic & security** | top IP addresses with country and ISP (DB-IP Lite), suspicious addresses (floods, scanners, vulnerability probes), bans in nginx and the firewall (ipset), optional auto-ban with an allowlist |
@@ -40,6 +40,8 @@ Public traffic takes **a single hop**: `nginx on the gateway → wg0 → node �
 | **Apps from files** | upload a ZIP (or use SFTP) and Deployra runs it: PHP + Apache, Python (script, Flask, FastAPI, Django), Node.js (script, Express, Next/Nuxt/Astro), Bun, Deno, Go, Rust, Ruby, Java (.jar), .NET, shell — dependencies installed automatically |
 | **Resources & alerts** | CPU / RAM / disk history per node and per app, thresholds with duration, OOM and restart-loop detection, notifications to the panel, webhook, Discord, Slack, Telegram, ntfy, Gotify, Pushover or email — you pick the channels per rule |
 | **Moving apps** | one click moves an app with its files, volumes and SFTP accounts to another node; the domain switches over, a failed move rolls back; optional automatic moves off a node that runs out of RAM |
+| **Backups** | panel state and **app databases** (PostgreSQL, MySQL/MariaDB, MongoDB) on a schedule to S3/R2/MinIO, SFTP, FTP or disk — with retention, download and restore |
+| **Map** | a graph of the whole infrastructure: panel → gateways → nodes → LXC containers → apps → domains, with the state of each element |
 | **Plugins** | app templates for the wizard (Uptime Kuma, Vaultwarden, Gitea, n8n, Grafana, WordPress… built in), language packs, Python code with its own pages and event handlers |
 | **Updates** | the panel checks for releases, shows an “Update available” banner and on “Update” replaces nodes, the gateway and itself in the background (or does it on its own if you enable auto-update) |
 
@@ -87,6 +89,14 @@ The node generates its own WireGuard key (the private key never leaves the machi
 The backend finds running CTs (`/proc/*/cgroup`), their Docker sockets (`/proc/<pid>/root/run/docker.sock`) and names (`/etc/pve/lxc/*.conf`).
 The node page gets a **Host / CT 101 · nextcloud / …** switcher. Apps deployed into a CT are reachable at the container's IP —
 add its subnet under the node's “LAN subnets” so the gateway can reach it.
+
+### 4. Node behind an external WireGuard (wg-easy)
+
+When the server already runs its own WireGuard, use **Nodes → Add node → External WireGuard**: enter the node's address in that
+network (e.g. `10.8.0.1`), the subnet and — if the node should share the network of the WireGuard container — its name (`wg-easy`).
+The panel opens a page with a ready compose file (`network_mode: "container:wg-easy"` or the host network), checks that it can reach
+the node API and that the gateway has a tunnel with a route to that network (**Tunnel → External WireGuard**: a wg-easy client for
+the gateway), and finally pairs the node with the code from `docker logs deployra-backend`. You add the wg-easy clients yourself.
 
 ## Updates
 
@@ -147,11 +157,30 @@ The gateway counts requests per IP from the same nginx logs as the visit statist
 
 Raw IPs are kept for 7 days (`DEPLOYRA_IP_RETENTION_DAYS`) — an IP address is personal data.
 
+## Deployra login in front of an app
+
+An access list with **Require Deployra login** protects any app with a panel account (forward auth through nginx `auth_request`),
+including apps without a login of their own. Access can be limited to selected users. After signing in, the panel redirects back
+with a one-time token and the app gets its own cookie (works on domains other than the panel's) and an `X-Deployra-User` header with
+the email. Needs HTTPS on the host and the panel domain set; it combines with Basic Auth passwords only in the “any condition” mode.
+
+## HTTP/3
+
+A proxy host with a certificate can turn on **HTTP/3** (QUIC): the gateway adds `listen 443 quic` and an `Alt-Svc` header, provided
+its nginx has the `http_v3` module (official 1.25+ images). Open `443/udp` on the firewall; if UDP doesn't get through, browsers stay
+on HTTP/2.
+
 ## Logs
 
 **Logs** searches container logs on all nodes at once — no Elasticsearch and no extra RAM (read from Docker on demand).
 Syntax: `error timeout` (all words), `"phrase"`, `/regex/`, `-word`, `app:`, `container:`, `node:`, `level:error|warn`;
 range 15 min – 7 days, a hits-over-time chart, clicking a container narrows the results.
+
+## Map
+
+**Map** draws the infrastructure as a graph (force-graph): panel, gateways, nodes, LXC containers, apps and domains, with the state
+as the ring colour and traffic flowing along the links. Clicking opens the element; free, layered or radial layout, and element
+types can be hidden.
 
 ## Apps from files
 
@@ -169,6 +198,32 @@ The files land in `/srv/deployra/sites/<slug>` on the node (also reachable over 
 
 No port = a background process (bot, worker, script) without a domain. The start and install commands can be overridden.
 `data/` (persistent data, e.g. SQLite) and `.deployra/` (caches) survive a new ZIP; a new ZIP redeploys the app (PHP picks changes up live).
+
+## Zero-downtime deploys
+
+With **Zero downtime** on an app (image, Git, from files — with a published port) the node starts the new container next to the old
+one on a free port and waits until it runs and — if you set a **health check path** (e.g. `/up`) — answers below 500. Only then does
+the panel switch the gateway to the new port; the old container goes away after 10 s (in-flight connections finish). If the new
+version doesn't come up, the old one keeps serving without a gap. Off by default: for a moment both containers mount the same volumes.
+
+## Environment variables
+
+Every app variable has a scope: **runtime** (default), **build** (`docker build` arguments — the Dockerfile needs an `ARG`) or
+**both**. Variables can be edited as a form or as `.env` text (quotes, multi-line values, comments). **Settings → Shared variables**
+holds named, encrypted variable sets attached to many apps; the app's own variables win over a set, and a changed set applies on
+the next deploy.
+
+## Scheduled tasks
+
+The **Tasks** card on the app page runs a command inside the running container (`sh -c`) on a cron schedule (`*/15 * * * *`,
+`@daily`…), with a timeout, the history of the last 50 runs (exit code, duration, output) and a “Run now” button. Creating and
+running tasks needs the same permission as the container terminal.
+
+## Database backups
+
+**Settings → Backup → Database backups**: scheduled dumps of a database container (`pg_dump`, `mysqldump`, `mongodump`) to the same
+storage as the panel backup (S3/R2/MinIO, SFTP, FTP, disk), keeping the last N copies. Each schedule shows its last result and the
+stored files to download or **restore** into the container; a failed dump sends an alert.
 
 ## Resources and alerts
 
@@ -288,4 +343,5 @@ The old NiceGUI code lives on in the git history.
 - WireGuard, nginx, lego, cloudflared and the updater itself haven't run on a real server yet — the tests cover the logic.
 - Hosts behind the Cloudflare proxy (orange cloud, not the tunnel) count visitors by Cloudflare edge addresses.
 - Stacks inside a Proxmox CT: compose files live on the host, so relative path mounts won't work — use named volumes.
-- One gateway per panel (multiple gateways — planned).
+- Zero-downtime deploys, Deployra login, HTTP/3 and database restores are covered by tests with a fake Docker and nginx — on first
+  use watch the deploy log and run `nginx -t` on the gateway.
