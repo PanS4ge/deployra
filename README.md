@@ -141,7 +141,7 @@ The gateway counts requests per IP from the same nginx logs as the visit statist
   (`DEPLOYRA_GEOIP=off` disables it);
 - **suspicious addresses** from the last 5 minutes: request floods (over the threshold per minute), scanners (≥ 80% 4xx) and vulnerability
   probes (`/.env`, `/wp-login.php`, `/.git/` …);
-- **bans** for an address or subnet, for 1 h, a day, 7 days or permanently. nginx closes the connection (`444`), which also works for
+- **bans** for an address or subnet, for 1 h, a day, 7 days or permanently. nginx shows an “Access blocked” page (403), which also works for
   traffic through Cloudflare; with `ipset` available the gateway also drops packets in the firewall (`DEPLOYRA_BAN_FIREWALL=off` disables it);
 - **auto-ban** (off by default) for addresses above the threshold, with an allowlist of addresses that are never banned.
 

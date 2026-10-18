@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block heading %}<i class="bi bi-bounding-box-circles"></i> {{ t("map.title") }}{% endblock %}
+{% block content %}
+<div class="card map-card" x-data="topologyGraph('/map/data', {{ labels | jsonattr }})">
+  <div class="card-head row" style="gap: 8px; flex-wrap: wrap">
+    <div class="tpl-chips">
+      {% for type in types %}
+      <button type="button" class="chip map-chip" data-type="{{ type }}" :class="!hidden['{{ type }}'] && 'active'" @click="toggle('{{ type }}')">
+        <span class="map-dot"></span> {{ t("map.type." ~ type) }}
+      </button>
+      {% endfor %}
+    </div>
+    <span class="spacer"></span>
+    <div class="tpl-chips">
+      {% for mode in ("free", "lr", "radialout") %}
+      <button type="button" class="chip" :class="layout === '{{ mode }}' && 'active'" @click="setLayout('{{ mode }}')">{{ t("map.layout." ~ mode) }}</button>
+      {% endfor %}
+    </div>
+    <button type="button" class="btn ghost sm" @click="fit()" title="{{ t('map.fit') }}" aria-label="{{ t('map.fit') }}"><i class="bi bi-arrows-fullscreen"></i></button>
+    <button type="button" class="btn ghost sm" @click="load()" title="{{ t('map.refresh') }}" aria-label="{{ t('map.refresh') }}"><i class="bi bi-arrow-clockwise"></i></button>
+  </div>
+  <div class="map-canvas" x-ref="canvas">
+    <div class="map-state muted small" x-show="!ready" x-text="error || '…'"></div>
+  </div>
+</div>
+{% endblock %}

@@ -139,7 +139,7 @@ Bramka liczy zapytania per adres IP z tych samych logów nginx co statystyki odw
   (`DEPLOYRA_GEOIP=off` wyłącza);
 - **podejrzane adresy** z ostatnich 5 minut: zalew zapytań (ponad próg na minutę), skanery (≥ 80% błędów 4xx) i szukanie dziur
   (`/.env`, `/wp-login.php`, `/.git/` …);
-- **bany** na adres albo podsieć — na 1 h, dzień, 7 dni albo na stałe. nginx zamyka połączenie (`444`), co działa też dla ruchu przez
+- **bany** na adres albo podsieć — na 1 h, dzień, 7 dni albo na stałe. nginx pokazuje stronę „Dostęp zablokowany” (403), co działa też dla ruchu przez
   Cloudflare; gdy jest `ipset`, bramka dodatkowo odrzuca pakiety w firewallu (`DEPLOYRA_BAN_FIREWALL=off` wyłącza);
 - **auto-ban** (domyślnie wyłączony) dla adresów ponad progiem, z białą listą adresów, których nigdy nie banujemy.
 

@@ -260,4 +260,149 @@
   const mobile = () => { labelTables(); showActiveTab(); };
   document.addEventListener("DOMContentLoaded", mobile);
   document.addEventListener("htmx:afterSettle", mobile);
+
+  // ---------- Mapa infrastruktury (force-graph, ładowany dopiero na tej stronie) ----------
+  const loadScript = (src) => new Promise((resolve, reject) => {
+    const found = document.querySelector(`script[data-src="${src}"]`);
+    if (found) return found.dataset.ready ? resolve() : found.addEventListener("load", resolve);
+    const el = Object.assign(document.createElement("script"), { src, onerror: reject });
+    el.dataset.src = src;
+    el.addEventListener("load", () => { el.dataset.ready = "1"; resolve(); });
+    document.head.appendChild(el);
+  });
+  // znak ikony Bootstrap Icons (z CSS ::before), żeby rysować ją na płótnie tą samą czcionką
+  const glyph = (name) => {
+    const el = Object.assign(document.createElement("i"), { className: `bi bi-${name}` });
+    el.style.position = "absolute"; el.style.visibility = "hidden";
+    document.body.appendChild(el);
+    const content = getComputedStyle(el, "::before").content.replace(/^"|"$/g, "");
+    el.remove();
+    return content;
+  };
+  const MAP_TYPES = {
+    panel: { icon: "stars", color: "--violet", size: 9 },
+    gateway: { icon: "router", color: "--cyan", size: 7 },
+    node: { icon: "hdd-network", color: "--info", size: 7 },
+    ct: { icon: "box", color: "--violet-2", size: 5 },
+    app: { icon: "rocket-takeoff", color: "--magenta", size: 5.5 },
+    site: { icon: "globe2", color: "--text-dim", size: 4 },
+  };
+  const MAP_STATUS = { running: "--ok", paired: "--ok", ok: "--ok", deploying: "--warn", pending: "--warn", joined: "--warn",
+                       new: "--warn", error: "--err", stopped: "--muted", off: "--muted" };
+  const LINK_COLORS = { manage: "--violet", tunnel: "--cyan", host: "--border-strong", traffic: "--magenta" };
+
+  document.addEventListener("alpine:init", () => {
+    Alpine.data("topologyGraph", (url, labels) => {
+      const g = {};  // graf i kolory poza reaktywnym stanem Alpine — rysowanie co klatkę nie idzie przez proxy
+      return {
+      ready: false, error: "", hidden: {}, layout: "free",
+      async init() {
+        try {
+          await Promise.all([loadScript("/static/vendor/force-graph.min.js?v=1.52.0"), document.fonts.load('16px "bootstrap-icons"')]);
+        } catch (_) { this.error = "force-graph"; return; }
+        const css = getComputedStyle(document.documentElement);
+        const v = (name) => css.getPropertyValue(name).trim();
+        g.colors = { text: v("--text"), muted: v("--muted"), bg: v("--surface-solid") };
+        g.types = Object.fromEntries(Object.entries(MAP_TYPES).map(([k, t]) => [k, { ...t, color: v(t.color), char: glyph(t.icon) }]));
+        g.status = Object.fromEntries(Object.entries(MAP_STATUS).map(([k, c]) => [k, v(c)]));
+        g.links = Object.fromEntries(Object.entries(LINK_COLORS).map(([k, c]) => [k, v(c)]));
+        this.$root.querySelectorAll(".map-chip").forEach((chip) => chip.style.setProperty("--dot", g.types[chip.dataset.type]?.color));
+        this.draw();
+        await this.load();
+      },
+      draw() {
+        g.hidden = {};
+        const box = this.$refs.canvas;
+        const tooltip = (n) => {
+          const kind = n.type === "gateway" && n.role ? `${labels.type.gateway} · ${labels.role[n.role] || n.role}` : labels.type[n.type];
+          const status = labels.status[n.status] || n.status || "";
+          const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+          return `<b>${esc(n.label)}</b><br><span>${esc(kind)}${status ? " · " + esc(status) : ""}${n.host ? " · " + esc(n.host) : ""}</span>`;
+        };
+        g.graph = new ForceGraph(box)
+          .backgroundColor("rgba(0,0,0,0)")
+          .width(box.clientWidth).height(box.clientHeight)
+          .nodeId("id").nodeLabel(tooltip)
+          .nodeVal((n) => g.types[n.type].size)
+          .nodeVisibility((n) => !g.hidden[n.type])
+          .linkVisibility((l) => !g.hidden[l.source.type ?? l.source] && !g.hidden[l.target.type ?? l.target])
+          .linkColor((l) => g.links[l.kind] + "99")
+          .linkWidth((l) => (l.kind === "tunnel" ? 1.6 : 1))
+          .linkLineDash((l) => (l.kind === "tunnel" ? [3, 2] : null))
+          .linkDirectionalArrowLength(3).linkDirectionalArrowRelPos(1)
+          .linkDirectionalParticles((l) => (l.kind === "tunnel" || l.kind === "traffic" ? 2 : 0))
+          .linkDirectionalParticleWidth(2).linkDirectionalParticleSpeed(0.005)
+          .linkDirectionalParticleColor((l) => g.links[l.kind])
+          .dagLevelDistance(70)
+          .onNodeClick((n) => n.url && (window.location.href = n.url))
+          .onNodeHover((n) => { box.style.cursor = n && n.url ? "pointer" : null; })
+          .nodeCanvasObject((n, ctx, scale) => this.paint(n, ctx, scale))
+          .nodePointerAreaPaint((n, color, ctx) => {
+            ctx.fillStyle = color;
+            ctx.beginPath(); ctx.arc(n.x, n.y, g.types[n.type].size + 2, 0, 2 * Math.PI); ctx.fill();
+          })
+          .cooldownTicks(120)
+          .onEngineStop(() => { if (!g.fitted) { g.fitted = true; this.fit(); } });
+        g.graph.d3Force("charge").strength(-140);
+        g.observer = new ResizeObserver(() => g.graph.width(box.clientWidth).height(box.clientHeight));
+        g.observer.observe(box);
+      },
+      paint(n, ctx, scale) {
+        const t = g.types[n.type];
+        const r = t.size;
+        ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 2 * Math.PI);
+        ctx.fillStyle = g.colors.bg; ctx.fill();
+        ctx.lineWidth = Math.max(1.2, 2 / scale);
+        ctx.strokeStyle = g.status[n.status] || t.color; ctx.stroke();
+        if (n.img && n.img.complete && n.img.naturalWidth) {
+          ctx.save(); ctx.beginPath(); ctx.arc(n.x, n.y, r * 0.72, 0, 2 * Math.PI); ctx.clip();
+          ctx.drawImage(n.img, n.x - r * 0.72, n.y - r * 0.72, r * 1.44, r * 1.44); ctx.restore();
+        } else {
+          ctx.font = `${r * 1.05}px "bootstrap-icons"`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillStyle = t.color; ctx.fillText(t.char, n.x, n.y + r * 0.06);
+        }
+        // podpisy: zawsze dla głównych elementów, dla aplikacji i domen dopiero po przybliżeniu
+        if (["panel", "gateway", "node"].includes(n.type) || scale > 1.6) {
+          const size = Math.max(10 / scale, 2.4);
+          ctx.font = `${n.type === "site" ? "" : "600 "}${size}px ${getComputedStyle(document.body).fontFamily}`;
+          ctx.textAlign = "center"; ctx.textBaseline = "top";
+          ctx.fillStyle = n.status === "off" ? g.colors.muted : g.colors.text;
+          ctx.fillText(n.label, n.x, n.y + r + 2 / scale);
+        }
+      },
+      async load() {
+        try {
+          const res = await fetch(url, { headers: { Accept: "application/json" } });
+          if (!res.ok) throw new Error(res.status);
+          const data = await res.json();
+          const old = new Map((g.graph.graphData().nodes || []).map((n) => [n.id, n]));
+          data.nodes.forEach((n) => {
+            const prev = old.get(n.id);
+            if (prev) Object.assign(n, { x: prev.x, y: prev.y, vx: prev.vx, vy: prev.vy, img: prev.img });
+            else if (n.app_id) { n.img = new Image(); n.img.src = `/apps/${n.app_id}/icon`; }
+          });
+          g.graph.graphData(data);
+          this.ready = true;
+        } catch (exc) { this.error = String(exc); }
+      },
+      toggle(type) {
+        this.hidden = { ...this.hidden, [type]: !this.hidden[type] };
+        g.hidden = { ...this.hidden };
+        g.graph.nodeVisibility(g.graph.nodeVisibility()).linkVisibility(g.graph.linkVisibility());
+      },
+      setLayout(mode) {
+        this.layout = mode;
+        g.graph.dagMode(mode === "free" ? null : mode);
+        g.graph.d3Force("charge").strength(mode === "free" ? -140 : -60);
+        g.fitted = false;
+        g.graph.d3ReheatSimulation();
+      },
+      fit() { g.graph && g.graph.zoomToFit(500, 50); },
+      destroy() {
+        g.observer && g.observer.disconnect();
+        if (g.graph) { g.graph.pauseAnimation(); g.graph._destructor && g.graph._destructor(); }
+      },
+    };
+    });
+  });
 })();

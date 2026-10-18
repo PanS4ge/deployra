@@ -593,3 +593,20 @@ select option, select optgroup { background: var(--surface-solid); color: var(--
 .pick-hint { color: var(--muted); font-size: 0.8rem; }
 .tpl-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .tpl-form { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: rgba(5, 7, 20, 0.35); }
+
+/* ---------- 1.4.1: mapa infrastruktury (force-graph) ---------- */
+.map-card { overflow: hidden; }
+.map-canvas { position: relative; height: calc(100vh - 230px); min-height: 420px; }
+.map-state { position: absolute; inset: 0; display: grid; place-items: center; }
+.map-chip .map-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot, var(--muted)); display: inline-block; }
+.map-chip:not(.active) { opacity: 0.55; }
+.float-tooltip-kap { padding: 6px 9px !important; border: 1px solid var(--border-strong); border-radius: 8px !important;
+  background: var(--surface-solid) !important; color: var(--text) !important; font: 0.8rem var(--font) !important; box-shadow: var(--shadow); }
+.float-tooltip-kap span { color: var(--text-dim); }
+@media (max-width: 720px) { .map-canvas { height: calc(100vh - 290px); min-height: 360px; } }
+.checklist { list-style: none; margin: 0; display: grid; gap: 12px; }
+.checklist li { display: flex; gap: 10px; align-items: flex-start; }
+.checklist li > i { margin-top: 2px; }
+.checklist li.ok > i { color: var(--ok); }
+.checklist li.warn > i { color: var(--warn); }
+.checklist li.err > i { color: var(--err); }

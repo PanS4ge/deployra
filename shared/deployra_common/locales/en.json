@@ -99,6 +99,10 @@
       "overlap_ext": "{net} already goes through tunnel {name}",
       "routed_external": "subnet {subnet} goes through the external WireGuard {name}",
       "not_found": "no such tunnel"
+    },
+    "banned": {
+      "title": "Access blocked",
+      "text": "Your IP address has been blocked by the administrator of this site."
     }
   },
   "node": {

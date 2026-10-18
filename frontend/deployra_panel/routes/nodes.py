@@ -7,7 +7,7 @@ import random
 import time
 
 import httpx
-from fastapi import APIRouter, Depends, Form, Request, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 
 from deployra_common.client import RemoteError
 
@@ -102,6 +102,62 @@ async def add_direct(
     user: dict = Depends(require(Permission.ALLOW_ADD_DOCKERS)),
 ):
     node = await sync.add_direct_node(panel, name, url, code, proxy_address, gateway_id=gateway_id)
+    return redirect(request, f"/nodes/{node['id']}", t("msg.node_paired", name=node["name"]))
+
+
+@router.post("/nodes/external-wg")
+async def add_external_wg(
+    request: Request,
+    name: str = Form(""),
+    address: str = Form(...),
+    subnet: str = Form(""),
+    container: str = Form(""),
+    proxy_address: str = Form(""),
+    gateway_id: int | None = Form(None),
+    panel: Panel = Depends(get_panel),
+    user: dict = Depends(require(Permission.ALLOW_ADD_DOCKERS)),
+):
+    from ..services import external_wg
+
+    try:
+        node_id = external_wg.create(panel, name, address, subnet, container, proxy_address, gateway_id)
+    except ValueError as exc:
+        return toast(str(exc), "err", status=400)
+    return redirect(request, f"/nodes/{node_id}/external-wg")
+
+
+def _external_node(node: dict = Depends(node_or_404)) -> dict:
+    if not node.get("external_wg"):
+        raise HTTPException(404)
+    return node
+
+
+@router.get("/nodes/{node_id}/external-wg")
+def external_wg_page(request: Request, node: dict = Depends(_external_node), panel: Panel = Depends(get_panel),
+                     user: dict = Depends(require(Permission.ALLOW_ADD_DOCKERS))):  # fmt: skip
+    from ..services import external_wg
+
+    images = panel.db.setting("image_prefix") or sync.DEFAULT_IMAGES
+    gateway = panel.gateway_by_id(node["gateway_id"]) if node.get("gateway_id") else panel.edge()
+    return render(request, "nodes/external_wg.html", title=t("extnode.title", name=node["name"]), node=node, conf=node["external_wg"],
+                  compose=external_wg.compose_snippet(node, images), gateway=gateway)  # fmt: skip
+
+
+@router.get("/nodes/{node_id}/external-wg/check")
+async def external_wg_check(request: Request, node: dict = Depends(_external_node), panel: Panel = Depends(get_panel),
+                            user: dict = Depends(require(Permission.ALLOW_ADD_DOCKERS))):  # fmt: skip
+    from ..services import external_wg
+
+    return render(request, "nodes/_external_wg_check.html", node=node, conf=node["external_wg"], check=await external_wg.check(panel, node))
+
+
+@router.post("/nodes/{node_id}/external-wg/pair")
+async def external_wg_pair(request: Request, code: str = Form(...), node: dict = Depends(_external_node), panel: Panel = Depends(get_panel),
+                           user: dict = Depends(require(Permission.ALLOW_ADD_DOCKERS))):  # fmt: skip
+    try:
+        node = await sync.pair_node(panel, node, code)
+    except PermissionError as exc:  # zły kod albo odpowiedź innego węzła
+        return toast(str(exc), "err", status=400)
     return redirect(request, f"/nodes/{node['id']}", t("msg.node_paired", name=node["name"]))
 
 

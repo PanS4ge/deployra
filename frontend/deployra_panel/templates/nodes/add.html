@@ -11,6 +11,10 @@
       <i class="bi bi-link-45deg"></i>
       <div><b>{{ t("nodes.mode_direct") }}</b><span>{{ t("nodes.mode_direct_hint") }}</span></div>
     </div>
+    <div class="choice" :class="mode === 'extwg' && 'on'" @click="mode = 'extwg'">
+      <i class="bi bi-shield-lock"></i>
+      <div><b>{{ t("extnode.mode") }}</b><span>{{ t("extnode.mode_hint") }}</span></div>
+    </div>
   </div>
 
   <div class="card glow" x-show="mode === 'tunnel'">
@@ -22,8 +26,9 @@
         <div>
           <b>{{ t("nodes.no_wg_banner_title") }}</b><br>
           <span class="small dim">{{ t("nodes.no_wg_banner_desc") }}</span>
-          <div style="margin-top: 10px">
+          <div class="row" style="margin-top: 10px; gap: 8px; flex-wrap: wrap">
             <button class="btn sm" type="button" @click="mode = 'direct'"><i class="bi bi-link-45deg"></i> {{ t("nodes.switch_direct_btn") }}</button>
+            <button class="btn sm" type="button" @click="mode = 'extwg'"><i class="bi bi-shield-lock"></i> {{ t("extnode.switch_btn") }}</button>
           </div>
         </div>
       </div>
@@ -149,6 +154,40 @@
       </div>
       <div class="callout warn"><i class="bi bi-shield-exclamation"></i><div class="small">{{ t("nodes.direct_warning") }}</div></div>
       <div class="row" style="justify-content: flex-end"><button class="btn primary"><span class="spin"></span><i class="bi bi-link"></i> {{ t("nodes.pair") }}</button></div>
+    </form>
+  </div>
+
+  <div class="card glow" x-show="mode === 'extwg'" x-cloak>
+    <div class="card-head"><h2><i class="bi bi-shield-lock"></i> {{ t("extnode.new") }}</h2></div>
+    <form class="card-body stack" hx-post="/nodes/external-wg" hx-swap="none">
+      <div class="field"><label>{{ t("common.name") }}</label><input class="input" name="name" placeholder="cezary" maxlength="60" required></div>
+      <div class="form-grid">
+        <div class="field"><label>{{ t("extnode.address") }}</label><input class="input mono" name="address" placeholder="10.8.0.1" required></div>
+        <div class="field"><label>{{ t("extnode.subnet") }}</label><input class="input mono" name="subnet" placeholder="10.8.0.0/24"></div>
+      </div>
+      <div class="field">
+        <label>{{ t("extnode.container") }}</label>
+        <input class="input mono" name="container" placeholder="wg-easy">
+        <div class="hint">{{ t("extnode.container_hint") }}</div>
+      </div>
+      {% if gateways %}
+      <div class="field">
+        <label>{{ t("nodes.select_gateway") }}</label>
+        <select class="select" name="gateway_id">
+          <option value="">{{ t("nodes.gateway_auto_or_default") }}</option>
+          {% for gw in gateways %}<option value="{{ gw.id }}">{{ gw.name }} ({{ gw.public_host or gw.api_url }})</option>{% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <details>
+        <summary class="small muted" style="cursor: pointer"><i class="bi bi-sliders"></i> {{ t("nodes.advanced_options") }}</summary>
+        <div class="field" style="margin-top: 10px">
+          <label>{{ t("nodes.proxy_address") }}</label>
+          <input class="input mono" name="proxy_address" placeholder="{{ t('extnode.proxy_placeholder') }}">
+          <div class="hint">{{ t("extnode.proxy_hint") }}</div>
+        </div>
+      </details>
+      <div class="row" style="justify-content: flex-end"><button class="btn primary"><span class="spin"></span><i class="bi bi-file-earmark-code"></i> {{ t("extnode.generate") }}</button></div>
     </form>
   </div>
 </div>

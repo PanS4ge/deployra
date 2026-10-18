@@ -955,7 +955,8 @@
     "tunnel": "Sieć",
     "uptime": "Uptime",
     "users": "Użytkownicy",
-    "dns": "DNS"
+    "dns": "DNS",
+    "map": "Mapa"
   },
   "networks": {
     "delete_confirm": "Usunąć sieć {name}?",
@@ -2100,5 +2101,62 @@
     "turned_off": "Wyłączono zadanie {name}",
     "turned_on": "Włączono zadanie {name}",
     "updated": "Zapisano zadanie {name}"
+  },
+  "map": {
+    "title": "Mapa",
+    "fit": "Dopasuj widok",
+    "refresh": "Odśwież",
+    "off": "wyłączony",
+    "type": {
+      "panel": "Panel",
+      "gateway": "Bramki",
+      "node": "Węzły",
+      "ct": "Kontenery LXC",
+      "app": "Aplikacje",
+      "site": "Domeny"
+    },
+    "role": {
+      "hub": "hub WireGuard",
+      "edge": "brzegowa",
+      "proxy": "czysty nginx"
+    },
+    "layout": {
+      "free": "Swobodny",
+      "lr": "Warstwy",
+      "radialout": "Promienisty"
+    }
+  },
+  "extnode": {
+    "mode": "Zewnętrzny WireGuard",
+    "mode_hint": "Węzeł w sieci wg-easy albo innego WireGuarda — konfigurację generuje panel, sieć zestawiasz sam.",
+    "switch_btn": "Węzeł ma zewnętrzny WireGuard",
+    "new": "Węzeł za zewnętrznym WireGuardem",
+    "title": "{name} · zewnętrzny WireGuard",
+    "badge": "zewnętrzny WireGuard",
+    "address": "Adres węzła w sieci WG",
+    "subnet": "Podsieć WG",
+    "container": "Kontener WireGuarda (network_mode)",
+    "container_hint": "Np. wg-easy — węzeł dzieli z nim sieć. Puste = sieć hosta.",
+    "proxy_placeholder": "jak adres węzła w sieci WG",
+    "proxy_hint": "Adres, pod którym bramka widzi porty aplikacji. Przy network_mode na kontener WG to zwykle adres mostka Dockera na hoście (np. 172.17.0.1) — dodaj go do tras tunelu na bramce.",
+    "generate": "Generuj konfigurację",
+    "open_config": "Konfiguracja WireGuarda",
+    "step_compose": "Uruchom węzeł obok WireGuarda",
+    "step_network": "Połączenia",
+    "step_pair": "Sparuj kodem z logów",
+    "check_panel": "Panel widzi API węzła ({address})",
+    "check_panel_fix": "Maszyna panelu musi być w sieci {subnet} (np. jako klient wg-easy).",
+    "check_gateway": "Bramka {gateway} ma trasę do {address}",
+    "check_gateway_fix": "Dodaj w wg-easy klienta dla bramki i wklej jego konfigurację z trasą {subnet}.",
+    "check_tunnel_offline": "Tunel {tunnel} jest skonfigurowany, ale nie ma połączenia.",
+    "to_tunnel": "Tunel → Zewnętrzny WireGuard",
+    "c_container": "wspólna sieć z WireGuardem: API węzła pod {address}:2750",
+    "c_host": "sieć hosta: wg0 i porty aplikacji",
+    "c_bind": "API tylko w sieci WireGuard",
+    "bad_address": "Podaj adres IP węzła w sieci WireGuard (np. 10.8.0.1).",
+    "bad_subnet": "Nieprawidłowa podsieć (np. 10.8.0.0/24).",
+    "outside_subnet": "Adres {address} nie należy do podsieci {subnet}.",
+    "bad_container": "Nieprawidłowa nazwa kontenera.",
+    "bad_proxy": "Adres dla bramki musi być adresem IP."
   }
 }

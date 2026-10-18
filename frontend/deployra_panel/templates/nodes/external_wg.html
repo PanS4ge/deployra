@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes">{{ t("nav.nodes") }}</a> / <a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
+{% block heading %}<i class="bi bi-shield-lock"></i> {{ t("extnode.title", name=node.name) }}{% endblock %}
+{% block actions %}{{ status_badge(node.status) }}{% endblock %}
+{% block content %}
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-head"><h3><span class="badge violet sm">1</span> {{ t("extnode.step_compose") }}</h3></div>
+    <div class="card-body stack">
+      <dl class="kv small">
+        <dt>{{ t("extnode.address") }}</dt><dd class="mono">{{ conf.address }}:2750</dd>
+        <dt>{{ t("extnode.subnet") }}</dt><dd class="mono">{{ conf.subnet }}</dd>
+        <dt>network_mode</dt><dd class="mono">{{ "container:" ~ conf.container if conf.container else "host" }}</dd>
+        <dt>{{ t("nodes.proxy_address") }}</dt><dd class="mono">{{ conf.proxy_address }}</dd>
+      </dl>
+      <div class="snippet">
+        <pre class="code-block">{{ compose }}</pre>
+        <button type="button" class="btn sm" data-copy="{{ compose }}"><i class="bi bi-clipboard"></i> {{ t("common.copy") }}</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <div class="card-head row">
+        <h3><span class="badge violet sm">2</span> {{ t("extnode.step_network") }}</h3>
+        <span class="spacer"></span>
+        <button type="button" class="btn ghost sm" hx-get="/nodes/{{ node.id }}/external-wg/check" hx-target="#extwg-check" hx-swap="innerHTML"
+                aria-label="{{ t('map.refresh') }}"><span class="spin"></span><i class="bi bi-arrow-clockwise"></i></button>
+      </div>
+      <div id="extwg-check" hx-get="/nodes/{{ node.id }}/external-wg/check" hx-trigger="load" hx-swap="innerHTML">
+        <div class="card-body muted small">…</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3><span class="badge ok sm">3</span> {{ t("extnode.step_pair") }}</h3></div>
+      {% if node.status == "paired" %}
+      <div class="card-body"><div class="callout ok"><i class="bi bi-check2-circle"></i><div>{{ t("msg.node_paired", name=node.name) }}</div></div></div>
+      {% else %}
+      <form class="card-body stack" hx-post="/nodes/{{ node.id }}/external-wg/pair" hx-swap="none">
+        <div class="snippet">
+          <pre class="code-block">docker logs deployra-backend</pre>
+          <button type="button" class="btn sm" data-copy="docker logs deployra-backend"><i class="bi bi-clipboard"></i> {{ t("common.copy") }}</button>
+        </div>
+        <div class="field">
+          <label>{{ t("nodes.pairing_code") }}</label>
+          <input class="input mono" name="code" placeholder="DPLR-XXXX-XXXX-XXXX" required autocomplete="off">
+        </div>
+        <div class="row" style="justify-content: flex-end"><button class="btn primary"><span class="spin"></span><i class="bi bi-link"></i> {{ t("nodes.pair") }}</button></div>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

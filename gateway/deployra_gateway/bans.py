@@ -1,6 +1,6 @@
 """Bany adresów IP: lista w stanie bramki, egzekwowana w nginx i (gdy jest ipset) w firewallu.
 
-nginx: zmienna `geo $deployra_ban` → `return 444` w każdym serwerze (działa też dla ruchu z Cloudflare,
+nginx: zmienna `geo $deployra_ban` → strona 403 w każdym serwerze (`return 418` → `@deployra_banned`) (działa też dla ruchu z Cloudflare,
 bo realip podmienia adres na prawdziwy), `deny` w streamach. Firewall: zestawy ipset `deployra-ban`
 i `deployra-ban6` z regułą DROP w INPUT — odcina zalew połączeń, zanim dotknie nginx.
 """

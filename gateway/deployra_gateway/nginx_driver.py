@@ -62,11 +62,20 @@ add_header X-Deployra-Cache $upstream_cache_status;
 
 def deployra_page() -> str:
     """Kosmiczna strona „nieznany host” — dla odwiedzających, w stałym języku bramki (DEPLOYRA_LANG)."""
+    return _cosmic_page("unknown_host", "404", "Edge Gateway · 404 Not Found")
+
+
+def banned_page() -> str:
+    """Strona dla zbanowanego adresu (403) — zamiast zerwania połączenia, które Cloudflare pokazuje jako błąd 520."""
+    return _cosmic_page("banned", "403", "Deployra · 403 Forbidden")
+
+
+def _cosmic_page(key: str, code: str, foot: str) -> str:
     lang = i18n.default_language()
-    title, text = (i18n.server.raw(f"gw.unknown_host.{key}", lang).replace('"', "'") for key in ("title", "text"))
+    title, text = (i18n.server.raw(f"gw.{key}.{part}", lang).replace('"', "'") for part in ("title", "text"))
     return (
         f"<!DOCTYPE html><html lang='{lang}'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-        f"<title>{title} · 404</title>"
+        f"<title>{title} · {code}</title>"
         f"<style>"
         f"body{{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#03050d;color:#e6e8ff;"
         f"font-family:system-ui,-apple-system,sans-serif;overflow:hidden;position:relative;"
@@ -116,12 +125,28 @@ def deployra_page() -> str:
         f"</svg>"
         f"<h1>{title}</h1>"
         f"<p>{text}</p>"
-        f"<div class='foot'>Edge Gateway · 404 Not Found</div>"
+        f"<div class='foot'>{foot}</div>"
         f"</div></body></html>"
     )
 
 
-BAN_CHECK = "if ($deployra_ban) {\n    return 444;\n}"  # zbanowany adres: zamknij połączenie bez odpowiedzi
+def _ban_check(root: str) -> str:
+    """Zbanowany adres: 418 → nazwana lokalizacja ze stroną 403 (pomija przepisywanie serwera, więc bez pętli)."""
+    return f"if ($deployra_ban) {{\n    return 418;\n}}\ninclude {root}/snippets/banned.conf;"
+
+
+def banned_snippet() -> str:
+    return (
+        "# Zbanowany adres: strona 403 zamiast zerwania połączenia (Cloudflare pokazywał wtedy 520)\n"
+        "error_page 418 = @deployra_banned;\n"
+        "location @deployra_banned {\n"
+        "    default_type text/html;\n"
+        '    add_header Cache-Control "no-store" always;\n'
+        f'    return 403 "{banned_page()}";\n'
+        "}\n"
+    )
+
+
 ALT_SVC = "add_header Alt-Svc 'h3=\":443\"; ma=86400' always;"  # ogłoszenie HTTP/3 dla klientów (tylko blok 443)
 
 
@@ -266,7 +291,7 @@ def render_site(
     out = [f"# Deployra: {site.kind} #{site.id} — {names}"]
     quic = http3 and site.http3 and cert_ready and site.cert_id is not None
     body = _site_body(site, acl, root, auth)
-    http_lines = _listen(80, ipv6) + [f"server_name {names};", BAN_CHECK, f"include {root}/snippets/acme.conf;"]
+    http_lines = _listen(80, ipv6) + [f"server_name {names};", _ban_check(root), f"include {root}/snippets/acme.conf;"]
     if cert_ready and site.ssl_forced:
         http_lines.append("location / {\n    return 301 https://$host$request_uri;\n}")
     else:
@@ -280,7 +305,7 @@ def render_site(
             tls += _listen(443, ipv6, "quic") + ["http3 on;"]
         tls += [
             f"server_name {names};",
-            BAN_CHECK,
+            _ban_check(root),
             f"ssl_certificate /etc/deployra/certs/{site.cert_id}/fullchain.pem;",
             f"ssl_certificate_key /etc/deployra/certs/{site.cert_id}/privkey.pem;",
             f"include {root}/snippets/ssl.conf;",
@@ -327,7 +352,7 @@ def render_default(ipv6: bool, page: str, root: str = ROOT, default_upstream: Up
         body = f"default_type text/html;\n        return 404 \"{deployra_page()}\";"
     else:
         body = "return 404;"
-    http = _listen(80, ipv6, default=True) + ["server_name _;", BAN_CHECK, f"include {root}/snippets/acme.conf;"]
+    http = _listen(80, ipv6, default=True) + ["server_name _;", _ban_check(root), f"include {root}/snippets/acme.conf;"]
     https = _listen(443, ipv6, "ssl", default=True)
     if quic:  # UDP: nieznany SNI trafia tu i dostaje odrzucenie, zamiast certyfikatu pierwszego hosta
         https += _listen(443, ipv6, "quic reuseport", default=True)
@@ -368,5 +393,5 @@ def render(
 def write_snippets(nginx_dir: Path) -> None:
     snippets = nginx_dir / "snippets"
     snippets.mkdir(parents=True, exist_ok=True)
-    for name, content in SNIPPETS.items():
+    for name, content in {**SNIPPETS, "banned.conf": banned_snippet()}.items():
         (snippets / name).write_text(content, encoding="utf-8")

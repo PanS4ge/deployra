@@ -21,7 +21,9 @@
         <span class="dim">{{ t("nodes.not_paired_tunnel") if node.transport == "tunnel" else t("nodes.not_paired_direct") }}</span>
       </div>
     </div>
-    {% if node.transport == "tunnel" %}
+    {% if node.external_wg %}
+    <a class="btn sm" href="/nodes/{{ node.id }}/external-wg"><i class="bi bi-shield-lock"></i> {{ t("extnode.open_config") }}</a>
+    {% elif node.transport == "tunnel" %}
     <form method="post" action="/nodes/{{ node.id }}/reinvite" style="margin: 0">
       <button class="btn sm" type="submit"><i class="bi bi-arrow-repeat"></i> {{ t("nodes.reinvite_token_btn") }}</button>
     </form>
@@ -132,7 +134,7 @@
       </div>
       <div class="card-body">
         <dl class="kv">
-          <dt>{{ t("nodes.connection") }}</dt><dd>{{ t("nodes.wg_tunnel") if node.transport == "tunnel" else t("nodes.direct") }}</dd>
+          <dt>{{ t("nodes.connection") }}</dt><dd>{% if node.external_wg %}<a href="/nodes/{{ node.id }}/external-wg">{{ t("extnode.badge") }}</a> <span class="mono muted small">{{ node.external_wg.subnet }}</span>{% else %}{{ t("nodes.wg_tunnel") if node.transport == "tunnel" else t("nodes.direct") }}{% endif %}</dd>
           <dt>{{ t("nodes.api_address_short") }}</dt><dd class="mono">{{ panel.node_url(node) if node.tunnel_ip or node.api_url else "—" }}</dd>
           <dt>{{ t("nodes.proxy_address_short") }}</dt><dd class="mono">{{ panel.node_upstream_host(node) or "—" }}</dd>
           {% if info.ip %}<dt>{{ t("nodes.detected_ip") }}</dt><dd class="mono">{{ info.ip }}</dd>{% endif %}

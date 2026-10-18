@@ -88,7 +88,7 @@ def test_nginx_renders_bans():
                                 lambda _: False, ipv6=False, bans=["8.8.8.8", "9.9.0.0/16"])  # fmt: skip
     assert "geo $deployra_ban {" in files["http/00-bans.conf"] and "    9.9.0.0/16 1;" in files["http/00-bans.conf"]
     assert sorted(files)[0] == "http/00-bans.conf"  # geo musi być zdefiniowane przed serwerami
-    assert "if ($deployra_ban) {\n        return 444;" in files["http/site-1.conf"]
+    assert "if ($deployra_ban) {\n        return 418;" in files["http/site-1.conf"] and "snippets/banned.conf;" in files["http/site-1.conf"]
     assert "if ($deployra_ban)" in files["http/00-default.conf"]
     assert "deny 8.8.8.8;" in files["stream/stream-1.conf"]
 
@@ -235,3 +235,12 @@ def test_autoban_configurable_triggers(ctx):
 
 
 
+
+
+def test_banned_snippet_serves_403_page_from_named_location(tmp_path):
+    nginx_driver.write_snippets(tmp_path)
+    snippet = (tmp_path / "snippets" / "banned.conf").read_text(encoding="utf-8")
+    assert "error_page 418 = @deployra_banned;" in snippet and "location @deployra_banned {" in snippet
+    assert 'return 403 "<!DOCTYPE html>' in snippet and "default_type text/html;" in snippet
+    body = snippet.split('return 403 "', 1)[1].rsplit('";', 1)[0]
+    assert '"' not in body and "$" not in body  # cudzysłów albo zmienna nginx zepsułyby konfigurację

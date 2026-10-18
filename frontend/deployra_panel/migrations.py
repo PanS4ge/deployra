@@ -304,7 +304,12 @@ def v21(dialect: str) -> list[str]:
     ]
 
 
+def v23(dialect: str) -> list[str]:
+    """Węzeł za zewnętrznym WireGuardem (wg-easy itp.): adres i podsieć WG, kontener dla `network_mode`, adres dla bramki."""
+    return [f"ALTER TABLE nodes ADD COLUMN external_wg {_types(dialect)['text']}"]
+
+
 MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [
     (1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8), (9, v9), (10, v10), (11, v11), (12, v12), (13, v13),
-    (14, v14), (15, v15), (16, v16), (17, v17), (18, v18), (19, v19), (20, v20), (21, v21), (22, v22),
+    (14, v14), (15, v15), (16, v16), (17, v17), (18, v18), (19, v19), (20, v20), (21, v21), (22, v22), (23, v23),
 ]

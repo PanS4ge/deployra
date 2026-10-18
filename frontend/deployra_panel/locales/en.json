@@ -955,7 +955,8 @@
     "tunnel": "Network",
     "uptime": "Uptime",
     "users": "Users",
-    "dns": "DNS"
+    "dns": "DNS",
+    "map": "Map"
   },
   "networks": {
     "delete_confirm": "Delete network {name}?",
@@ -2100,5 +2101,62 @@
     "turned_off": "Task {name} disabled",
     "turned_on": "Task {name} enabled",
     "updated": "Task {name} saved"
+  },
+  "map": {
+    "title": "Map",
+    "fit": "Fit to view",
+    "refresh": "Refresh",
+    "off": "disabled",
+    "type": {
+      "panel": "Panel",
+      "gateway": "Gateways",
+      "node": "Nodes",
+      "ct": "LXC containers",
+      "app": "Apps",
+      "site": "Domains"
+    },
+    "role": {
+      "hub": "WireGuard hub",
+      "edge": "edge",
+      "proxy": "plain nginx"
+    },
+    "layout": {
+      "free": "Free",
+      "lr": "Layers",
+      "radialout": "Radial"
+    }
+  },
+  "extnode": {
+    "mode": "External WireGuard",
+    "mode_hint": "A node inside wg-easy or another WireGuard — the panel generates the config, you set up the network.",
+    "switch_btn": "Node has an external WireGuard",
+    "new": "Node behind an external WireGuard",
+    "title": "{name} · external WireGuard",
+    "badge": "external WireGuard",
+    "address": "Node address in the WG network",
+    "subnet": "WG subnet",
+    "container": "WireGuard container (network_mode)",
+    "container_hint": "E.g. wg-easy — the node shares its network. Empty = host network.",
+    "proxy_placeholder": "same as the node address in the WG network",
+    "proxy_hint": "Address where the gateway reaches app ports. With network_mode set to the WG container this is usually the host's Docker bridge address (e.g. 172.17.0.1) — add it to the gateway tunnel routes.",
+    "generate": "Generate config",
+    "open_config": "WireGuard config",
+    "step_compose": "Run the node next to WireGuard",
+    "step_network": "Connections",
+    "step_pair": "Pair with the code from the logs",
+    "check_panel": "Panel reaches the node API ({address})",
+    "check_panel_fix": "The panel machine must be in the {subnet} network (e.g. as a wg-easy client).",
+    "check_gateway": "Gateway {gateway} has a route to {address}",
+    "check_gateway_fix": "Add a wg-easy client for the gateway and paste its config with the {subnet} route.",
+    "check_tunnel_offline": "Tunnel {tunnel} is configured but not connected.",
+    "to_tunnel": "Tunnel → External WireGuard",
+    "c_container": "shared network with WireGuard: node API at {address}:2750",
+    "c_host": "host network: wg0 and app ports",
+    "c_bind": "API only inside the WireGuard network",
+    "bad_address": "Enter the node IP in the WireGuard network (e.g. 10.8.0.1).",
+    "bad_subnet": "Invalid subnet (e.g. 10.8.0.0/24).",
+    "outside_subnet": "Address {address} is not in subnet {subnet}.",
+    "bad_container": "Invalid container name.",
+    "bad_proxy": "The gateway address must be an IP address."
   }
 }

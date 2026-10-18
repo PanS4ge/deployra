@@ -21,7 +21,8 @@
     </div>
     <div class="card-body stack" style="gap: 10px">
       <div class="row small dim">
-        <span class="badge {{ 'violet' if n.transport == 'tunnel' else 'info' }}"><i class="bi bi-{{ 'diagram-3' if n.transport == 'tunnel' else 'globe' }}"></i> {{ t("nodes.via_tunnel") if n.transport == "tunnel" else t("nodes.direct") }}</span>
+        {% if n.external_wg %}<span class="badge violet"><i class="bi bi-shield-lock"></i> {{ t("extnode.badge") }}</span>
+        {% else %}<span class="badge {{ 'violet' if n.transport == 'tunnel' else 'info' }}"><i class="bi bi-{{ 'diagram-3' if n.transport == 'tunnel' else 'globe' }}"></i> {{ t("nodes.via_tunnel") if n.transport == "tunnel" else t("nodes.direct") }}</span>{% endif %}
         <span class="mono">{{ n.tunnel_ip or n.api_url or "—" }}</span>
       </div>
       {% if n.status == "paired" %}
