@@ -312,6 +312,8 @@ class FakeAPI:
         import tarfile
 
         self._find(cid)
+        if hasattr(data, "read"):  # jak docker-py: archiwum także jako plik (strumień)
+            data = data.read()
         with tarfile.open(fileobj=io.BytesIO(data), mode="r") as tar:
             for member in tar:
                 f = tar.extractfile(member)

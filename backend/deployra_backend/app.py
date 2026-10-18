@@ -89,6 +89,7 @@ def create_app(ctx: Context, *, start_services: bool = True, bind_host: str = ""
     app.include_router(system.public)
     app.include_router(system.router)
     app.include_router(docker_routes.router)
+    app.include_router(docker_routes.upload_router)
     app.include_router(docker_routes.ws_router)
     app.include_router(apps_routes.router)
     app.include_router(apps_routes.upload_router)

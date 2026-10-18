@@ -17,9 +17,10 @@ from deployra_common.schemas import ContainerSpec, NetworkSpec, VolumeSpec
 
 from ..context import Context, get_ctx
 from ..services import docker_svc
-from . import job_response, signed
+from . import job_response, signed, signed_upload
 
 router = APIRouter(prefix="/api", dependencies=[Depends(signed)])
+upload_router = APIRouter(prefix="/api", dependencies=[Depends(signed_upload)])  # strumieniowe wysyłki (podpis po SHA-256)
 
 
 class LogQuery(BaseModel):
@@ -216,6 +217,26 @@ async def container_files_upload(cid: str, dir_path: str = Form("/"), files: lis
         await asyncio.to_thread(_files_call, docker_svc.write_container_file, client, cid, f"{clean_dir.rstrip('/')}/{name}", content)
         uploaded.append({"name": name, "size": len(content)})
     return {"ok": True, "dir": clean_dir, "uploaded": uploaded}
+
+
+@upload_router.post("/containers/{cid}/files/upload-tar")
+async def container_files_upload_tar(cid: str, request: Request, dir_path: str = "/", client: Any = Depends(dk),
+                                     ctx: Context = Depends(get_ctx)) -> dict:  # fmt: skip
+    """Pliki i foldery jako archiwum tar strumieniem na dysk — pamięć węzła nie rośnie z rozmiarem wysyłki."""
+    import tarfile
+    import tempfile
+    from pathlib import Path
+
+    from deployra_common.server import receive_verified_upload
+
+    with tempfile.TemporaryDirectory() as tmp:
+        archive = Path(tmp) / "upload.tar"
+        await receive_verified_upload(request, str(archive), ctx.config.max_upload_mb * 1024 * 1024)
+        try:
+            uploaded = await asyncio.to_thread(_files_call, docker_svc.upload_container_tar, client, cid, dir_path, str(archive))
+        except tarfile.TarError as exc:
+            raise HTTPException(400, tr("node.unpack_failed", error=exc)) from None
+    return {"ok": True, "dir": "/" + dir_path.strip("/"), "uploaded": uploaded}
 
 
 @router.delete("/containers/{cid}/files")

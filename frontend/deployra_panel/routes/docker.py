@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import tempfile
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
@@ -765,29 +768,57 @@ async def container_file_upload(
 ):
     form = await request.form()
     dir_path = str(form.get("dir_path") or "/").strip()
-    files = form.getlist("files")
-    client = _client(panel, node)
-
-    file_payload = []
-    for f in files:
-        if not hasattr(f, "filename") or not f.filename:
-            continue
-        raw = await f.read()
-        file_payload.append(("files", (f.filename, raw, getattr(f, "content_type", "application/octet-stream"))))
-
-    if not file_payload:
+    files = [f for f in form.getlist("files") if getattr(f, "filename", None)]
+    if not files:
         return toast(t("common.required_field"), "err", status=400)
-
+    client = _client(panel, node)
     try:
-        await client.request(
-            "POST",
-            _p(f"/api/containers/{cid}/files/upload", ep),
-            data={"dir_path": dir_path},
-            files=file_payload,
-        )
-        return redirect(request, files_url(node["id"], cid, dir_path, ep), t("containers.files_uploaded", count=len(file_payload)))
-    except Exception as exc:
-        return toast(getattr(exc, "detail", str(exc)), "err", status=400)
+        if all("/" not in f.filename.replace("\\", "/") and (f.size or 0) <= SINGLE_UPLOAD for f in files):
+            # pojedyncze pliki po jednym: węzeł zachowuje właściciela i tryb nadpisywanych, a w pamięci jest naraz jeden plik
+            for f in files:
+                await client.request("POST", _p(f"/api/containers/{cid}/files/upload", ep), data={"dir_path": dir_path},
+                                     files=[("files", (f.filename, await f.read(), f.content_type or "application/octet-stream"))])  # fmt: skip
+        else:
+            # folder albo duże pliki: archiwum tar na dysku i wysyłka strumieniem (wczytanie całości kończyło się OOM i 502)
+            with tempfile.TemporaryDirectory() as tmp:
+                archive = Path(tmp) / "upload.tar"
+                await asyncio.to_thread(_pack_upload, files, archive)
+                await client.upload_file(_p(f"/api/containers/{cid}/files/upload-tar?dir_path={quote(dir_path, safe='/')}", ep),
+                                         str(archive), timeout=1800)  # fmt: skip
+    except ValueError as exc:
+        return toast(str(exc), "err", status=400)
+    except RemoteError as exc:
+        return toast(str(exc.detail), "err", status=400)
+    return redirect(request, files_url(node["id"], cid, dir_path, ep), t("containers.files_uploaded", count=len(files)))
+
+
+SINGLE_UPLOAD = 16 * 1024 * 1024  # większe pliki idą strumieniem w archiwum
+
+
+def _pack_upload(files: list[Any], archive: Path) -> None:
+    """Wgrywane pliki (z podfolderami z „Wgraj folder”) → archiwum tar na dysku, kawałkami z plików tymczasowych Starlette."""
+    import tarfile
+    import time
+
+    now, dirs = int(time.time()), set()
+    with tarfile.open(archive, "w") as tar:
+        for f in files:
+            parts = [p for p in f.filename.replace("\\", "/").split("/") if p not in ("", ".")]
+            if not parts or ".." in parts:
+                raise ValueError(t("containers.upload_bad_name", name=f.filename))
+            for depth in range(1, len(parts)):
+                folder = "/".join(parts[:depth])
+                if folder not in dirs:
+                    dirs.add(folder)
+                    info = tarfile.TarInfo(folder)
+                    info.type, info.mode, info.mtime = tarfile.DIRTYPE, 0o755, now
+                    tar.addfile(info)
+            fh = f.file
+            fh.seek(0, 2)
+            info = tarfile.TarInfo("/".join(parts))
+            info.size, info.mode, info.mtime = fh.tell(), 0o644, now
+            fh.seek(0)
+            tar.addfile(info, fh)
 
 
 @router.post("/nodes/{node_id}/containers/{cid}/files/delete")

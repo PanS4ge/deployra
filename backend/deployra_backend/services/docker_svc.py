@@ -737,7 +737,7 @@ def get_container_file_bytes(client: Any, cid: str, path: str) -> tuple[str, byt
         return name, data
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
-        for member in [first, *tar]:
+        for member in tar:  # TarFile zwraca też wpis wczytany przez next()
             if member.isdir():
                 zf.writestr(member.name.rstrip("/") + "/", b"")
             elif member.isfile():
@@ -751,6 +751,40 @@ def _rel_parts(rel: str) -> list[str]:
     if not parts or ".." in parts:
         raise ValueError(tr("node.files.bad_path"))
     return parts
+
+
+def upload_container_tar(client: Any, cid: str, directory: str, archive_path: str) -> list[dict]:
+    """Archiwum tar z panelu (pliki i całe foldery) → kontener, bez wczytywania do pamięci.
+
+    Wpisy przepisujemy do nowego archiwum na dysku: tylko zwykłe pliki i katalogi o bezpiecznych ścieżkach, właściciel
+    jak użytkownik kontenera. put_archive dostaje plik, więc docker-py wysyła go strumieniem — duży folder pluginów
+    nie przekracza limitu pamięci węzła.
+    """
+    import tarfile
+    import tempfile
+    import time
+
+    target = _clean(directory)
+    uid, gid = _default_owner(client.api.inspect_container(cid))
+    now = int(time.time())
+    done = []
+    with tempfile.TemporaryFile() as out:
+        with tarfile.open(archive_path, "r") as src, tarfile.open(fileobj=out, mode="w") as dst:
+            for member in src:
+                if not (member.isfile() or member.isdir()):
+                    raise ValueError(tr("node.files.bad_path"))
+                info = tarfile.TarInfo(name="/".join(_rel_parts(member.name)))
+                info.mtime, info.uid, info.gid = now, uid, gid
+                if member.isdir():
+                    info.type, info.mode = tarfile.DIRTYPE, 0o755
+                    dst.addfile(info)
+                    continue
+                info.size, info.mode = member.size, 0o644
+                dst.addfile(info, src.extractfile(member))
+                done.append({"name": info.name, "size": member.size})
+        out.seek(0)
+        client.api.put_archive(cid, target, out)
+    return done
 
 
 def upload_container_tree(client: Any, cid: str, directory: str, files: list[tuple[str, bytes]]) -> list[dict]:

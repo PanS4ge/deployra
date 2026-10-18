@@ -543,7 +543,8 @@
     "upload_mode_files": "Files",
     "upload_mode_folder": "Folder",
     "download_zip": "Download folder (ZIP)",
-    "exit_code": "exit code {code}"
+    "exit_code": "exit code {code}",
+    "upload_bad_name": "Invalid file name: {name}"
   },
   "dashboard": {
     "apps_error": "with errors: {count}",

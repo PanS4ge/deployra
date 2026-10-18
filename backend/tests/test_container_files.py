@@ -175,3 +175,60 @@ def test_processes_action_has_proc_fallback():
     profile = container_profiles.detect_profile("python:3.11-slim")
     cmd, _, _ = container_profiles.build_action_command(profile, "processes")
     assert "/proc/" in cmd[-1] and "\x00" not in cmd[-1]
+
+
+def _tar(entries):
+    import io
+    import tarfile
+
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as tar:
+        for name, data in entries:
+            info = tarfile.TarInfo(name)
+            if data is None:
+                info.type = tarfile.DIRTYPE
+                tar.addfile(info)
+            elif isinstance(data, str):  # dowiązanie symboliczne
+                info.type, info.linkname = tarfile.SYMTYPE, data
+                tar.addfile(info)
+            else:
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+    return buffer.getvalue()
+
+
+def test_upload_tar_streams_folder_into_container(ctx, tmp_path):
+    fake = ctx.docker_for("local")
+    cid = fake.api.create_container("itzg/minecraft-server", name="mc")["Id"]
+    archive = tmp_path / "up.tar"
+    archive.write_bytes(_tar([("plugins", None), ("plugins/Essentials.jar", b"jar-2"), ("plugins/Essentials/config.yml", b"a: 1")]))
+    done = docker_svc.upload_container_tar(fake, cid, "/data", str(archive))
+    assert [d["name"] for d in done] == ["plugins/Essentials.jar", "plugins/Essentials/config.yml"]
+    assert fake.api._files["/data/plugins/Essentials.jar"] == b"jar-2"
+
+
+@pytest.mark.parametrize("entries", [[("../etc/passwd", b"x")], [("plugins/link", "/etc/shadow")]])
+def test_upload_tar_rejects_unsafe_entries(ctx, tmp_path, entries):
+    fake = ctx.docker_for("local")
+    cid = fake.api.create_container("itzg/minecraft-server", name="mc2")["Id"]
+    archive = tmp_path / "bad.tar"
+    archive.write_bytes(_tar(entries))
+    with pytest.raises(ValueError):
+        docker_svc.upload_container_tar(fake, cid, "/data", str(archive))
+
+
+def test_upload_tar_route_needs_signed_digest(api, ctx):
+    import hashlib
+
+    from deployra_common.hmac_auth import sign
+
+    fake = ctx.docker_for("local")
+    cid = fake.api.create_container("itzg/minecraft-server", name="mc3")["Id"]
+    body = _tar([("plugins/a.jar", b"A" * 1000)])
+    path = f"/api/containers/{cid}/files/upload-tar?dir_path=/data&ep=local"
+    headers = sign(api.secret, "POST", path, b"", body_sha256=hashlib.sha256(body).hexdigest())
+    response = api.client.post(path, content=body, headers={**headers, "Content-Type": "application/octet-stream"})
+    assert response.status_code == 200 and response.json()["uploaded"] == [{"name": "plugins/a.jar", "size": 1000}]
+    assert fake.api._files["/data/plugins/a.jar"] == b"A" * 1000
+    plain = sign(api.secret, "POST", path, body)  # zwykły podpis bez skrótu — ten router przyjmuje tylko wysyłki strumieniowe
+    assert api.client.post(path, content=body, headers=plain).status_code == 400
