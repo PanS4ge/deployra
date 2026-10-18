@@ -55,6 +55,30 @@ class BridgeError(Exception):
     """Plugin odpowiedział błędem."""
 
 
+IN_USE = ("used by another process", "being used", "resource busy", "text file busy", "locked")
+# wyjątki Javy z pluginu (klasa: komunikat) → klucz komunikatu i kod HTTP; 502 zostaje tylko dla awarii połączenia z panelem
+_JAVA_ERRORS = (
+    ("AccessDeniedException", "mc.err.denied", 403),
+    ("NoSuchFileException", "mc.err.missing", 404),
+    ("DirectoryNotEmptyException", "mc.err.not_empty", 409),
+    ("FileAlreadyExistsException", "mc.err.exists", 409),
+    ("SecurityException", "mc.err.outside", 403),
+)
+
+
+def explain(error: str) -> tuple[str, int] | None:
+    """Czytelny komunikat dla znanych błędów plików z pluginu: (klucz tłumaczenia, kod HTTP) albo None."""
+    lowered = error.lower()
+    if any(phrase in lowered for phrase in IN_USE):
+        return "mc.err.in_use", 409
+    if "larger than 8 mb" in lowered:
+        return "mc.file_too_big", 413
+    for name, key, status in _JAVA_ERRORS:
+        if error.startswith(name):
+            return key, status
+    return None
+
+
 @dataclass
 class _Link:
     queue: list[dict] = field(default_factory=list)

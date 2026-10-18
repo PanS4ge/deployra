@@ -2017,7 +2017,15 @@
     "pair_reset": "Wygenerowano nowy kod parowania",
     "delete_confirm": "Usunąć {name} z panelu? Serwer i jego pliki zostają.",
     "deleted": "Usunięto {name}",
-    "link_app": "Połącz z panelem Minecraft"
+    "link_app": "Połącz z panelem Minecraft",
+    "err": {
+      "denied": "Brak uprawnień — serwer nie może zmienić tego pliku (właściciel albo prawa pliku na hostingu).",
+      "missing": "Plik nie istnieje — mógł zostać już usunięty.",
+      "in_use": "Plik jest używany przez serwer — zatrzymaj serwer albo zmień plik przez FTP.",
+      "not_empty": "Folder nie jest pusty.",
+      "exists": "Plik o tej nazwie już istnieje.",
+      "outside": "Ścieżka wychodzi poza katalog serwera."
+    }
   },
   "env": {
     "scope": {

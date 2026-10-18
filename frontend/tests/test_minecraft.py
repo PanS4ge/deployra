@@ -168,3 +168,38 @@ def test_pair_code_only_for_managers(panel, admin):
     admin.cookies.set(SESSION_COOKIE, sid)
     page = admin.get(f"/minecraft/{server_id}?tab=settings", headers={"HX-Request": ""}).text
     assert code not in page and "ftp_host" not in page  # podgląd nie daje kodu parowania ani ustawień FTP
+
+
+def test_plugin_file_errors_are_readable_not_502(panel, admin, monkeypatch):
+    server_id, _ = mc.create(panel, "Pliki")
+    panel.db.update("minecraft_servers", server_id, secret="x")
+    monkeypatch.setattr(mc, "online", lambda _row: True)
+    errors = {
+        "plugins/Essentials.jar": "FileSystemException: plugins/Essentials.jar: The process cannot access the file because it is being used by another process",
+        "plugins/root.jar": "AccessDeniedException: plugins/root.jar",
+        "plugins/gone.jar": "NoSuchFileException: plugins/gone.jar",
+        "plugins/weird.jar": "IOException: something odd",
+    }
+
+    async def fake_call(_panel, _row, op, args=None, timeout=20):
+        raise mc.BridgeError(errors[args["path"].lstrip("/")])
+
+    monkeypatch.setattr(mc, "call", fake_call)
+    results = {}
+    for path in errors:
+        response = admin.post(f"/minecraft/{server_id}/files/delete", data={"path": path})
+        results[path] = (response.status_code, json.loads(response.headers["HX-Trigger"])["toast"]["message"])
+    assert results["plugins/Essentials.jar"][0] == 409 and "używany przez serwer" in results["plugins/Essentials.jar"][1]
+    assert results["plugins/Essentials.jar"][1].endswith("/plugins/Essentials.jar")
+    assert results["plugins/root.jar"][0] == 403 and "Brak uprawnień" in results["plugins/root.jar"][1]
+    assert results["plugins/gone.jar"][0] == 404 and "nie istnieje" in results["plugins/gone.jar"][1]
+    assert results["plugins/weird.jar"] == (400, "Plugin zgłosił błąd: IOException: something odd")
+    assert all(status != 502 for status, _ in results.values())
+
+
+def test_explain_maps_java_errors():
+    assert mc.explain("DirectoryNotEmptyException: plugins") == ("mc.err.not_empty", 409)
+    assert mc.explain("IOException: file larger than 8 MB") == ("mc.file_too_big", 413)
+    assert mc.explain("SecurityException: path outside the server directory") == ("mc.err.outside", 403)
+    assert mc.explain("FileSystemException: x: Device or resource busy") == ("mc.err.in_use", 409)
+    assert mc.explain("NullPointerException") is None

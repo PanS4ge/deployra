@@ -39,10 +39,15 @@ def _server(server_id: int, panel: Panel = Depends(get_panel)) -> dict:
     return row
 
 
-def _bridge_error(exc: Exception) -> Response:
+def _bridge_error(exc: Exception, path: str = "") -> Response:
+    """Błąd z pluginu jako czytelny komunikat z kodem 4xx — to odpowiedź serwera, a nie awaria bramki (502)."""
     if isinstance(exc, mc.Offline):
         return toast(t("mc.offline"), "err", status=409)
-    return toast(t("mc.bridge_error", error=str(exc)), "err", status=502)
+    known = mc.explain(str(exc))
+    if known:
+        key, status = known
+        return toast(t(key) + (f" · {path}" if path else ""), "err", status=status)
+    return toast(t("mc.bridge_error", error=str(exc)), "err", status=400)
 
 
 # --- plugin: parowanie i kanał poleceń (bez sesji, podpis HMAC) ---------------------------------------
@@ -296,7 +301,7 @@ async def _write(panel: Panel, row: dict, path: str, data: bytes) -> Response | 
     try:
         await _files(panel, row, "write", {"path": mc.clean_path(path), "data_b64": base64.b64encode(data).decode()})
     except (mc.Offline, mc.BridgeError) as exc:
-        return _bridge_error(exc)
+        return _bridge_error(exc, mc.clean_path(path))
     except Exception as exc:  # noqa: BLE001 — FTP
         return toast(str(exc)[:200], "err", status=400)
     return None
@@ -337,7 +342,7 @@ async def files_delete(request: Request, row: dict = Depends(_server), panel: Pa
     try:
         await _files(panel, row, "delete", {"path": path, "is_dir": form.get("is_dir") == "1"})
     except (mc.Offline, mc.BridgeError) as exc:
-        return _bridge_error(exc)
+        return _bridge_error(exc, path)
     except Exception as exc:  # noqa: BLE001
         return toast(str(exc)[:200], "err", status=400)
     return toast(t("containers.file_deleted", path=path), extra={"mc-files": True})

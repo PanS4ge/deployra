@@ -2017,7 +2017,15 @@
     "pair_reset": "New pairing code generated",
     "delete_confirm": "Remove {name} from the panel? The server and its files stay.",
     "deleted": "Removed {name}",
-    "link_app": "Connect to the Minecraft panel"
+    "link_app": "Connect to the Minecraft panel",
+    "err": {
+      "denied": "Permission denied — the server can't change this file (owner or file permissions on the host).",
+      "missing": "The file doesn't exist — it may have been deleted already.",
+      "in_use": "The file is in use by the server — stop the server or change the file over FTP.",
+      "not_empty": "The folder isn't empty.",
+      "exists": "A file with this name already exists.",
+      "outside": "The path points outside the server directory."
+    }
   },
   "env": {
     "scope": {
