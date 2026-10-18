@@ -1,0 +1,25 @@
+{% if error %}
+<div class="notice err small">{{ error }}</div>
+{% elif not dumps %}
+<div class="small dim">{{ t("backup.db_no_files") }}</div>
+{% else %}
+<table class="table">
+  <tbody>
+    {% for d in dumps %}
+    <tr>
+      <td><code>{{ d.name }}</code></td>
+      <td class="small dim">{{ d.size|bytes }}</td>
+      <td>
+        <div class="row" style="justify-content: flex-end; gap: 6px">
+          <a class="btn sm ghost" href="/settings/backup/db/{{ sid }}/download/{{ d.name }}" hx-boost="false"><i class="bi bi-download"></i> {{ t("backup.db_download") }}</a>
+          <form hx-post="/settings/backup/db/{{ sid }}/restore" hx-swap="none" hx-confirm="{{ t('backup.db_restore_confirm', container=container) }}" data-danger>
+            <input type="hidden" name="name" value="{{ d.name }}">
+            <button class="btn sm danger ghost"><i class="bi bi-arrow-counterclockwise"></i> {{ t("backup.db_restore") }}</button>
+          </form>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}

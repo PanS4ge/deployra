@@ -1,0 +1,23 @@
+{% from "_macros.html" import pick %}
+<div class="card-head"><h3><i class="bi bi-alarm"></i> {{ t("tasks.title") }}</h3></div>
+<div class="card-body stack">
+  {% if has(user, P.ALLOW_CONTAINER_TERMINAL) %}
+  <details>
+    <summary class="btn sm"><i class="bi bi-plus-lg"></i> {{ t("tasks.add") }}</summary>
+    <form class="stack" style="margin-top: 12px" hx-post="/apps/{{ app.id }}/tasks" hx-swap="none" x-data="{ sched: '0 0 * * *' }">
+      <div class="form-grid">
+        <div class="field"><label>{{ t("tasks.name") }}</label><input class="input" name="name" maxlength="60" required></div>
+        <div class="field"><label>{{ t("tasks.timeout") }}</label><input class="input mono" name="timeout" type="number" min="60" max="36000" value="{{ default_timeout }}" required></div>
+        <div class="field full"><label>{{ t("tasks.command") }}</label><input class="input mono" name="command" maxlength="2000" placeholder="php artisan schedule:run" required></div>
+        <div class="field"><label>{{ t("tasks.schedule") }}</label><input class="input mono" name="schedule" x-model="sched" placeholder="*/5 * * * *" required></div>
+        <div class="field"><label>{{ t("tasks.preset") }}</label>{{ pick("preset", presets, "0 0 * * *", model="sched", label=t("tasks.preset")) }}</div>
+      </div>
+      <div class="row between">
+        <label class="check small"><input type="checkbox" name="enabled" value="1" checked><span class="sw"></span><span>{{ t("tasks.enabled") }}</span></label>
+        <button class="btn primary sm"><span class="spin"></span><i class="bi bi-plus-lg"></i> {{ t("tasks.add") }}</button>
+      </div>
+    </form>
+  </details>
+  {% endif %}
+  {% include "apps/_task_list.html" %}
+</div>

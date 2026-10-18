@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from deployra_common.schemas import AccessClient, AccessList, AccessUser, ProxyLocation, ProxyState, Site, Stream, Upstream
 
 from ..i18n import t
+from . import forward_auth
 
 
 def resolve_target(panel: Any, target: dict | None, nodes: dict[int, dict]) -> Upstream | None:
@@ -49,6 +50,7 @@ def site_model(panel: Any, row: dict, nodes: dict[int, dict]) -> Site | None:
             cert_id=None if tunnel else row.get("cert_id"),
             ssl_forced=bool(row["ssl_forced"]) and not tunnel,
             http2=bool(row["http2"]),
+            http3=bool(row.get("http3")),  # kolumna z migracji v22; przed nią wiersz nie ma klucza
             hsts=bool(row["hsts"]),
             hsts_subdomains=bool(row["hsts_subdomains"]),
             block_exploits=bool(row["block_exploits"]),
@@ -104,6 +106,7 @@ def build_state(panel: Any, gateway_id: int | None = None) -> ProxyState:
         acls.append(
             AccessList(
                 id=row["id"], name=row["name"], satisfy_any=bool(row["satisfy_any"]), pass_auth=bool(row["pass_auth"]),
+                deployra_login=bool(row.get("deployra_login")),
                 users=[AccessUser(**u) for u in row.get("users") or []],
                 clients=[AccessClient(**c) for c in row.get("clients") or []],
             )
@@ -145,6 +148,7 @@ def build_state(panel: Any, gateway_id: int | None = None) -> ProxyState:
         access_lists=acls,
         default_page=default_page if default_page in ("404", "deployra", "passthrough") else "deployra",
         default_upstream=default_upstream,
+        panel_auth=forward_auth.panel_auth(panel) if any(a.deployra_login for a in acls) else None,
     )
 
 

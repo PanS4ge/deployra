@@ -14,6 +14,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from .envfile import BUILD_SCOPES, RUNTIME_SCOPES, scoped
 from .i18n import tr
 
 _HOSTNAME = re.compile(r"^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
@@ -23,6 +24,7 @@ _NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$")
 _SLUG = re.compile(r"^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$")
 _IMAGE = re.compile(r"^[a-z0-9][a-z0-9._/:@-]{0,254}$")
 _USERNAME = re.compile(r"^[A-Za-z0-9._@-]{1,64}$")
+_PANEL_URL = re.compile(r"^https?://[A-Za-z0-9.:\[\]-]{1,255}(/[A-Za-z0-9._~/-]{0,255})?$")  # bez spacji i średników: trafia do nginx
 
 Port = Annotated[int, Field(ge=1, le=65535)]
 
@@ -247,10 +249,13 @@ class AppSpec(BaseModel):
     container_port: Port | None = None
     host_port: Port | None = None
     env: dict[str, str] = Field(default_factory=dict)
+    env_scopes: dict[str, Literal["runtime", "build", "both"]] = Field(default_factory=dict)  # tylko zmienne spoza „runtime”
     volumes: list[VolumeMount] = Field(default_factory=list)
     memory_mb: int | None = Field(default=None, ge=16, le=262144)
     cpus: float | None = Field(default=None, gt=0, le=256)
     domains: list[str] = Field(default_factory=list)
+    zero_downtime: bool = False  # nowy kontener startuje obok starego; przełączenie dopiero po teście zdrowia
+    health_path: str | None = Field(default=None, max_length=200)  # np. /up — HTTP < 500 = zdrowy; brak = wystarczy „działa”
 
     @field_validator("slug")
     @classmethod
@@ -261,6 +266,28 @@ class AppSpec(BaseModel):
     @classmethod
     def _domains(cls, v: list[str]) -> list[str]:
         return [check_domain(d) for d in v]
+
+    @field_validator("health_path")
+    @classmethod
+    def _health_path(cls, v: str | None) -> str | None:
+        if not v:
+            return None
+        if not _URL_PATH.match(v):
+            raise ValueError(tr("srv.schema.bad_health_path"))
+        return v
+
+    def runtime_env(self) -> dict[str, str]:
+        """Zmienne działającego kontenera (bez tych, które są tylko do budowania)."""
+        return scoped(self.env, self.env_scopes, RUNTIME_SCOPES)
+
+    def build_env(self) -> dict[str, str]:
+        """Zmienne budowania: argumenty `docker build` (zakres build i both)."""
+        return scoped(self.env, self.env_scopes, BUILD_SCOPES)
+
+    @model_validator(mode="after")
+    def _scopes(self) -> "AppSpec":
+        self.env_scopes = {k: v for k, v in self.env_scopes.items() if v != "runtime" and k in self.env}
+        return self
 
     @model_validator(mode="after")
     def _ports(self) -> "AppSpec":
@@ -365,8 +392,24 @@ class AccessList(BaseModel):
     name: str = ""
     satisfy_any: bool = False
     pass_auth: bool = False
+    deployra_login: bool = False  # logowanie do panelu Deployra; kto może wejść, decyduje panel
     users: list[AccessUser] = Field(default_factory=list)
     clients: list[AccessClient] = Field(default_factory=list)
+
+
+class PanelAuth(BaseModel):
+    """Adresy panelu dla logowania Deployra przed aplikacją (forward auth)."""
+
+    verify: str  # bramka → panel: sprawdzenie ciasteczka (GET /auth/forward)
+    callback: str  # bramka → panel: wymiana jednorazowego tokenu na ciasteczko (GET /auth/forward/callback)
+    login: str  # przeglądarka → panel: strona logowania (adres publiczny)
+
+    @field_validator("verify", "callback", "login")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        if not _PANEL_URL.match(v):
+            raise ValueError(tr("srv.schema.bad_url"))
+        return v
 
 
 class Site(BaseModel):
@@ -379,6 +422,7 @@ class Site(BaseModel):
     cert_id: int | None = None
     ssl_forced: bool = False
     http2: bool = True
+    http3: bool = False
     hsts: bool = False
     hsts_subdomains: bool = False
     block_exploits: bool = True
@@ -427,6 +471,7 @@ class ProxyState(BaseModel):
     access_lists: list[AccessList] = Field(default_factory=list)
     default_page: Literal["404", "deployra", "passthrough"] = "deployra"
     default_upstream: Upstream | None = None
+    panel_auth: PanelAuth | None = None  # brak = panel nieosiągalny dla bramki; listy z logowaniem zamykają dostęp
 
 
 class CertRequest(BaseModel):

@@ -93,6 +93,22 @@ async def deploy(spec: AppSpec, ctx: Context = Depends(get_ctx)) -> dict:
     return job_response(ctx.jobs.start("deploy", tr("node.job.deploy", name=spec.slug), lambda job: apps.deploy(ctx, job, spec)))
 
 
+@router.post("/apps/{slug}/handover/commit")
+async def commit_handover(slug: str, ctx: Context = Depends(get_ctx)) -> dict:
+    """Wdrożenie bez przestojów: bramka już kieruje na nową wersję — stara znika."""
+    check_slug(slug)
+    title = tr("node.job.handover_commit", name=slug)
+    return job_response(ctx.jobs.start("deploy", title, lambda job: apps.commit_handover(ctx, job, slug)))
+
+
+@router.post("/apps/{slug}/handover/abort")
+async def abort_handover(slug: str, ctx: Context = Depends(get_ctx)) -> dict:
+    """Wdrożenie bez przestojów przerwane przed przełączeniem bramki: usuwa nową wersję."""
+    check_slug(slug)
+    title = tr("node.job.handover_abort", name=slug)
+    return job_response(ctx.jobs.start("deploy", title, lambda job: apps.abort_handover(ctx, job, slug)))
+
+
 @router.post("/apps/{slug}/rollback")
 async def rollback(slug: str, spec: AppSpec, ctx: Context = Depends(get_ctx)) -> dict:
     check_slug(slug)

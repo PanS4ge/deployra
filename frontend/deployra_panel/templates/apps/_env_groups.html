@@ -1,0 +1,17 @@
+{# Zestawy zmiennych współdzielonych do dołączenia. `groups`: id, name, count (w kolejności wyświetlania), `attached`: id dołączonych.
+   Kolejność w formularzu = kolejność na liście, więc strzałkami ustawiamy, który zestaw nadpisuje który. #}
+{% if groups %}
+<div class="stack" style="gap: 6px">
+  {% for g in groups %}
+  <div class="row env-group-row" style="gap: 10px">
+    <label class="check"><input type="checkbox" name="env_group" value="{{ g.id }}" {{ "checked" if g.id in attached }} {{ "disabled" if not has(user, P.ALLOW_SETTINGS) }}><span class="sw"></span><span>{{ g.name }}</span></label>
+    <span class="small muted">{{ t("envg.vars_count", count=g.count) }}</span>
+    <span class="spacer"></span>
+    <button type="button" class="btn ghost sm" title="{{ t('apps.env_group_up') }}" aria-label="{{ t('apps.env_group_up') }}" onclick="var r = this.closest('.env-group-row'); if (r.previousElementSibling) r.parentNode.insertBefore(r, r.previousElementSibling)"><i class="bi bi-chevron-up"></i></button>
+    <button type="button" class="btn ghost sm" title="{{ t('apps.env_group_down') }}" aria-label="{{ t('apps.env_group_down') }}" onclick="var r = this.closest('.env-group-row'); if (r.nextElementSibling) r.parentNode.insertBefore(r.nextElementSibling, r)"><i class="bi bi-chevron-down"></i></button>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="small muted">{{ t("apps.env_group_none") }}</div>
+{% endif %}

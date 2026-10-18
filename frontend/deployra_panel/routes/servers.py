@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, WebS
 from fastapi.concurrency import run_in_threadpool
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
+from deployra_common import envfile
 from deployra_common.client import RemoteError
 from deployra_common.runtimes import RUNTIMES
 
@@ -77,7 +78,8 @@ async def server(request: Request, row: dict = Depends(_grant), panel: Panel = D
     state = await _state(panel, target)
     spec = deploy.load(panel, row["app"])[0] if row["app"] else None
     job = panel.jobs.get(row["app"].get("last_job") or "") if row["app"] else None
-    return render(request, "servers/detail.html", title=row["label"], row=row, target=target, state=state, spec=spec,
+    envtext = envfile.dump(spec.env, spec.env_scopes) if spec else ""
+    return render(request, "servers/detail.html", title=row["label"], row=row, target=target, state=state, spec=spec, envtext=envtext,
                   job=job if job and not job.done else None, runtime=RUNTIMES.get((spec.source.runtime if spec else None) or ""))  # fmt: skip
 
 
@@ -221,12 +223,11 @@ async def save_env(request: Request, row: dict = Depends(_grant), panel: Panel =
     app = row["app"]
     if not app:
         raise HTTPException(400, t("servers.app_only"))
-    from .apps import _env
-
     form = await request.form()
     spec, options = deploy.load(panel, app)
     try:
-        spec = spec.model_copy(update={"env": _env(str(form.get("env") or ""))})
+        env, scopes = envfile.parse(str(form.get("env") or ""))
+        spec = spec.model_copy(update={"env": env, "env_scopes": scopes})
         type(spec).model_validate(spec.model_dump())
     except ValueError as exc:
         return toast(str(exc), "err", status=400)

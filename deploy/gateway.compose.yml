@@ -5,7 +5,7 @@
 #   DEPLOYRA_PUBLIC_HOST=vps.example.com docker compose -f deploy/gateway.compose.yml up -d
 #   docker logs deployra-wg   # kod synchronizacji dla panelu
 #
-# Porty na firewallu VPS: 80/tcp, 443/tcp, 51820/udp (WireGuard), 51821/tcp (bootstrap — tylko na czas
+# Porty na firewallu VPS: 80/tcp, 443/tcp, 443/udp (HTTP/3), 51820/udp (WireGuard), 51821/tcp (bootstrap — tylko na czas
 # synchronizacji panelu i dołączania węzłów) + porty streamów, jeśli ich używasz.
 #
 # Obrazy: domyślnie gotowe z GHCR (ghcr.io/pans4ge/deployra-*), aktualizacja = docker compose pull.

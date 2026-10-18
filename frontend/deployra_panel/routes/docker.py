@@ -254,7 +254,7 @@ async def dump_to_storage(panel: Panel, node: dict, cid: str, ep: str) -> Respon
         content, name = await _dump(panel, node, cid, ep)
     except RemoteError as exc:
         return toast(t("containers.dump_failed", error=str(exc.detail)[:100]), "err")
-    await asyncio.to_thread(driver.upload, f"database/{node['name']}/{name}", content)
+    await asyncio.to_thread(driver.put, f"database/{node['name']}/{name}", content)  # put tworzy podkatalogi
     return toast(t("containers.dump_saved", name=name))
 
 

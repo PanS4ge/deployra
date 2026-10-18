@@ -42,7 +42,7 @@ class EditForm(HTMLParser):
                     self._add(attrs, attrs.get("value") or "on")
             elif "x-model" in attrs:
                 self._add(attrs, str(self.ctx[attrs["x-model"]]))
-            elif ":value" in attrs:
+            elif ":value" in attrs and attrs[":value"] in self.ctx:  # ukryte pole z makra `pick` ma też zwykły value="…"
                 self._add(attrs, str(self.ctx[attrs[":value"]]))
             else:
                 self._add(attrs, attrs.get("value") or "")
@@ -77,6 +77,8 @@ SPECS = {
                "memory_mb": 192, "domains": ["f.example.com"]}, {"https": True}),
     "bot": ({"source": {"kind": "runtime", "runtime": "python-script"}}, {}),
     "statyczna": ({"source": {"kind": "static"}, "domains": ["s.example.com"]}, {"https": True, "force_ssl": False}),
+    "bez-przestojow": ({"source": {"kind": "image", "image": "nginx:1.27"}, "container_port": 80, "zero_downtime": True,
+                        "health_path": "/up"}, {}),  # fmt: skip
 }
 
 

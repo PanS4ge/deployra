@@ -29,6 +29,7 @@ from .web import is_htmx, render, toast
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 PUBLIC_PREFIXES = ("/static/", "/hooks/", "/healthz", "/login", "/setup", "/language", "/favicon.ico", "/mcp",
                    "/minecraft/bridge/", "/minecraft/download/")  # plugin Minecrafta: podpis HMAC zamiast sesji
+FORWARD_PUBLIC = ("/auth/forward", "/auth/forward/callback")  # bramka i host aplikacji: bez sesji (dokładne ścieżki)
 
 
 def create_app(config: Config | None = None, panel: Panel | None = None) -> FastAPI:
@@ -38,17 +39,18 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
     async def lifespan(app: FastAPI):
         import asyncio
 
-        from .services import notify, resources, updates, uptime, wg_peer
+        from .services import db_backups, notify, resources, scheduled_tasks, updates, uptime, wg_peer
 
         await run_in_threadpool(wg_peer.ensure_up, panel)
         await run_in_threadpool(panel.sessions.cleanup)
         # zadania żyją w pamięci — to, co trwało w chwili restartu, zostało przerwane
         panel.db.execute("UPDATE apps SET status = 'error', last_error = ? WHERE status = 'deploying'", [i18n.t("msg.deploy_interrupted")])
         panel.db.execute("UPDATE certificates SET status = 'error', error = ? WHERE status = 'issuing'", [i18n.t("msg.cert_interrupted")])
+        panel.db.execute("UPDATE scheduled_task_runs SET status = 'failed', output = ? WHERE status = 'running'", [i18n.t("tasks.cancelled")])
         await run_in_threadpool(updates.finish_pending, panel)
         await run_in_threadpool(notify.migrate_legacy_webhook, panel)
         panel.plugins.start(app)
-        tasks = []
+        tasks = [asyncio.create_task(db_backups.loop(panel))]  # harmonogramy kopii baz (sprawdzenie co minutę)
         if panel.config.local_node:
             from .services import local_node
 
@@ -58,6 +60,7 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
             tasks.append(asyncio.create_task(resources.loop(panel)))
         if panel.config.update_checks:
             tasks.append(asyncio.create_task(updates.loop(panel)))
+        tasks.append(asyncio.create_task(scheduled_tasks.loop(panel)))
         yield
         for task in tasks:
             task.cancel()
@@ -113,7 +116,7 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
                 if request.method == "GET" and "text/event-stream" not in request.headers.get("accept", ""):
                     return _redirect(request, "/servers")
                 return JSONResponse({"detail": i18n.t("servers.denied")}, status_code=403)
-        elif not any(path.startswith(p) for p in PUBLIC_PREFIXES):
+        elif not (path in FORWARD_PUBLIC or any(path.startswith(p) for p in PUBLIC_PREFIXES)):
             return _redirect(request, f"/login?next={path}" if request.method == "GET" else "/login")
         return await call_next(request)
 

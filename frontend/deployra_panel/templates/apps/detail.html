@@ -227,4 +227,10 @@
   </div>
   {% endif %}
 </div>
+
+{% if spec.source.kind in ("image", "git", "runtime", "compose") and has(user, P.ALLOW_DEPLOYMENT) %}
+<div class="card" hx-get="/apps/{{ app.id }}/tasks" hx-trigger="load" hx-swap="innerHTML" hx-disinherit="*">
+  <div class="card-body muted small">{{ t("common.loading") }}</div>
+</div>
+{% endif %}
 {% endblock %}

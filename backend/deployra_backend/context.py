@@ -57,6 +57,9 @@ class Context:
         )
         self.deploy_locks: dict[str, threading.Lock] = {}
         self.wait_seconds = 6.0  # ile czekać, czy nowy kontener aplikacji wstał
+        self.health_timeout = 60.0  # wdrożenie bez przestojów: ile czekać na odpowiedź testu zdrowia
+        self.health_interval = 1.0  # co ile sekund pytać test zdrowia
+        self.handover_grace = 10.0  # po przełączeniu bramki: ile sekund stara wersja dokańcza połączenia
         self.sftp: Any = None
         from .enroll import PairingGate
 

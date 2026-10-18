@@ -166,6 +166,7 @@
       <div class="field" style="justify-content: flex-end; gap: 10px">
         <label class="check"><input type="checkbox" name="ssl_forced" value="1" x-model="ssl_forced"><span class="sw"></span><span>{{ t("apps.force_https") }}</span></label>
         <label class="check"><input type="checkbox" name="http2" value="1" {{ "checked" if site.http2 }}><span class="sw"></span><span>HTTP/2</span></label>
+        <label class="check"><input type="checkbox" name="http3" value="1" {{ "checked" if site.http3 }}><span class="sw"></span><span>HTTP/3</span></label>
         <label class="check"><input type="checkbox" name="hsts" value="1" x-model="hsts"><span class="sw"></span><span>HSTS</span></label>
         <label class="check"><input type="checkbox" name="hsts_subdomains" value="1" {{ "checked" if site.hsts_subdomains }}><span class="sw"></span><span>{{ t("site.hsts_subdomains") }}</span></label>
       </div>

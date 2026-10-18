@@ -61,7 +61,7 @@ docker logs deployra-wg | grep "Kod synchronizacji"   # z DEPLOYRA_LANG=en: "Syn
 Otwórz panel (np. przez `ssh -L 8080:127.0.0.1:8080 vps`), przejdź konfigurację, a potem w **Tunel** wpisz adres `127.0.0.1:51821`, kod
 i zaznacz „Panel działa na tym samym serwerze co bramka”. Panel wystawisz publicznie, dodając host proxy `deploy.example.com → 127.0.0.1:8080`.
 
-Porty na firewallu VPS: `80/tcp`, `443/tcp`, `51820/udp`, `51821/tcp` (bootstrap — wystarczy na czas dołączania węzłów).
+Porty na firewallu VPS: `80/tcp`, `443/tcp`, `443/udp` (HTTP/3), `51820/udp`, `51821/tcp` (bootstrap — wystarczy na czas dołączania węzłów).
 
 Panel może też stać gdzie indziej (`deploy/panel.compose.yml`): wtedy sam zestawi tunel do bramki. Panel razem z aplikacjami na jednej
 maszynie (np. w domu), a na VPS-ie sama bramka: `deploy/panel-node.compose.yml` — panel sparuje węzeł obok siebie automatycznie.

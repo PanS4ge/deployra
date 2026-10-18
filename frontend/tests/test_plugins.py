@@ -69,7 +69,7 @@ def test_builtin_catalog_fills_the_wizard(admin):
     assert "Uptime Kuma" in wizard and "apps-catalog:vaultwarden" in wizard
 
     prefilled = admin.get("/apps/new?template=apps-catalog:vaultwarden").text
-    assert "vaultwarden/server:latest" in prefilled and "ADMIN_TOKEN=" in prefilled and "${RANDOM}" not in prefilled
+    assert "vaultwarden/server:latest" in prefilled and 'name="env_key" value="ADMIN_TOKEN"' in prefilled and "${RANDOM}" not in prefilled
 
     wordpress = admin.app.state.panel.plugins.app_template("apps-catalog:wordpress")
     assert wordpress["kind"] == "compose" and "${DB_PASSWORD}" in wordpress["source"]["compose"]

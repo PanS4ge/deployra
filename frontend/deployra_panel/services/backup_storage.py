@@ -8,10 +8,13 @@ import hmac
 import io
 import json
 import os
+import posixpath
+import stat
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlencode, urlparse
+from xml.etree import ElementTree
 
 import httpx
 
@@ -48,6 +51,12 @@ def create_backup_payload(panel: Panel, secrets_included: bool = True) -> tuple[
     return filename, content
 
 
+def _split_key(key: str) -> tuple[str, str]:
+    """`db/node/app/plik.gz` → (`db/node/app`, `plik.gz`); bez katalogu → (``, nazwa)."""
+    folder, _, name = key.rpartition("/")
+    return folder, name
+
+
 class LocalDriver:
     def __init__(self, path: str, retention: int = 10):
         self.path = Path(path)
@@ -77,6 +86,24 @@ class LocalDriver:
                     pass
         except Exception:
             pass
+
+    # Obiekty pod dowolnymi kluczami (kopie baz danych); klucz względem katalogu magazynu, z „/”.
+    def put(self, key: str, data: bytes) -> None:
+        target = self.path / key
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+
+    def get(self, key: str) -> bytes:
+        return (self.path / key).read_bytes()
+
+    def list_files(self, folder: str) -> list[dict[str, Any]]:
+        base = self.path / folder
+        if not base.is_dir():
+            return []
+        return [{"name": f.name, "size": f.stat().st_size} for f in base.iterdir() if f.is_file()]
+
+    def delete(self, key: str) -> None:
+        (self.path / key).unlink(missing_ok=True)
 
 
 class FtpDriver:
@@ -129,6 +156,52 @@ class FtpDriver:
             except Exception:
                 pass
             return f"Przesłano {filename} na serwer FTP {self.host}"
+
+    def _enter(self, ftp: ftplib.FTP, folder: str, create: bool) -> bool:
+        """Przechodzi do podkatalogu katalogu bazowego; przy create=True tworzy brakujące."""
+        for part in [p for p in folder.split("/") if p]:
+            try:
+                ftp.cwd(part)
+            except ftplib.error_perm:
+                if not create:
+                    return False
+                ftp.mkd(part)
+                ftp.cwd(part)
+        return True
+
+    def put(self, key: str, data: bytes) -> None:
+        folder, name = _split_key(key)
+        with self._connect() as ftp:
+            self._enter(ftp, folder, create=True)
+            ftp.storbinary(f"STOR {name}", io.BytesIO(data))
+
+    def get(self, key: str) -> bytes:
+        folder, name = _split_key(key)
+        buf = io.BytesIO()
+        with self._connect() as ftp:
+            if not self._enter(ftp, folder, create=False):
+                raise FileNotFoundError(key)
+            ftp.retrbinary(f"RETR {name}", buf.write)
+        return buf.getvalue()
+
+    def list_files(self, folder: str) -> list[dict[str, Any]]:
+        out = []
+        with self._connect() as ftp:
+            if not self._enter(ftp, folder, create=False):
+                return []
+            for name in ftp.nlst():
+                try:
+                    size = ftp.size(name) or 0
+                except ftplib.all_errors:  # katalog albo wpis bez rozmiaru
+                    continue
+                out.append({"name": name, "size": size})
+        return out
+
+    def delete(self, key: str) -> None:
+        folder, name = _split_key(key)
+        with self._connect() as ftp:
+            if self._enter(ftp, folder, create=False):
+                ftp.delete(name)
 
 
 class SftpDriver:
@@ -190,8 +263,59 @@ class SftpDriver:
             sftp.close()
             ssh.close()
 
+    # Klucze są względne wobec katalogu bazowego (po chdir w _connect).
+    def _mkdirs(self, sftp: Any, folder: str) -> None:
+        cur = ""
+        for part in [p for p in folder.split("/") if p]:
+            cur = posixpath.join(cur, part)
+            try:
+                sftp.mkdir(cur)
+            except IOError:  # już istnieje
+                pass
 
-def _sigv4_headers(method: str, url: str, body: bytes, access_key: str, secret_key: str, region: str = "us-east-1", service: str = "s3") -> dict[str, str]:
+    def put(self, key: str, data: bytes) -> None:
+        folder, name = _split_key(key)
+        ssh, sftp = self._connect()
+        try:
+            self._mkdirs(sftp, folder)
+            with sftp.file(posixpath.join(folder, name), "wb") as f:
+                f.write(data)
+        finally:
+            sftp.close()
+            ssh.close()
+
+    def get(self, key: str) -> bytes:
+        ssh, sftp = self._connect()
+        try:
+            with sftp.file(key, "rb") as f:
+                return f.read()
+        finally:
+            sftp.close()
+            ssh.close()
+
+    def list_files(self, folder: str) -> list[dict[str, Any]]:
+        ssh, sftp = self._connect()
+        try:
+            try:
+                entries = sftp.listdir_attr(folder or ".")
+            except IOError:
+                return []
+            return [{"name": e.filename, "size": e.st_size or 0} for e in entries if not stat.S_ISDIR(e.st_mode or 0)]
+        finally:
+            sftp.close()
+            ssh.close()
+
+    def delete(self, key: str) -> None:
+        ssh, sftp = self._connect()
+        try:
+            sftp.remove(key)
+        finally:
+            sftp.close()
+            ssh.close()
+
+
+def _sigv4_headers(method: str, url: str, body: bytes, access_key: str, secret_key: str, region: str = "us-east-1", service: str = "s3", query: str = "") -> dict[str, str]:
+    """Nagłówki SigV4; `query` to już zakodowany i posortowany ciąg zapytania (np. przy ListObjectsV2)."""
     parsed = urlparse(url)
     host = parsed.netloc
     path = parsed.path or "/"
@@ -202,7 +326,7 @@ def _sigv4_headers(method: str, url: str, body: bytes, access_key: str, secret_k
 
     canonical_headers = f"host:{host}\nx-amz-content-sha256:{payload_hash}\nx-amz-date:{amz_date}\n"
     signed_headers = "host;x-amz-content-sha256;x-amz-date"
-    canonical_request = f"{method}\n{path}\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
+    canonical_request = f"{method}\n{path}\n{query}\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
 
     algorithm = "AWS4-HMAC-SHA256"
     credential_scope = f"{date_stamp}/{region}/{service}/aws4_request"
@@ -264,6 +388,60 @@ class S3Driver:
             if resp.status_code not in (200, 204):
                 raise ValueError(f"Błąd wysyłania do S3: HTTP {resp.status_code} {resp.text[:200]}")
             return f"Wysłano do S3 '{self.bucket}/{key}'"
+
+    def _object_key(self, key: str) -> str:
+        return f"{self.prefix}/{key}" if self.prefix else key
+
+    def put(self, key: str, data: bytes) -> None:
+        url = self._url(self._object_key(key))
+        headers = _sigv4_headers("PUT", url, data, self.access_key, self.secret_key, self.region)
+        headers["Content-Type"] = "application/octet-stream"
+        with httpx.Client(timeout=120.0) as client:
+            resp = client.put(url, headers=headers, content=data)
+        if resp.status_code not in (200, 204):
+            raise ValueError(f"Błąd wysyłania do S3: HTTP {resp.status_code} {resp.text[:200]}")
+
+    def get(self, key: str) -> bytes:
+        url = self._url(self._object_key(key))
+        headers = _sigv4_headers("GET", url, b"", self.access_key, self.secret_key, self.region)
+        with httpx.Client(timeout=120.0) as client:
+            resp = client.get(url, headers=headers)
+        if resp.status_code != 200:
+            raise ValueError(f"Błąd pobierania z S3: HTTP {resp.status_code}")
+        return resp.content
+
+    def list_files(self, folder: str) -> list[dict[str, Any]]:
+        base = self._object_key(folder) if folder else self.prefix
+        prefix = f"{base.rstrip('/')}/" if base else ""
+        out: list[dict[str, Any]] = []
+        token = ""
+        with httpx.Client(timeout=30.0) as client:
+            while True:
+                params = {"list-type": "2", "prefix": prefix}
+                if token:
+                    params["continuation-token"] = token
+                query = urlencode(sorted(params.items()), quote_via=quote, safe="-_.~")
+                url = f"{self._url()}?{query}"
+                headers = _sigv4_headers("GET", url, b"", self.access_key, self.secret_key, self.region, query=query)
+                resp = client.get(url, headers=headers)
+                if resp.status_code != 200:
+                    raise ValueError(f"Błąd listowania S3: HTTP {resp.status_code}")
+                root = ElementTree.fromstring(resp.content)
+                ns = root.tag[: root.tag.find("}") + 1] if root.tag.startswith("{") else ""
+                for item in root.findall(f"{ns}Contents"):
+                    name = (item.findtext(f"{ns}Key") or "").rsplit("/", 1)[-1]
+                    out.append({"name": name, "size": int(item.findtext(f"{ns}Size") or 0)})
+                token = root.findtext(f"{ns}NextContinuationToken") or ""
+                if root.findtext(f"{ns}IsTruncated") != "true" or not token:
+                    return out
+
+    def delete(self, key: str) -> None:
+        url = self._url(self._object_key(key))
+        headers = _sigv4_headers("DELETE", url, b"", self.access_key, self.secret_key, self.region)
+        with httpx.Client(timeout=30.0) as client:
+            resp = client.delete(url, headers=headers)
+        if resp.status_code not in (200, 204):
+            raise ValueError(f"Błąd usuwania z S3: HTTP {resp.status_code}")
 
 
 def get_driver(panel: Panel, config: dict | None = None) -> Any:

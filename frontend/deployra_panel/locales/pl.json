@@ -15,7 +15,10 @@
     "satisfy_any": "Wystarczy jeden warunek (IP <b>albo</b> hasło)",
     "users": "Użytkownicy (login:hasło, po jednym w linii)",
     "users_hint": "Istniejący użytkownicy są pokazani bez haseł — zostaw sam login, żeby zachować hasło. Hasła trzymam jako hash apr1.",
-    "users_placeholder": "admin:tajne-haslo"
+    "users_placeholder": "admin:tajne-haslo",
+    "deployra_login": "Wymagaj logowania Deployra",
+    "login_basic_conflict": "Logowanie Deployra z hasłami wymaga trybu „wystarczy jeden warunek”",
+    "login_users": "Dozwoleni użytkownicy Deployra (puste = wszyscy)"
   },
   "adopt": {
     "as_app": "Jako aplikacja",
@@ -65,7 +68,8 @@
       "node_disk": "Węzeł: dysk",
       "node_offline": "Węzeł nie odpowiada",
       "node_ram": "Węzeł: RAM",
-      "update_available": "Nowa wersja Deployry"
+      "update_available": "Nowa wersja Deployry",
+      "db_backup_failed": "Kopia bazy danych nie powiodła się"
     },
     "rule_column": "Reguła",
     "rules": "Reguły",
@@ -93,7 +97,8 @@
       "node_disk": "{name}: kończy się dysk",
       "node_offline": "{name}: węzeł nie odpowiada",
       "node_ram": "{name}: kończy się RAM",
-      "update_available": "Deployra {name} jest dostępna"
+      "update_available": "Deployra {name} jest dostępna",
+      "db_backup_failed": "Kopia bazy {name} nie powiodła się"
     }
   },
   "analytics": {
@@ -253,7 +258,8 @@
         "volumes": "wolumeny",
         "memory_mb": "limit RAM",
         "cpus": "limit CPU",
-        "slug": "identyfikator"
+        "slug": "identyfikator",
+        "env_scopes": "zakresy zmiennych"
       }
     },
     "node_missing": "Węzeł przypisany do aplikacji nie istnieje.",
@@ -267,12 +273,28 @@
     "icon_upload": "Wgraj",
     "icon_bad_url": "Podaj adres http(s) obrazka",
     "icon_bad_file": "Ikona: PNG, JPG, WEBP, GIF albo ICO do 256 KB",
-    "icon_saved": "Zapisano ikonę"
+    "icon_saved": "Zapisano ikonę",
+    "env_add": "Dodaj zmienną",
+    "env_group_down": "Przesuń niżej",
+    "env_group_none": "Brak zestawów. Dodaj je w Ustawienia → Zmienne współdzielone.",
+    "env_group_up": "Przesuń wyżej",
+    "env_groups": "Zmienne współdzielone",
+    "env_key": "Klucz",
+    "env_mode_form": "Pola",
+    "env_mode_raw": "Plik .env",
+    "env_none": "Brak zmiennych.",
+    "env_remove": "Usuń zmienną",
+    "env_scope": "Zakres",
+    "env_value": "Wartość",
+    "health_path": "Ścieżka sprawdzania zdrowia",
+    "zero_downtime": "Bez przestojów"
   },
   "auth": {
     "login": "Zaloguj",
     "title_login": "Logowanie",
-    "title_setup": "Witaj w Deployrze"
+    "title_setup": "Witaj w Deployrze",
+    "forward_expired": "Link logowania wygasł albo jest nieprawidłowy. Otwórz aplikację ponownie.",
+    "forward_failed": "Nie udało się otworzyć aplikacji. Sprawdź konto i adres."
   },
   "backup": {
     "download": "Pobierz kopię",
@@ -317,7 +339,41 @@
     "secrets_included": "Dołącz tokeny i sekrety w kopii zapasowej",
     "test_btn": "Testuj połączenie",
     "run_now": "Wykonaj kopię teraz",
-    "save_btn": "Zapisz konfigurację"
+    "save_btn": "Zapisz konfigurację",
+    "db_add": "Dodaj harmonogram",
+    "db_already_running": "Kopia tej bazy jest już w toku",
+    "db_container": "Baza (kontener · węzeł)",
+    "db_cron": "Harmonogram (cron)",
+    "db_delete": "Usuń",
+    "db_delete_confirm": "Usunąć harmonogram? Zapisane kopie zostaną w magazynie.",
+    "db_deleted": "Harmonogram usunięty",
+    "db_download": "Pobierz",
+    "db_enabled": "Włączony",
+    "db_err_container": "Nieprawidłowa nazwa kontenera",
+    "db_err_cron": "Nieprawidłowy harmonogram: {value}",
+    "db_err_file": "Nieprawidłowa nazwa kopii",
+    "db_err_missing": "Harmonogram nie istnieje",
+    "db_err_node": "Węzeł nie istnieje",
+    "db_err_not_database": "Kontener nie jest bazą danych",
+    "db_err_retention": "Liczba kopii: od 1 do 365",
+    "db_failed": "Kopia bazy {name} nie powiodła się: {error}",
+    "db_files": "Kopie",
+    "db_last": "Ostatnio",
+    "db_never": "nigdy",
+    "db_no_containers": "Brak uruchomionych baz danych na węzłach",
+    "db_no_files": "Brak zapisanych kopii",
+    "db_none": "Brak harmonogramów",
+    "db_restore": "Przywróć",
+    "db_restore_confirm": "Przywrócenie nadpisze dane w bazie {container}. Kontynuować?",
+    "db_restore_failed": "Przywracanie nie powiodło się (kod {code}): {output}",
+    "db_restored": "Kopia przywrócona do {container}",
+    "db_retention": "Liczba kopii do zachowania",
+    "db_run": "Uruchom teraz",
+    "db_running": "w toku",
+    "db_save": "Zapisz",
+    "db_saved": "Harmonogram zapisany",
+    "db_started": "Zrzut uruchomiony w tle",
+    "db_title": "Kopie baz danych"
   },
   "registries": {
     "title": "Prywatne rejestry Docker",
@@ -514,7 +570,10 @@
     "start": "▶ Wdrażam {slug} ({kind}) na węźle {node}",
     "domains_job": "Domeny {slug}",
     "domains_only": "Zmiana domen {slug}: tylko bramka, DNS i certyfikat — kontener działa dalej",
-    "unexposing": "🌐 Aplikacja bez domeny — usuwam host proxy"
+    "unexposing": "🌐 Aplikacja bez domeny — usuwam host proxy",
+    "handover_abort_failed": "Nie udało się usunąć nowej wersji na węźle: {error}",
+    "handover_kept": "Przełączenie nieudane — poprzednia wersja (port {port}) dalej obsługuje ruch",
+    "handover_switch": "Przełączam bramkę na nową wersję (port {port})"
   },
   "dns": {
     "api_token": "Token API",
@@ -1277,7 +1336,8 @@
     "tab_registries": "Rejestry Docker",
     "tab_mcp": "Serwer MCP & API",
     "tab_risky": "Strefa ryzyka",
-    "tab_updates": "Aktualizacje"
+    "tab_updates": "Aktualizacje",
+    "tab_env_groups": "Zmienne współdzielone"
   },
   "mcp": {
     "server_status": "Serwer MCP (Model Context Protocol)",
@@ -1951,5 +2011,89 @@
     "delete_confirm": "Usunąć {name} z panelu? Serwer i jego pliki zostają.",
     "deleted": "Usunięto {name}",
     "link_app": "Połącz z panelem Minecraft"
+  },
+  "env": {
+    "scope": {
+      "both": "Budowanie i kontener",
+      "build": "Tylko budowanie",
+      "runtime": "Tylko kontener"
+    }
+  },
+  "envg": {
+    "add_title": "Nowy zestaw",
+    "col_apps": "Używany przez",
+    "col_count": "Zmiennych",
+    "col_name": "Nazwa",
+    "delete": "Usuń",
+    "delete_confirm": "Usunąć zestaw {name}? Aplikacje, które go używają, stracą jego zmienne przy następnym wdrożeniu.",
+    "msg": {
+      "deleted": "Zestaw usunięty",
+      "missing": "Nie ma takiego zestawu",
+      "name_required": "Podaj nazwę zestawu (do 60 znaków)",
+      "name_taken": "Zestaw o nazwie „{name}” już istnieje",
+      "saved": "Zestaw zapisany. Wdróż ponownie aplikacje, które go używają, aby zmiany weszły w życie."
+    },
+    "name": "Nazwa zestawu",
+    "name_placeholder": "np. Baza danych",
+    "none": "Brak zestawów. Dodaj pierwszy poniżej.",
+    "save": "Zapisz zestaw",
+    "submit": "Dodaj zestaw",
+    "title": "Zmienne współdzielone",
+    "unused": "nieużywany",
+    "vars_count": "{count} zm."
+  },
+  "tasks": {
+    "add": "Dodaj zadanie",
+    "already_running": "Zadanie już działa",
+    "bad_command": "Podaj polecenie (do 2000 znaków)",
+    "bad_name": "Podaj nazwę zadania (do 60 znaków)",
+    "bad_schedule": "Nieprawidłowy harmonogram: pięć pól cron albo @hourly, @daily, @weekly, @monthly",
+    "bad_timeout": "Limit czasu: od 60 do 36000 sekund",
+    "cancelled": "Przerwano",
+    "col_status": "Status",
+    "command": "Polecenie",
+    "created": "Dodano zadanie {name}",
+    "delete": "Usuń",
+    "delete_confirm": "Usunąć zadanie {name} wraz z historią?",
+    "deleted": "Usunięto zadanie {name}",
+    "details": "Szczegóły",
+    "duration": "Czas",
+    "empty": "Brak zadań",
+    "enabled": "Włączone",
+    "every": {
+      "5m": "Co 5 minut",
+      "daily": "Codziennie o północy",
+      "hourly": "Co godzinę",
+      "monthly": "Pierwszego dnia miesiąca",
+      "weekly": "Co niedzielę o północy"
+    },
+    "exit": "Kod wyjścia",
+    "history": "Historia",
+    "last_run": "Ostatnio",
+    "name": "Nazwa",
+    "no_app": "Aplikacja nie istnieje",
+    "no_container": "Nie ma działającego kontenera aplikacji {name}",
+    "not_found": "Nie ma takiego zadania",
+    "output": "Wynik",
+    "preset": "Gotowy harmonogram",
+    "run": "Uruchom teraz",
+    "run_started": "Uruchomiono zadanie {name}",
+    "run_timeout": "Przekroczono limit czasu",
+    "runs_empty": "Brak uruchomień",
+    "save": "Zapisz",
+    "schedule": "Harmonogram",
+    "started": "Start",
+    "status": {
+      "failed": "Błąd",
+      "ok": "OK",
+      "running": "Działa",
+      "timeout": "Limit czasu"
+    },
+    "timeout": "Limit czasu (s)",
+    "timeout_s": "limit {n} s",
+    "title": "Zadania",
+    "turned_off": "Wyłączono zadanie {name}",
+    "turned_on": "Włączono zadanie {name}",
+    "updated": "Zapisano zadanie {name}"
   }
 }

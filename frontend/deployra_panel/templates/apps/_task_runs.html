@@ -1,0 +1,20 @@
+{% if not runs %}
+<div class="muted small" style="margin-top: 8px">{{ t("tasks.runs_empty") }}</div>
+{% else %}
+<div class="table-wrap" style="margin-top: 8px">
+  <table class="table">
+    <thead><tr><th>{{ t("tasks.started") }}</th><th>{{ t("tasks.duration") }}</th><th>{{ t("tasks.exit") }}</th><th>{{ t("tasks.col_status") }}</th><th>{{ t("tasks.output") }}</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+    <tr>
+      <td class="small nowrap">{{ r.started_at | dts }}</td>
+      <td class="small nowrap">{{ r.duration_s | elapsed if r.duration_s is not none else "—" }}</td>
+      <td class="mono small">{{ r.exit_code if r.exit_code is not none else "—" }}</td>
+      <td><span class="badge {{ {'ok': 'ok', 'failed': 'err', 'timeout': 'warn', 'running': 'info'}.get(r.status, '') }}">{{ t("tasks.status." ~ r.status) }}</span></td>
+      <td style="min-width: 260px">{% if r.output %}<details><summary class="small">{{ t("tasks.output") }} · {{ r.output | length }} B</summary><pre class="log" style="height: auto; max-height: 260px; margin-top: 6px">{{ r.output }}</pre></details>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}

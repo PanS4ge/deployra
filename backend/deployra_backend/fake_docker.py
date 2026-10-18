@@ -27,6 +27,16 @@ except ImportError:  # pragma: no cover
     pass
 
 
+def _conflict(message: str) -> Exception:
+    """Konflikt nazwy kontenera (409), jak w docker-py."""
+    try:
+        import docker.errors
+
+        return docker.errors.APIError(message)
+    except ImportError:  # pragma: no cover
+        return RuntimeError(message)
+
+
 class _LogStream:
     def __init__(self, name: str, tail: int, follow: bool, timestamps: bool = False, lines: list[str] | None = None) -> None:
         self.name, self.tail, self.follow, self.timestamps, self.lines = name, tail, follow, timestamps, lines
@@ -144,6 +154,8 @@ class FakeAPI:
 
     def create_container(self, image: str, command: Any = None, name: str | None = None, environment: Any = None,
                          labels: Any = None, ports: Any = None, host_config: Any = None, working_dir: str | None = None) -> dict:  # fmt: skip
+        if name and any(c["name"] == name for c in self.containers_.values()):  # jak w Dockerze: nazwy są unikalne
+            raise _conflict(f'Conflict. The container name "/{name}" is already in use')
         cid = hashlib.sha256(f"{next(self._ids)}-{name}-{time.time()}".encode()).hexdigest()  # losowe jak w Dockerze
         host_config = host_config or {}
         bindings = {k: (v[1] if isinstance(v, tuple) else v) for k, v in (host_config.get("port_bindings") or {}).items()}

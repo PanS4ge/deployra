@@ -67,8 +67,7 @@
   <div class="card">
     <div class="card-head"><h3><i class="bi bi-sliders"></i> {{ t("servers.perm.env") }}</h3></div>
     <form class="card-body stack" hx-post="/servers/{{ row.id }}/env" hx-swap="none">
-      <textarea class="textarea mono" name="env" style="min-height: 120px">{% for k, v in spec.env.items() %}{{ k }}={{ v }}
-{% endfor %}</textarea>
+      <textarea class="textarea mono" name="env" style="min-height: 120px">{{ envtext }}</textarea>
       <div class="row" style="justify-content: flex-end; gap: 6px">
         <button class="btn" name="deploy" value="">{{ t("common.save") }}</button>
         {% if "D" in perms %}<button class="btn primary" name="deploy" value="1"><i class="bi bi-rocket-takeoff"></i> {{ t("stacks.save_deploy") }}</button>{% endif %}

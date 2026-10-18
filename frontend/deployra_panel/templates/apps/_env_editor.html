@@ -1,0 +1,36 @@
+{# Edytor zmiennych: wiersze KLUCZ / wartość / zakres albo tekst w formacie .env. `enved`: id, mode (form|raw), rows, text.
+   Przełączanie i dodawanie wierszy idą przez serwer (POST /apps/env-editor), więc stan jest w formularzu, nie w przeglądarce. #}
+{% from "_macros.html" import pick %}
+{% set scope_options = [("runtime", t("env.scope.runtime")), ("build", t("env.scope.build")), ("both", t("env.scope.both"))] %}
+{% set eid = enved.id %}
+<div id="{{ eid }}" class="stack" style="gap: 10px">
+  <input type="hidden" name="env_mode" value="{{ enved.mode }}">
+  <div class="row between" style="flex-wrap: wrap; gap: 8px">
+    <div class="row" style="gap: 6px">
+      <button type="button" class="btn sm {{ 'primary' if enved.mode == 'form' else 'ghost' }}" hx-post="/apps/env-editor?id={{ eid }}&amp;to=form" hx-target="#{{ eid }}" hx-swap="outerHTML">{{ t("apps.env_mode_form") }}</button>
+      <button type="button" class="btn sm {{ 'primary' if enved.mode == 'raw' else 'ghost' }}" hx-post="/apps/env-editor?id={{ eid }}&amp;to=raw" hx-target="#{{ eid }}" hx-swap="outerHTML">{{ t("apps.env_mode_raw") }}</button>
+    </div>
+    {% if enved.mode == "form" %}
+    <button type="button" class="btn ghost sm" hx-post="/apps/env-editor?id={{ eid }}&amp;add=1" hx-target="#{{ eid }}" hx-swap="outerHTML"><i class="bi bi-plus-lg"></i> {{ t("apps.env_add") }}</button>
+    {% endif %}
+  </div>
+  {% if enved.mode == "raw" %}
+  <textarea class="textarea" name="env_raw" spellcheck="false" style="min-height: 160px">{{ enved.text }}</textarea>
+  {% else %}
+  <div class="stack" style="gap: 6px">
+    {% if enved.rows %}
+    <div class="row small muted" style="gap: 6px"><span style="flex: 0 0 34%">{{ t("apps.env_key") }}</span><span style="flex: 1">{{ t("apps.env_value") }}</span><span style="width: 178px">{{ t("apps.env_scope") }}</span><span style="width: 34px"></span></div>
+    {% endif %}
+    {% for row in enved.rows %}
+    <div class="row" style="gap: 6px; align-items: flex-start">
+      <input class="input mono" name="env_key" value="{{ row.key }}" placeholder="KLUCZ" autocomplete="off" spellcheck="false" style="flex: 0 0 34%; min-width: 0">
+      <textarea class="textarea mono" name="env_value" rows="1" spellcheck="false" style="flex: 1; min-width: 0; min-height: 0; resize: vertical">{{ row.value }}</textarea>
+      <div style="width: 178px">{{ pick("env_scope", scope_options, row.scope, label=t("apps.env_scope")) }}</div>
+      <button type="button" class="btn ghost sm" title="{{ t('apps.env_remove') }}" aria-label="{{ t('apps.env_remove') }}" hx-post="/apps/env-editor?id={{ eid }}&amp;drop={{ loop.index0 }}" hx-target="#{{ eid }}" hx-swap="outerHTML"><i class="bi bi-x-lg"></i></button>
+    </div>
+    {% else %}
+    <div class="small muted">{{ t("apps.env_none") }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>

@@ -1,0 +1,30 @@
+{% from "_macros.html" import pick %}
+{% if options %}
+<form class="stack" method="post" action="/settings/backup/db" style="border-top: 1px solid var(--border); padding-top: 14px">
+  <div class="grid grid-2">
+    <div>
+      <label class="label">{{ t("backup.db_container") }}</label>
+      {{ pick("target", options, options[0][0], label=t("backup.db_container")) }}
+    </div>
+    <div>
+      <label class="label">{{ t("backup.db_cron") }}</label>
+      <input class="input" type="text" name="cron" value="0 3 * * *" placeholder="0 3 * * *" required>
+    </div>
+  </div>
+  <div class="grid grid-2">
+    <div>
+      <label class="label">{{ t("backup.db_retention") }}</label>
+      <input class="input" type="number" name="retention" min="1" max="365" value="7">
+    </div>
+    <div style="display: flex; align-items: flex-end; padding-bottom: 8px">
+      <label class="checkbox-label">
+        <input type="checkbox" name="enabled" value="1" checked>
+        <span>{{ t("backup.db_enabled") }}</span>
+      </label>
+    </div>
+  </div>
+  <div class="row" style="justify-content: flex-end"><button class="btn primary"><i class="bi bi-plus-lg"></i> {{ t("backup.db_add") }}</button></div>
+</form>
+{% else %}
+<div class="small dim">{{ t("backup.db_no_containers") }}</div>
+{% endif %}

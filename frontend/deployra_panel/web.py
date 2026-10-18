@@ -188,10 +188,28 @@ def runtimes() -> list[Any]:
     return list(RUNTIMES.values())
 
 
+STATIC = Path(__file__).parent / "static"
+_asset_hashes: dict[str, tuple[float, str]] = {}
+
+
+def asset(path: str) -> str:
+    """Adres pliku statycznego z hashem treści — przeglądarka i CDN nie podadzą starego CSS/JS po aktualizacji."""
+    file = STATIC / path
+    try:
+        mtime = file.stat().st_mtime
+    except OSError:
+        return f"/static/{path}?v={__version__}"
+    cached = _asset_hashes.get(path)
+    if not cached or cached[0] != mtime:
+        cached = (mtime, hashlib.sha1(file.read_bytes()).hexdigest()[:10])
+        _asset_hashes[path] = cached
+    return f"/static/{path}?v={cached[1]}"
+
+
 templates.env.globals.update(
     NAME=NAME, VERSION=__version__, P=Permission, PERM_LABELS=LABELS, has=has, gravatar=gravatar, now=time.time,
     update_offer=update_offer, t=tm, LANG=lang, LANGUAGES=catalog.names, JS_I18N=js_i18n, RUNTIMES=runtimes, RUNTIME_META=runtime_meta,
-    icon_v=icon_v,
+    icon_v=icon_v, asset=asset,
 )
 
 

@@ -2,7 +2,7 @@
 # Samodzielny plik do wklejenia jako stack (Portainer → Stacks → Add stack → Web editor) albo do
 # `docker compose -f vps.yml up -d`. Nie potrzebuje repozytorium ani innych plików.
 #
-# Porty na firewallu: 80/tcp, 443/tcp, 51820/udp, 51821/tcp.
+# Porty na firewallu: 80/tcp, 443/tcp, 443/udp (HTTP/3), 51820/udp, 51821/tcp.
 # Po starcie: tunel SSH `ssh -L 8080:127.0.0.1:8080 root@vps` → http://localhost:8080 → konto administratora →
 # Tunel → Połącz z Deployra-WG: adres 127.0.0.1:51821, kod z `docker logs deployra-wg`,
 # zaznacz „Panel działa na tym samym serwerze co bramka”.

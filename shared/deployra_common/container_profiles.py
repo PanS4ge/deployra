@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import datetime
 import re
+import shlex
 from typing import Any
 
 
@@ -392,3 +393,39 @@ def build_action_command(
         return ["df", "-h"], False, ""
 
     raise ValueError(f"Nieznana akcja: {action_id} dla profilu {profile.kind}")
+
+
+RESTORABLE = ("postgres", "mysql", "mariadb", "mongodb")
+
+
+def build_restore_command(
+    profile: ContainerProfile,
+    env: list[str] | dict[str, str] | None,
+    remote_path: str,
+) -> list[str]:
+    """Polecenie `sh -c` przywracające zrzut z pliku w kontenerze (odwrotność `dump_sql` / `dump_archive`).
+
+    Plik `remote_path` (plain SQL albo archiwum mongodump) jest usuwany po zakończeniu, także przy błędzie.
+    PostgreSQL: najpierw czyszczony jest schemat `public`, bo zrzut `pg_dump` nie zawiera DROP.
+    MySQL/MariaDB i MongoDB (`--drop`) same nadpisują istniejące tabele i kolekcje.
+    """
+    if profile.kind not in RESTORABLE:
+        raise ValueError(f"Przywracanie nie jest obsługiwane dla profilu: {profile.kind}")
+    env_map = _parse_env(env)
+
+    if profile.kind == "postgres":
+        user = env_map.get("POSTGRES_USER", "postgres")
+        db = env_map.get("POSTGRES_DB", user)
+        base = ["psql", "-U", user, "-d", db, "-q", "-v", "ON_ERROR_STOP=1"]
+        reset = shlex.join(base + ["-c", "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;"])
+        script = f'{reset} && {shlex.join(base)} < "$1"'
+    elif profile.kind in ("mysql", "mariadb"):
+        user = "root" if ("MYSQL_ROOT_PASSWORD" in env_map or "MARIADB_ROOT_PASSWORD" in env_map) else env_map.get("MYSQL_USER", "root")
+        pwd = env_map.get("MYSQL_ROOT_PASSWORD") or env_map.get("MARIADB_ROOT_PASSWORD") or env_map.get("MYSQL_PASSWORD", "")
+        db = env_map.get("MYSQL_DATABASE")
+        cmd = ["mysql", f"-u{user}"] + ([f"-p{pwd}"] if pwd else []) + ([db] if db else [])
+        script = f'{shlex.join(cmd)} < "$1"'
+    else:  # mongodb: archiwum mongodump z --gzip
+        script = 'mongorestore --archive="$1" --gzip --drop'
+
+    return ["sh", "-c", f'{script}; rc=$?; rm -f "$1"; exit $rc', "sh", remote_path]

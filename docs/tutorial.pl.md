@@ -37,7 +37,7 @@ curl -fsSL https://get.docker.com | sh
 Otwórz porty (przykład dla `ufw`):
 
 ```bash
-ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443/tcp && ufw allow 51820/udp && ufw allow 51821/tcp && ufw enable
+ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443/tcp && ufw allow 443/udp && ufw allow 51820/udp && ufw allow 51821/tcp && ufw enable
 ```
 
 `51820/udp` to WireGuard, `51821/tcp` to dołączanie węzłów (po dołączeniu wszystkich możesz go zamknąć).
@@ -179,7 +179,7 @@ bez drugiego nginx po drodze, a certyfikaty, bany i statystyki są na Oracle.
    z `docker logs deployra-wg` na mikr.us.
 3. **Oracle — bramka brzegowa.** W panelu: **Tunel → Bramka brzegowa** → wpisz publiczny adres Oracle → **Dodaj**. Panel pokaże
    polecenie z `DEPLOYRA_HUB` i jednorazowym tokenem `DEPLOYRA_JOIN` — uruchom je na Oracle w katalogu z repozytorium
-   (z `DEPLOYRA_IMAGES=deployra` w `deploy/.env` dopisz `--build`). Na Oracle otwórz `80/tcp` i `443/tcp`; UDP nie jest potrzebne,
+   (z `DEPLOYRA_IMAGES=deployra` w `deploy/.env` dopisz `--build`). Na Oracle otwórz `80/tcp`, `443/tcp` i `443/udp` (HTTP/3); WireGuard UDP nie jest potrzebne,
    bo to Oracle łączy się z mikr.us.
 4. Po minucie odśwież stronę **Tunel**: panel sam sparuje się z bramką brzegową, przeniesie na nią hosty proxy i certyfikaty,
    a hub dostanie pusty stan. Rekordy DNS domen kieruj na **Oracle** (z tokenem Cloudflare panel robi to sam).

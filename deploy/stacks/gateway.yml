@@ -2,7 +2,7 @@
 # Samodzielny plik do wklejenia jako stack (Portainer → Stacks → Add stack → Web editor) albo do
 # `docker compose -f gateway.yml up -d`. Nie potrzebuje repozytorium ani innych plików.
 #
-# Porty na firewallu: 80/tcp, 443/tcp + port WireGuarda (UDP) i dołączania (TCP) z ustawień niżej.
+# Porty na firewallu: 80/tcp, 443/tcp, 443/udp (HTTP/3) + port WireGuarda (UDP) i dołączania (TCP) z ustawień niżej.
 # Kod synchronizacji dla panelu: docker logs deployra-wg
 #
 # Dwie bramki („widelec”, np. hub na mikr.us + ruch publiczny na Oracle): na mikr.us ten plik bez zmian

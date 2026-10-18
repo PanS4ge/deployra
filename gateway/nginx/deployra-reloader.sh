@@ -9,6 +9,9 @@
 CTL=/etc/nginx/deployra/ctl
 mkdir -p "$CTL" /etc/nginx/deployra/http /etc/nginx/deployra/stream /etc/nginx/deployra/access /var/cache/nginx/deployra
 
+# Możliwości nginx dla bramki: moduł HTTP/3 (quic) jest w oficjalnym obrazie od 1.25; bez niego bramka nie renderuje quic
+if nginx -V 2>&1 | grep -q -- '--with-http_v3_module'; then echo 1 > /etc/nginx/deployra/base/http3; else echo 0 > /etc/nginx/deployra/base/http3; fi
+
 (
     while :; do
         for req in "$CTL"/*.request; do

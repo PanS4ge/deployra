@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.sse import EventSourceResponse, ServerSentEvent
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from deployra_common.i18n import tr
 from deployra_common.schemas import ContainerSpec, NetworkSpec, VolumeSpec
@@ -108,6 +108,24 @@ def container_quick_action(cid: str, action_id: str, client: Any = Depends(dk)):
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
     return {"exit_code": code, "output": output}
+
+
+class ExecRequest(BaseModel):
+    cmd: list[str] = Field(min_length=1, max_length=64)
+    timeout: int = Field(default=300, ge=1, le=36000)
+
+
+@router.post("/containers/{cid}/exec/run")
+def container_exec_run(cid: str, body: ExecRequest, client: Any = Depends(dk)) -> dict:
+    """Jednorazowe polecenie bez TTY (zadania cykliczne): kod wyjścia, ogon wyniku, czy minął limit."""
+    return docker_svc.exec_command(client, cid, body.cmd, body.timeout)
+
+
+@router.post("/containers/{cid}/action/restore")
+async def container_restore(cid: str, request: Request, client: Any = Depends(dk)) -> dict:
+    """Przywrócenie zrzutu bazy (surowe body, gzip). Podpis żądania już obejmuje całe body."""
+    payload = await request.body()
+    return await asyncio.to_thread(docker_svc.restore_dump, client, cid, payload)
 
 
 @router.delete("/containers/{cid}")

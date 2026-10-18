@@ -144,6 +144,7 @@ class Context:
             "hub_public_key": None if self.config.pure else self.hub.public_key,
             "api_url": self.api_url,
             "wg_enabled": not self.config.pure,
+            "http3": self.http3_capable(),
         }
 
     # --- dołączanie węzłów ----------------------------------------------------------
@@ -211,11 +212,20 @@ class Context:
 
     # --- proxy ------------------------------------------------------------------------
 
+    def http3_capable(self) -> bool:
+        """Czy nginx ma `--with-http_v3_module` — kontener nginx zapisuje to do base/http3 przy starcie (brak pliku = nie)."""
+        try:
+            return (self.config.nginx_dir / "base" / "http3").read_text(encoding="utf-8").strip() == "1"
+        except OSError:
+            return False
+
     def apply_proxy(self, proxy: ProxyState | None = None) -> ApplyResult:
         if proxy is None:
             stored = self.state.get("proxy_state")
             proxy = ProxyState.model_validate(stored) if stored else ProxyState()
-        files = nginx_driver.render(proxy, lambda cid: certs.is_ready(self.config.certs_dir, cid), self.config.ipv6, bans=self.bans.nets())
+        files = nginx_driver.render(
+            proxy, lambda cid: certs.is_ready(self.config.certs_dir, cid), self.config.ipv6, bans=self.bans.nets(), http3=self.http3_capable()
+        )
         result = self.nginx.apply(files)
         if result.status != "rejected":
             self.state.update(proxy_state=proxy.model_dump(mode="json"))

@@ -23,12 +23,16 @@
   <div class="card">
     <div class="card-head"><h3>{{ t("apps.env_volumes_limits") }}</h3></div>
     <div class="card-body form-grid">
-      <div class="field full"><label>{{ t("apps.env_short") }}</label><textarea class="textarea" name="env" style="min-height: 110px">{% for k, v in spec.env.items() %}{{ k }}={{ v | envval }}
-{% endfor %}</textarea></div>
+      <div class="field full"><label>{{ t("apps.env_short") }}</label>{% include "apps/_env_editor.html" %}</div>
+      <div class="field full"><label>{{ t("apps.env_groups") }}</label>{% include "apps/_env_groups.html" %}</div>
       <div class="field full"><label>{{ t("nodes.tab_volumes") }}</label><textarea class="textarea" name="volumes" style="min-height: 70px">{% for v in spec.volumes %}{{ v.source }}:{{ v.target }}{{ ":ro" if v.read_only }}
 {% endfor %}</textarea></div>
       <div class="field"><label>{{ t("containers.memory") }}</label><input class="input" name="memory_mb" type="number" min="16" x-model="mem"></div>
       <div class="field"><label>{{ t("apps.cpus_short") }}</label><input class="input" name="cpus" type="number" step="any" min="0.01" value="{{ spec.cpus or '' }}"></div>
+      {% if spec.source.kind in ("image", "git", "runtime") %}
+      <div class="field full"><label class="check"><input type="checkbox" name="zero_downtime" value="1" {{ "checked" if spec.zero_downtime }}><span class="sw"></span><span>{{ t("apps.zero_downtime") }}</span></label></div>
+      <div class="field"><label>{{ t("apps.health_path") }}</label><input class="input mono" name="health_path" value="{{ spec.health_path or '' }}" placeholder="/up"></div>
+      {% endif %}
     </div>
   </div>
   {% endif %}

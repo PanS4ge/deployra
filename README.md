@@ -63,7 +63,7 @@ docker logs deployra-wg | grep "Sync code"
 Open the panel (e.g. via `ssh -L 8080:127.0.0.1:8080 vps`), finish the setup, then on **Tunnel** enter `127.0.0.1:51821`, the code,
 and tick “The panel runs on the same server as the gateway”. Expose the panel publicly by adding a proxy host `deploy.example.com → 127.0.0.1:8080`.
 
-VPS firewall ports: `80/tcp`, `443/tcp`, `51820/udp`, `51821/tcp` (bootstrap — only needed while nodes join).
+VPS firewall ports: `80/tcp`, `443/tcp`, `443/udp` (HTTP/3), `51820/udp`, `51821/tcp` (bootstrap — only needed while nodes join).
 
 The panel can also live elsewhere (`deploy/panel.compose.yml`): it then sets up its own tunnel to the gateway. Panel and apps on one machine (e.g. at home)
 with only the gateway on the VPS: `deploy/panel-node.compose.yml` — the panel pairs the node next to it automatically.

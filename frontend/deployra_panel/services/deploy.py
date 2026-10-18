@@ -13,7 +13,7 @@ from deployra_common.jobs import Job, JobFailed
 from deployra_common.schemas import AppSpec
 
 from ..db import now
-from . import certs, dns, proxy_state, relay
+from . import certs, dns, env_groups, proxy_state, relay
 from ..i18n import t
 
 
@@ -26,12 +26,18 @@ def store(panel: Any, spec: AppSpec, options: dict) -> str:
     return panel.sealer.seal(json.dumps({"spec": spec.model_dump(mode="json"), "options": options}, ensure_ascii=False))
 
 
+def strategy_columns(spec: AppSpec) -> dict:
+    """Kopia ustawień sposobu wdrażania z specyfikacji (kolumny apps; węzeł dostaje je w specyfikacji)."""
+    return {"zero_downtime": int(spec.zero_downtime), "health_path": spec.health_path}
+
+
 def create_app_row(panel: Any, name: str, node_id: int, spec: AppSpec, options: dict) -> int:
     if panel.db.get("apps", spec.slug, key="slug"):
         raise ValueError(t("msg.app_exists", slug=spec.slug))
     app_id = panel.db.insert(
         "apps", slug=spec.slug, name=name or spec.slug, node_id=node_id, kind=spec.source.kind, spec=store(panel, spec, options),
         domains=spec.domains, status="new", webhook_secret=panel.sealer.seal(secrets.token_urlsafe(24)), created_at=now(),
+        **strategy_columns(spec),
     )  # fmt: skip
     from . import uptime
 
@@ -71,6 +77,7 @@ async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = N
     node = panel.node(app["node_id"])
     if not node:
         raise JobFailed(t("msg.app_node_missing"))
+    spec = env_groups.effective(panel, app_id, spec)  # zmienne współdzielone wchodzą przy każdym wdrożeniu
     first = app["status"] == "new"
     panel.db.update("apps", app_id, status="deploying", last_job=job.id, last_error=None)
     try:
@@ -89,12 +96,16 @@ async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = N
             remote = await relay.start_and_follow(client, "/api/apps/deploy", spec.model_dump(mode="json"), job, "  ")
         result = remote.get("result") or {}
         host_port, upstream_host = result.get("host_port"), result.get("upstream_host")
+        previous_port = app.get("host_port")
         panel.db.update("apps", app_id, host_port=host_port)
         app = panel.db.get("apps", app_id)
         if upstream_host and node["transport"] == "tunnel" and not _routed(upstream_host, node.get("lan_subnets") or []):
             job.log(t("deploy.lxc_not_routed", ip=upstream_host))
 
-        await _expose(panel, job, app, node, host_port, options, upstream_host)
+        if result.get("handover"):  # wdrożenie bez przestojów: nowa wersja czeka na przełączenie bramki
+            await _switch(panel, job, app, node, host_port, previous_port, options, upstream_host)
+        else:
+            await _expose(panel, job, app, node, host_port, options, upstream_host)
         panel.db.update("apps", app_id, status="running", last_deploy_at=now())
         job.log(t("deploy.done"))
         panel.plugins.emit("app.deployed", app=panel.db.get("apps", app_id), job=job.id)
@@ -140,9 +151,54 @@ async def expose_only(panel: Any, job: Job, app_id: int) -> dict:
     return {"host_port": app.get("host_port")}
 
 
+async def _switch(panel: Any, job: Job, app: dict, node: dict, host_port: int, previous_port: int | None, options: dict,
+                   upstream_host: str | None) -> None:  # fmt: skip
+    """Wdrożenie bez przestojów: bramka dostaje nowy port, dopiero potem węzeł gasi starą wersję.
+
+    Do przełączenia każdy błąd cofa panel (port i cel bramki wracają do poprzednich) i prosi węzeł
+    o usunięcie nowej wersji — stara działa dalej. Po przełączeniu nic się nie cofa: ruch idzie już do nowej.
+    """
+    slug, site_id = app["slug"], app.get("site_id")
+    site_before = panel.db.get("sites", site_id) if site_id else None
+    flipped = False
+
+    async def commit() -> None:
+        nonlocal flipped
+        flipped = True
+        job.log(t("deploy.handover_switch", port=host_port))
+        await relay.start_and_follow(panel.node_client(node), f"/api/apps/{slug}/handover/commit", {}, job, "  ")
+
+    try:
+        await _expose(panel, job, app, node, host_port, options, upstream_host, on_switch=commit)
+    except Exception:
+        if not flipped:
+            _restore(panel, app, previous_port, site_before)
+            job.log(t("deploy.handover_kept", port=previous_port or "—"))
+            try:
+                await relay.start_and_follow(panel.node_client(node), f"/api/apps/{slug}/handover/abort", {}, job, "  ")
+            except (RemoteError, httpx.HTTPError, JobFailed) as abort_exc:
+                job.log(t("deploy.handover_abort_failed", error=abort_exc))
+        raise
+
+
+def _restore(panel: Any, app: dict, previous_port: int | None, site_before: dict | None) -> None:
+    """Cofa to, co panel zmienił przed przełączeniem bramki: port aplikacji i wpis host proxy."""
+    panel.db.update("apps", app["id"], host_port=previous_port)
+    current = panel.db.get("apps", app["id"]).get("site_id")
+    if site_before is None:  # host proxy powstał w tym wdrożeniu
+        if current:
+            panel.db.update("apps", app["id"], site_id=None)
+            panel.db.delete("sites", current)
+    elif current:
+        panel.db.update("sites", site_before["id"], **{k: v for k, v in site_before.items() if k != "id"})
+
+
 async def _expose(panel: Any, job: Job, app: dict, node: dict, host_port: int | None, options: dict,
-                  upstream_host: str | None = None) -> None:  # fmt: skip
-    """Host proxy na bramce, DNS, certyfikat i test HTTP dla domen aplikacji."""
+                  upstream_host: str | None = None, on_switch: Any = None) -> None:  # fmt: skip
+    """Host proxy na bramce, DNS, certyfikat i test HTTP dla domen aplikacji.
+
+    `on_switch` (wdrożenie bez przestojów) wołane raz, gdy bramka już kieruje na nowy port.
+    """
     if not app["domains"] or not host_port:
         if app.get("site_id"):  # domeny usunięte → host proxy i jego rekordy DNS też
             job.log(t("deploy.unexposing"))
@@ -150,6 +206,8 @@ async def _expose(panel: Any, job: Job, app: dict, node: dict, host_port: int | 
             panel.db.update("apps", app["id"], site_id=None)
             panel.db.delete("sites", app["site_id"])
             await _push(panel, job)
+        if on_switch:
+            await on_switch()
         return
     job.log(t("deploy.exposing", domains=", ".join(app["domains"])))
     site = _upsert_site(panel, app, node, host_port, options, upstream_host)
@@ -157,6 +215,8 @@ async def _expose(panel: Any, job: Job, app: dict, node: dict, host_port: int | 
         panel.db.update("sites", site["id"], cert_id=None, ssl_forced=0)
         panel.db.update("apps", app["id"], cert_id=None)
     await _push(panel, job)
+    if on_switch:
+        await on_switch()
 
     try:
         if options.get("dns"):
@@ -228,5 +288,6 @@ async def remove(panel: Any, job: Job, app_id: int, delete_data: bool) -> None:
     from . import access
 
     access.forget_app(panel, app_id)
+    env_groups.forget_app(panel, app_id)
     job.log(t("deploy.removed", slug=app["slug"]))
     panel.plugins.emit("app.removed", app=app)

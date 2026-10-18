@@ -241,7 +241,70 @@ def v16(dialect: str) -> list[str]:
     return [f"ALTER TABLE nodes ADD COLUMN ram_limit_mb {n}", f"ALTER TABLE nodes ADD COLUMN disk_limit_gb {n}"]
 
 
+def v17(dialect: str) -> list[str]:
+    """Zadania cykliczne w kontenerach aplikacji: harmonogram (cron), polecenie i historia uruchomień (ostatnie 50)."""
+    t = _types(dialect)
+    i, s, x, n, r, tail = t["id"], t["str"], t["text"], t["int"], t["real"], t["tail"]
+    return [
+        f"""CREATE TABLE scheduled_tasks (
+            id {i}, app_id {n} NOT NULL, name {s} NOT NULL, command {x} NOT NULL, schedule {s} NOT NULL,
+            timeout_s {n} NOT NULL DEFAULT 300, enabled {n} NOT NULL DEFAULT 1, last_run_at {r}, last_status {s}, created_at {s}
+        ){tail}""",
+        "CREATE INDEX idx_scheduled_tasks_app ON scheduled_tasks (app_id)",
+        f"""CREATE TABLE scheduled_task_runs (
+            id {i}, task_id {n} NOT NULL, started_at {r} NOT NULL, duration_s {r}, exit_code {n}, status {s} NOT NULL,
+            output {x}
+        ){tail}""",
+        "CREATE INDEX idx_scheduled_task_runs ON scheduled_task_runs (task_id, started_at)",
+    ]
+
+
+def v18(dialect: str) -> list[str]:
+    """Harmonogram kopii baz danych: zrzut kontenera bazy (pg_dump / mysqldump / mongodump) do magazynu kopii."""
+    t = _types(dialect)
+    i, s, x, n, r, tail = t["id"], t["str"], t["text"], t["int"], t["real"], t["tail"]
+    return [
+        f"""CREATE TABLE db_backup_schedules (
+            id {i}, node_id {n} NOT NULL, container {s} NOT NULL, folder {s} NOT NULL, cron {s} NOT NULL,
+            retention {n} NOT NULL DEFAULT 7, enabled {n} NOT NULL DEFAULT 1, last_run {r}, last_status {s},
+            last_message {x}, last_filename {s}, last_size {r}, created_at {s}
+        ){tail}"""
+    ]
+
+
+def v19(dialect: str) -> list[str]:
+    """Wdrożenie bez przestojów (opcjonalne) i ścieżka testu zdrowia — kopia ustawień z zapisanej specyfikacji aplikacji."""
+    t = _types(dialect)
+    return [f"ALTER TABLE apps ADD COLUMN zero_downtime {t['int']} NOT NULL DEFAULT 0", f"ALTER TABLE apps ADD COLUMN health_path {t['str']}"]
+
+
+def v20(dialect: str) -> list[str]:
+    """Logowanie Deployra przed aplikacją (forward auth): włącznik na liście dostępu i lista dozwolonych użytkowników."""
+    t = _types(dialect)
+    n, x = t["int"], t["text"]
+    return [
+        f"ALTER TABLE access_lists ADD COLUMN deployra_login {n} NOT NULL DEFAULT 0",
+        f"ALTER TABLE access_lists ADD COLUMN login_users {x}",
+    ]
+
+
+def v22(dialect: str) -> list[str]:
+    """HTTP/3 (QUIC) per host proxy — domyślnie wyłączony."""
+    return [f"ALTER TABLE sites ADD COLUMN http3 {_types(dialect)['int']} NOT NULL DEFAULT 0"]
+
+
+def v21(dialect: str) -> list[str]:
+    """Zmienne współdzielone: nazwane zestawy zmiennych (zaszyfrowane) i ich dołączenie do aplikacji w kolejności."""
+    t = _types(dialect)
+    i, s, x, n, tail = t["id"], t["str"], t["text"], t["int"], t["tail"]
+    return [
+        f"CREATE TABLE env_groups (id {i}, name {s} NOT NULL UNIQUE, payload {x} NOT NULL, created_at {s}){tail}",
+        f"CREATE TABLE app_env_groups (app_id {n} NOT NULL, group_id {n} NOT NULL, position {n} NOT NULL DEFAULT 0, PRIMARY KEY (app_id, group_id)){tail}",
+        "CREATE INDEX idx_app_env_groups_group ON app_env_groups (group_id)",
+    ]
+
+
 MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [
     (1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8), (9, v9), (10, v10), (11, v11), (12, v12), (13, v13),
-    (14, v14), (15, v15), (16, v16),
+    (14, v14), (15, v15), (16, v16), (17, v17), (18, v18), (19, v19), (20, v20), (21, v21), (22, v22),
 ]

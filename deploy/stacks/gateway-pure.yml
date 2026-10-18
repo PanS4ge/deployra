@@ -7,7 +7,7 @@
 # NIE wymaga WireGuarda, /dev/net/tun ani uprawnień NET_ADMIN.
 #
 # Porty na firewallu VPS:
-#   - 80/tcp, 443/tcp (ruch HTTP/HTTPS domen)
+#   - 80/tcp, 443/tcp, 443/udp (ruch HTTP/HTTPS domen; 443/udp to HTTP/3)
 #   - 51821/tcp (rejestracja/parowanie z panelem Deployry)
 #   - 2751/tcp (API zarządzania konfiguracją, jeśli panel stoi na innej maszynie)
 #

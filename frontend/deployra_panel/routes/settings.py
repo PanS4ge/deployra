@@ -20,7 +20,7 @@ from ..i18n import catalog, t
 from ..deps import current_user, require
 from ..permissions import GROUPS, LABELS, RISKY, Permission, encode, grantable, has, parse
 from ..security import SESSION_COOKIE
-from ..services import cloudflared, dns
+from ..services import cloudflared, db_backups, dns
 from ..web import redirect, render, toast
 
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -262,7 +262,10 @@ BACKUP_TABLES = ("settings", "access_lists", "certificates", "sites", "streams",
 @router.get("/settings/backup")
 def backup_page(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_RISKY_SETTINGS))):
     config = panel.db.setting("backup_config") or {}
-    return render(request, "settings/backup.html", title=t("settings.tab_backup"), tab="backup", config=config)
+    db_schedules = db_backups.schedules(panel)
+    running = [s["id"] for s in db_schedules if db_backups.is_running(s["id"])]
+    return render(request, "settings/backup.html", title=t("settings.tab_backup"), tab="backup", config=config,
+                  db_schedules=db_schedules, db_running=running)  # fmt: skip
 
 
 @router.post("/settings/backup/storage")
@@ -412,6 +415,54 @@ def delete_registry_route(request: Request, reg_id: int, panel: Panel = Depends(
 
     registries.delete_registry(panel, reg_id)
     return redirect(request, "/settings/registries", t("msg.registry_deleted"))
+
+
+# --- zmienne współdzielone ------------------------------------------------------------------------
+
+
+@router.get("/settings/env-groups")
+def env_groups_page(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
+    from ..services import env_groups
+    from .apps import editor_state
+
+    items = []
+    for group in env_groups.list_groups(panel):
+        full = env_groups.get(panel, group["id"])
+        items.append({**group, "enved": editor_state(f"eg-{group['id']}", full["env"], full["scopes"])})
+    return render(request, "settings/env_groups.html", title=t("settings.tab_env_groups"), tab="env_groups", items=items,
+                  enved_new=editor_state("eg-new", {}, {}))  # fmt: skip
+
+
+async def _save_env_group(request: Request, panel: Panel, group_id: int | None):
+    from ..services import env_groups
+    from .apps import env_from_form
+
+    form = await request.form()
+    try:
+        env, scopes = env_from_form(form)
+        env_groups.save(panel, group_id, str(form.get("name") or ""), env, scopes)
+    except ValueError as exc:
+        return toast(str(exc), "err", status=400)
+    return redirect(request, "/settings/env-groups", t("envg.msg.saved"))
+
+
+@router.post("/settings/env-groups")
+async def create_env_group(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
+    return await _save_env_group(request, panel, None)
+
+
+@router.post("/settings/env-groups/{group_id}")
+async def update_env_group(group_id: int, request: Request, panel: Panel = Depends(get_panel),
+                           user: dict = Depends(require(Permission.ALLOW_SETTINGS))):  # fmt: skip
+    return await _save_env_group(request, panel, group_id)
+
+
+@router.post("/settings/env-groups/{group_id}/delete")
+def delete_env_group(request: Request, group_id: int, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):  # fmt: skip
+    from ..services import env_groups
+
+    env_groups.delete(panel, group_id)
+    return redirect(request, "/settings/env-groups", t("envg.msg.deleted"))
 
 
 # --- Serwer MCP & Tokeny API ----------------------------------------------------------------------

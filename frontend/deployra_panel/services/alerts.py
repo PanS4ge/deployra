@@ -40,6 +40,7 @@ RULES: dict[str, Rule] = {
     "app_oom": Rule("app", level="err"),
     "monitor_down": Rule("event", level="err"),
     "deploy_failed": Rule("event", level="err"),
+    "db_backup_failed": Rule("event", level="err"),
     "app_moved": Rule("event", level="info"),
     "update_available": Rule("event", level="info"),
 }

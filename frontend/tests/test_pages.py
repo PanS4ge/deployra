@@ -4,7 +4,7 @@ PAGES = [
     "/", "/apps", "/apps/new", "/nodes", "/nodes/add", "/uptime", "/proxy/hosts", "/proxy/redirects", "/proxy/dead",
     "/proxy/streams", "/proxy/access", "/proxy/access/new", "/proxy/hosts/new", "/proxy/hosts/new?kind=redirect",
     "/proxy/hosts/new?kind=dead", "/certs", "/tunnel", "/import/npm", "/jobs", "/settings", "/settings/dns",
-    "/settings/users", "/settings/backup", "/settings/risky", "/notifications", "/analytics/spark?domains=a.example.com",
+    "/settings/users", "/settings/backup", "/settings/risky", "/settings/env-groups", "/notifications", "/analytics/spark?domains=a.example.com",
     "/analytics/chart?all=1", "/analytics/chart?domains=a.example.com&days=1", "/dashboard/tunnel",
     "/settings/updates", "/settings/updates/components", "/traffic", "/traffic/top", "/traffic/suspicious", "/traffic/bans",
     "/settings/alerts", "/settings/plugins", "/servers", "/settings/users/1/servers", "/logs", "/jobs/table",

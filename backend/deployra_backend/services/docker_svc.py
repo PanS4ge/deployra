@@ -447,6 +447,65 @@ def run_quick_action(client: Any, cid: str, action_id: str) -> tuple[int, str | 
     return exit_code, out_str, False, ""
 
 
+# --- Zadania cykliczne: jednorazowe polecenie w działającym kontenerze -------------------------
+
+EXEC_OUTPUT_LIMIT = 64 * 1024
+# `timeout` (coreutils/busybox) ubija polecenie po limicie; bez niego polecenie działa, a panel przestaje czekać
+EXEC_WITH_TIMEOUT = 'T="$1"; shift; if command -v timeout >/dev/null 2>&1; then exec timeout -s KILL "$T" "$@"; fi; exec "$@"'
+TIMEOUT_CODES = (124, 137, 143)  # kody `timeout` i SIGKILL/SIGTERM po przekroczeniu limitu
+
+
+def exec_command(client: Any, cid: str, cmd: list[str], timeout: int) -> dict:
+    """Polecenie bez TTY: kod wyjścia, ogon wyniku (do 64 KB) i czas trwania; `timed_out` gdy minął limit."""
+    import time
+
+    started = time.monotonic()
+    code, output = _exec(client, cid, ["sh", "-c", EXEC_WITH_TIMEOUT, "--", str(timeout), *cmd])
+    elapsed = time.monotonic() - started
+    return {
+        "exit_code": code,
+        "output": output[-EXEC_OUTPUT_LIMIT:],
+        "duration": round(elapsed, 2),
+        "timed_out": code in TIMEOUT_CODES and elapsed >= timeout - 1,
+    }
+
+
+def restore_dump(client: Any, cid: str, payload: bytes) -> dict:
+    """Przywraca zrzut bazy (gzip, tak jak zwraca `dump_sql` / `dump_archive`) do działającego kontenera.
+
+    Zrzut trafia do /tmp w kontenerze przez put_archive; polecenie z profilu czyta go i usuwa plik.
+    """
+    import gzip
+    import uuid
+
+    info = client.api.inspect_container(cid)
+    if not (info.get("State") or {}).get("Running"):
+        raise ValueError("Przywracanie wymaga działającego kontenera bazy danych")
+    cfg = info.get("Config") or {}
+    env = cfg.get("Env") or []
+    ports = []
+    for p in list((cfg.get("ExposedPorts") or {}).keys()) + list(((info.get("NetworkSettings") or {}).get("Ports") or {}).keys()):
+        try:
+            ports.append({"container": int(p.split("/")[0])})
+        except (ValueError, IndexError):
+            pass
+    profile = container_profiles.detect_profile(cfg.get("Image") or "", env, ports)
+    try:
+        raw = gzip.decompress(payload)
+    except OSError as exc:
+        raise ValueError(f"Plik kopii nie jest poprawnym archiwum gzip: {exc}") from exc
+
+    remote = f"/tmp/deployra-restore-{uuid.uuid4().hex}"
+    write_container_file(client, cid, remote, raw)
+    try:
+        command = container_profiles.build_restore_command(profile, env, remote)
+    except ValueError:
+        _exec(client, cid, ["rm", "-f", remote])
+        raise
+    code, output = _exec(client, cid, command)
+    return {"exit_code": code, "output": output[-2000:]}
+
+
 # --- Menedżer plików kontenera ------------------------------------------------
 # Działający kontener: system plików kontenera przez `exec` (listowanie, usuwanie, mkdir) i archiwa Dockera
 # (odczyt/zapis). Zatrzymany albo bez powłoki: tylko podpięte foldery (bind/wolumen) — bezpośrednio, gdy leżą

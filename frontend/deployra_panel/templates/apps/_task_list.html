@@ -1,0 +1,61 @@
+{% from "_macros.html" import pick %}
+{% set can = has(user, P.ALLOW_CONTAINER_TERMINAL) %}
+<div id="task-list" hx-get="/apps/{{ app.id }}/tasks/list" hx-trigger="tasks-changed from:body{% if running %}, every 4s [!document.querySelector('#task-list details[open]')]{% endif %}" hx-swap="outerHTML">
+{% if not tasks %}
+<div class="muted small">{{ t("tasks.empty") }}</div>
+{% else %}
+<div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>{{ t("tasks.name") }}</th><th>{{ t("tasks.schedule") }}</th><th>{{ t("tasks.last_run") }}</th><th>{{ t("tasks.col_status") }}</th><th>{{ t("tasks.enabled") }}</th><th></th></tr></thead>
+    <tbody>
+    {% for task in tasks %}
+    <tr>
+      <td><span class="name">{{ task.name }}</span><div class="mono small muted trunc" style="max-width: 320px" title="{{ task.command }}">{{ task.command }}</div></td>
+      <td class="mono small nowrap">{{ task.schedule }}<div class="muted small">{{ t("tasks.timeout_s", n=task.timeout_s) }}</div></td>
+      <td class="small nowrap">{{ task.last_run_at | ago if task.last_run_at else "—" }}</td>
+      <td>
+        {% if task.running %}<span class="badge info"><span class="spin" style="width: 10px; height: 10px"></span> {{ t("tasks.status.running") }}</span>
+        {% elif task.last_status %}<span class="badge {{ {'ok': 'ok', 'failed': 'err', 'timeout': 'warn'}.get(task.last_status, '') }}">{{ t("tasks.status." ~ task.last_status) }}</span>
+        {% else %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td>
+        <label class="check"><input type="checkbox" {{ "checked" if task.enabled }} {{ "disabled" if not can }} hx-post="/apps/{{ app.id }}/tasks/{{ task.id }}/toggle" hx-swap="none"><span class="sw"></span></label>
+      </td>
+      <td>
+        {% if can %}
+        <div class="actions">
+          <button class="btn sm ghost" hx-post="/apps/{{ app.id }}/tasks/{{ task.id }}/run" hx-swap="none" {{ "disabled" if task.running }}><span class="spin"></span><i class="bi bi-play-fill"></i> {{ t("tasks.run") }}</button>
+          <button class="btn sm danger ghost" title="{{ t('tasks.delete') }}" hx-post="/apps/{{ app.id }}/tasks/{{ task.id }}/delete" hx-swap="none" hx-confirm="{{ t('tasks.delete_confirm', name=task.name) }}"><i class="bi bi-trash"></i></button>
+        </div>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% for task in tasks %}
+<details class="stack" style="margin-top: 10px">
+  <summary class="small"><b>{{ task.name }}</b> <span class="muted">· {{ t("tasks.details") }}</span></summary>
+  {% if can %}
+  <form class="stack" hx-post="/apps/{{ app.id }}/tasks/{{ task.id }}/update" hx-swap="none" x-data="{ sched: {{ task.schedule | jsonattr }} }">
+    <div class="form-grid">
+      <div class="field"><label>{{ t("tasks.name") }}</label><input class="input" name="name" value="{{ task.name }}" maxlength="60" required></div>
+      <div class="field"><label>{{ t("tasks.timeout") }}</label><input class="input mono" name="timeout" type="number" min="60" max="36000" value="{{ task.timeout_s }}" required></div>
+      <div class="field full"><label>{{ t("tasks.command") }}</label><input class="input mono" name="command" maxlength="2000" value="{{ task.command }}" required></div>
+      <div class="field"><label>{{ t("tasks.schedule") }}</label><input class="input mono" name="schedule" x-model="sched" required></div>
+      <div class="field"><label>{{ t("tasks.preset") }}</label>{{ pick("preset", presets, task.schedule, model="sched", label=t("tasks.preset")) }}</div>
+    </div>
+    <div class="row between">
+      <label class="check small"><input type="checkbox" name="enabled" value="1" {{ "checked" if task.enabled }}><span class="sw"></span><span>{{ t("tasks.enabled") }}</span></label>
+      <button class="btn primary sm"><span class="spin"></span><i class="bi bi-check-lg"></i> {{ t("tasks.save") }}</button>
+    </div>
+  </form>
+  {% endif %}
+  <details hx-get="/apps/{{ app.id }}/tasks/{{ task.id }}/runs" hx-trigger="toggle once" hx-target="this" hx-swap="beforeend">
+    <summary class="small"><i class="bi bi-clock-history"></i> {{ t("tasks.history") }}</summary>
+  </details>
+</details>
+{% endfor %}
+{% endif %}
+</div>

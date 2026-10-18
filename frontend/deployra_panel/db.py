@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-JSON_COLUMNS = {"domains", "target", "redirect", "locations", "users", "clients", "lan_subnets", "info"}
+JSON_COLUMNS = {"domains", "target", "redirect", "locations", "users", "clients", "lan_subnets", "info", "login_users"}
 
 
 def now() -> str:

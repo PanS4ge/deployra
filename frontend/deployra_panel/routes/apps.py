@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import secrets
@@ -14,6 +13,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from pydantic import ValidationError
 
+from deployra_common import envfile
 from deployra_common.jobs import Job
 from deployra_common.runtimes import RUNTIMES
 from deployra_common.schemas import AppSpec, VolumeMount
@@ -21,8 +21,8 @@ from deployra_common.schemas import AppSpec, VolumeMount
 from ..context import Panel, get_panel
 from ..deps import current_user, require
 from ..i18n import t
-from ..permissions import Permission
-from ..services import charts, deploy, migrate, relay, resources
+from ..permissions import Permission, has
+from ..services import charts, deploy, env_groups, migrate, relay, resources, scheduled_tasks
 from ..web import redirect, render, templates, toast
 
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -50,20 +50,66 @@ def _lines(text: str) -> list[str]:
     return [line.strip() for line in text.replace("\r\n", "\n").splitlines() if line.strip() and not line.strip().startswith("#")]
 
 
-def _env(text: str) -> dict[str, str]:
-    out = {}
-    for line in _lines(text):
-        key, sep, value = line.partition("=")
-        if not sep:
-            raise ValueError(t("msg.bad_env", line=line))
-        value = value.strip()
-        if len(value) > 1 and value[0] == value[-1] == '"':  # "…" jak w .env — tak pokazujemy wartości wieloliniowe
-            try:
-                value = str(json.loads(value))
-            except ValueError:
-                pass
-        out[key.strip()] = value
-    return out
+ENV_EDITOR_ID = re.compile(r"^[a-z][a-z0-9-]{0,40}$")
+
+
+def _form_rows(form: Any) -> list[dict[str, str]]:
+    """Wiersze edytora KLUCZ / wartość / zakres z formularza (w kolejności wyświetlania)."""
+    keys, values, scopes = form.getlist("env_key"), form.getlist("env_value"), form.getlist("env_scope")
+    return [{
+        "key": str(key), "value": str(values[i]) if i < len(values) else "",
+        "scope": str(scopes[i]) if i < len(scopes) and scopes[i] in envfile.SCOPES else "runtime",
+    } for i, key in enumerate(keys)]  # fmt: skip
+
+
+def _env_from_rows(rows: list[dict[str, str]]) -> tuple[dict[str, str], dict[str, str]]:
+    env: dict[str, str] = {}
+    scopes: dict[str, str] = {}
+    for row in rows:
+        key = row["key"].strip()
+        if not key:  # pusty wiersz (np. dopisany i niewypełniony) — pomijamy
+            continue
+        if not envfile.KEY.match(key):
+            raise ValueError(t("msg.bad_env", line=key))
+        env[key] = row["value"]
+        if row["scope"] in ("build", "both"):
+            scopes[key] = row["scope"]
+        else:
+            scopes.pop(key, None)
+    return env, scopes
+
+
+def env_from_form(form: Any) -> tuple[dict[str, str], dict[str, str]]:
+    """Zmienne aplikacji z edytora: w trybie „.env” z tekstu, w trybie pól z wierszy.
+    Bez `env_mode` przyjmujemy stare pole `env` (tekst .env), żeby stare formularze i skrypty dalej działały."""
+    if "env_mode" not in form and "env" in form:
+        return envfile.parse(str(form.get("env") or ""))
+    if str(form.get("env_mode") or "form") == "raw":
+        return envfile.parse(str(form.get("env_raw") or ""))
+    return _env_from_rows(_form_rows(form))
+
+
+def _rows(env: dict[str, str], scopes: dict[str, str]) -> list[dict[str, str]]:
+    return [{"key": k, "value": v, "scope": scopes.get(k, "runtime")} for k, v in env.items()]
+
+
+def editor_state(eid: str, env: dict[str, str], scopes: dict[str, str], mode: str = "form", text: str | None = None) -> dict[str, Any]:
+    """Stan edytora zmiennych dla szablonu `apps/_env_editor.html`."""
+    return {"id": eid, "mode": mode, "rows": _rows(env, scopes), "text": envfile.dump(env, scopes) if text is None else text}
+
+
+def group_picker(panel: Panel, attached: list[int]) -> list[dict[str, Any]]:
+    """Zestawy do wyboru: najpierw dołączone (w kolejności), potem reszta po nazwie."""
+    groups = {g["id"]: g for g in env_groups.list_groups(panel)}
+    order = [groups[i] for i in attached if i in groups]
+    return order + [g for g in groups.values() if g["id"] not in attached]
+
+
+def _group_ids(form: Any, user: dict, current: list[int]) -> list[int]:
+    """Zestaw zmiennych może zawierać sekrety — dołączać go może tylko ktoś, kto widzi go w ustawieniach."""
+    if not has(user, Permission.ALLOW_SETTINGS):
+        return current
+    return [int(x) for x in form.getlist("env_group") if str(x).isdigit()]
 
 
 def _volumes(text: str) -> list[VolumeMount]:
@@ -106,17 +152,23 @@ def spec_from_form(form: Any, slug: str, existing: AppSpec | None = None) -> tup
     elif kind == "runtime":
         source.update(runtime=get("runtime"), start_command=get("start_command") or None, install_command=get("install_command") or None)
     port = get("container_port")
+    with_container = kind in ("image", "git", "runtime")  # bez kontenera (compose, strona) nie ma wdrożenia bez przestojów
+    zero_downtime = bool(form.get("zero_downtime")) and with_container
+    env, env_scopes = env_from_form(form)
     spec = AppSpec(
         slug=slug,
         source=source,
         endpoint=get("endpoint", "local"),
         container_port=int(port) if port else None,
-        env=_env(str(form.get("env") or "")),
+        env=env,
+        env_scopes=env_scopes,
         volumes=_volumes(str(form.get("volumes") or "")),
         memory_mb=int(get("memory_mb")) if get("memory_mb") else None,
         cpus=float(get("cpus")) if get("cpus") else None,
         domains=domains,
         host_port=existing.host_port if existing else None,  # stały port hosta (np. przejęty kontener) — nie ma go w formularzu
+        zero_downtime=zero_downtime,
+        health_path=get("health_path") if with_container else None,
     )
     if spec.source.kind == "runtime" and not spec.container_port:  # proces w tle nie ma czego wystawiać pod domeną
         spec.domains = []
@@ -240,10 +292,15 @@ def new_app(request: Request, template: str = "", panel: Panel = Depends(get_pan
     prefill = panel.plugins.app_template(template) if template else None
     nodes = _nodes(panel)
     free = {n["id"]: resources.node_free(n["id"]) for n in nodes}
+    try:  # zmienne z szablonu pokazujemy w edytorze jak zwykłe pola
+        env, scopes = envfile.parse((prefill or {}).get("env") or "")
+    except ValueError:
+        env, scopes = {}, {}
     return render(
         request, "apps/new.html", title=t("apps.new"), nodes=nodes, free=free, base_domain=settings.get("base_domain", ""),
         has_cf=bool(settings.get("cloudflare_token")), has_gateway=bool(panel.gateway()), prefill=prefill,
         app_templates=panel.plugins.app_templates(), template=template,
+        enved=editor_state("env", env, scopes), groups=group_picker(panel, []), attached=[],
     )  # fmt: skip
 
 
@@ -259,10 +316,12 @@ async def create_app(request: Request, panel: Panel = Depends(get_panel), user: 
         spec, options = spec_from_form(form, slug)
         if panel.db.get("apps", spec.slug, key="slug"):
             raise ValueError(t("msg.app_exists", slug=spec.slug))
+        group_ids = env_groups.resolve_ids(panel, _group_ids(form, user, []))
         upload = await _save_upload(panel, form.get("file")) if spec.source.kind in ("static", "runtime") else None
         if upload:  # pliki trafiają na węzeł przed pierwszym wdrożeniem — zamiast plików startowych
             await _publish(panel, node, spec.slug, upload)
         app_id = deploy.create_app_row(panel, name or slug, node["id"], spec, options)
+        env_groups.set_attached(panel, app_id, group_ids)
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc), "err", status=400)
     if spec.env.get("DEPLOYRA_PAIR_CODE") == "auto":  # szablon Minecrafta: plugin sparuje się sam przy pierwszym starcie
@@ -598,6 +657,7 @@ async def redeploy(request: Request, app: dict = Depends(_app), panel: Panel = D
 async def rollback(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
              user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
     spec, _ = deploy.load(panel, app)
+    spec = env_groups.effective(panel, app["id"], spec)
     node = panel.node(app["node_id"])
 
     async def work(job: Job) -> Any:
@@ -620,6 +680,7 @@ async def remove(request: Request, app: dict = Depends(_app), panel: Panel = Dep
     from ..services import uptime
 
     uptime.remove_for(panel, "app", app["id"])
+    scheduled_tasks.remove_for_app(panel, app["id"])
     return redirect(request, f"/jobs/{job.id}", t("msg.removing", slug=app["slug"]))
 
 
@@ -642,13 +703,47 @@ async def upload(request: Request, file: UploadFile, app: dict = Depends(_app), 
     return toast(t("msg.published_files", count=count))
 
 
+@router.post("/apps/env-editor")
+async def env_editor(request: Request):
+    """Edytor zmiennych bez zapisu: dodanie / usunięcie wiersza albo przejście między polami a plikiem .env."""
+    query = request.query_params
+    eid = query.get("id") or "env"
+    if not ENV_EDITOR_ID.match(eid):
+        return toast(t("msg.bad_data"), "err", status=400)
+    form = await request.form()
+    mode = str(form.get("env_mode") or "form")
+    text = str(form.get("env_raw") or "")
+    target = query.get("to") if query.get("to") in ("form", "raw") else mode
+    try:
+        if target == "raw":
+            if mode == "form":  # pola → tekst; w trybie pliku tekst zostaje dokładnie taki, jaki był
+                env, scopes = _env_from_rows(_form_rows(form))
+                text = envfile.dump(env, scopes)
+            state = editor_state(eid, {}, {}, "raw", text)
+        elif mode == "raw":  # tekst → pola
+            env, scopes = envfile.parse(text)
+            state = editor_state(eid, env, scopes, "form")
+        else:
+            rows = _form_rows(form)
+            if query.get("drop", "").isdigit() and int(query["drop"]) < len(rows):
+                del rows[int(query["drop"])]
+            if query.get("add"):
+                rows.append({"key": "", "value": "", "scope": "runtime"})
+            state = {"id": eid, "mode": "form", "rows": rows, "text": ""}
+    except ValueError as exc:
+        return toast(str(exc), "err", status=400)
+    return templates.TemplateResponse(request, "apps/_env_editor.html", {"enved": state})
+
+
 @router.get("/apps/{app_id}/edit")
 def edit_page(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
               user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
     spec, options = deploy.load(panel, app)
     settings = panel.db.settings()
+    attached = env_groups.attached_ids(panel, app["id"])
     return render(request, "apps/edit.html", title=t("msg.title_app_settings", name=app["name"]), app=app, spec=spec, options=options,
-                  node=panel.node(app["node_id"]), has_cf=bool(settings.get("cloudflare_token")))  # fmt: skip
+                  node=panel.node(app["node_id"]), has_cf=bool(settings.get("cloudflare_token")),
+                  enved=editor_state("env", spec.env, spec.env_scopes), groups=group_picker(panel, attached), attached=attached)  # fmt: skip
 
 
 @router.post("/apps/{app_id}/edit")
@@ -663,6 +758,7 @@ async def edit(request: Request, app: dict = Depends(_app), panel: Panel = Depen
             options["dns"] = bool(old_options.get("dns"))
         if spec.endpoint != old_spec.endpoint:
             raise ValueError(t("msg.endpoint_change"))
+        group_ids = env_groups.resolve_ids(panel, _group_ids(form, user, env_groups.attached_ids(panel, app["id"])))
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc), "err", status=400)
     changes = _changes(old_spec, spec)
@@ -673,7 +769,8 @@ async def edit(request: Request, app: dict = Depends(_app), panel: Panel = Depen
         response.headers.update({"HX-Retarget": "#edit-confirm", "HX-Reswap": "innerHTML"})
         return response
     panel.db.update("apps", app["id"], name=str(form.get("name") or app["name"])[:60], spec=deploy.store(panel, spec, options),
-                    domains=spec.domains)  # fmt: skip
+                    domains=spec.domains, **deploy.strategy_columns(spec))  # fmt: skip
+    env_groups.set_attached(panel, app["id"], group_ids)  # zestawy wchodzą przy następnym wdrożeniu, bez automatycznego
     if changes:
         if decision == "deploy":
             job = start_deploy(panel, panel.db.get("apps", app["id"]))
@@ -692,8 +789,11 @@ async def edit(request: Request, app: dict = Depends(_app), panel: Panel = Depen
 
 
 def _container_part(spec: AppSpec) -> dict:
-    """Wszystko, co trafia do kontenera (bez domen); puste polecenie [] i brak polecenia to to samo."""
-    data = spec.model_dump(exclude={"domains"})
+    """Wszystko, co trafia do kontenera (bez domen); puste polecenie [] i brak polecenia to to samo.
+
+    Sposób wdrażania (bez przestojów, test zdrowia) działa dopiero przy następnym wdrożeniu — nie pyta „postawić od nowa?”.
+    """
+    data = spec.model_dump(exclude={"domains", "zero_downtime", "health_path"})
     data["source"]["command"] = data["source"].get("command") or None
     return data
 
@@ -764,3 +864,100 @@ async def app_container_action(request: Request, action: str, app: dict = Depend
             panel.db.update("monitors", monitor["id"], status="unknown")
 
     return toast(t("msg.container_" + action) if action in known else action, extra={"app-changed": True, "containers-changed": True})
+
+
+# --- zadania cykliczne (cron w kontenerze aplikacji) ----------------------------------------------
+
+TASKS_CHANGED = {"tasks-changed": True}
+
+
+def _task_presets() -> list[tuple[str, str, str]]:
+    return [
+        ("*/5 * * * *", t("tasks.every.5m"), "*/5 * * * *"),
+        ("0 * * * *", t("tasks.every.hourly"), "@hourly"),
+        ("0 0 * * *", t("tasks.every.daily"), "@daily"),
+        ("0 0 * * 0", t("tasks.every.weekly"), "@weekly"),
+        ("0 0 1 * *", t("tasks.every.monthly"), "@monthly"),
+    ]
+
+
+def _task(panel: Panel, app: dict, task_id: int) -> dict:
+    task = scheduled_tasks.get_task(panel, app["id"], task_id)
+    if not task:
+        raise HTTPException(404, t("tasks.not_found"))
+    return task
+
+
+def _task_list(panel: Panel, app: dict) -> dict:
+    tasks = [{**task, "running": task["id"] in panel.task_runs} for task in scheduled_tasks.list_tasks(panel, app["id"])]
+    return {"tasks": tasks, "running": any(task["running"] for task in tasks)}
+
+
+async def _task_form(request: Request) -> dict:
+    form = await request.form()
+    return scheduled_tasks.clean(str(form.get("name", "")), str(form.get("command", "")), str(form.get("schedule", "")),
+                                 str(form.get("timeout", "")), bool(form.get("enabled")))  # fmt: skip
+
+
+@router.get("/apps/{app_id}/tasks")
+def app_tasks(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+              user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):  # fmt: skip
+    return render(request, "apps/_tasks.html", app=app, presets=_task_presets(), default_timeout=scheduled_tasks.TIMEOUT_DEFAULT,
+                  **_task_list(panel, app))  # fmt: skip
+
+
+@router.get("/apps/{app_id}/tasks/list")
+def app_tasks_list(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                   user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):  # fmt: skip
+    return render(request, "apps/_task_list.html", app=app, presets=_task_presets(), **_task_list(panel, app))
+
+
+# zadanie to dowolne polecenie w kontenerze — te same uprawnienia co terminal
+@router.post("/apps/{app_id}/tasks")
+async def create_task(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                      user: dict = Depends(require(Permission.ALLOW_CONTAINER_TERMINAL))):  # fmt: skip
+    data = await _task_form(request)
+    scheduled_tasks.save(panel, app["id"], data)
+    return toast(t("tasks.created", name=data["name"]), extra=TASKS_CHANGED)
+
+
+@router.post("/apps/{app_id}/tasks/{task_id}/update")
+async def update_task(request: Request, task_id: int, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                      user: dict = Depends(require(Permission.ALLOW_CONTAINER_TERMINAL))):  # fmt: skip
+    _task(panel, app, task_id)
+    data = await _task_form(request)
+    scheduled_tasks.save(panel, app["id"], data, task_id)
+    return toast(t("tasks.updated", name=data["name"]), extra=TASKS_CHANGED)
+
+
+@router.post("/apps/{app_id}/tasks/{task_id}/toggle")
+async def toggle_task(task_id: int, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                      user: dict = Depends(require(Permission.ALLOW_CONTAINER_TERMINAL))):  # fmt: skip
+    task = _task(panel, app, task_id)
+    enabled = 0 if task["enabled"] else 1
+    panel.db.update("scheduled_tasks", task_id, enabled=enabled)
+    return toast(t("tasks.turned_on" if enabled else "tasks.turned_off", name=task["name"]), extra=TASKS_CHANGED)
+
+
+@router.post("/apps/{app_id}/tasks/{task_id}/run")
+async def run_task(task_id: int, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                   user: dict = Depends(require(Permission.ALLOW_CONTAINER_TERMINAL))):  # fmt: skip
+    task = _task(panel, app, task_id)
+    if not scheduled_tasks.start(panel, task_id):
+        return toast(t("tasks.already_running"), "warn", extra=TASKS_CHANGED)
+    return toast(t("tasks.run_started", name=task["name"]), extra=TASKS_CHANGED)
+
+
+@router.post("/apps/{app_id}/tasks/{task_id}/delete")
+async def delete_task(task_id: int, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                      user: dict = Depends(require(Permission.ALLOW_CONTAINER_TERMINAL))):  # fmt: skip
+    task = _task(panel, app, task_id)
+    scheduled_tasks.remove(panel, task_id)
+    return toast(t("tasks.deleted", name=task["name"]), "warn", extra=TASKS_CHANGED)
+
+
+@router.get("/apps/{app_id}/tasks/{task_id}/runs")
+def task_runs(request: Request, task_id: int, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+              user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):  # fmt: skip
+    _task(panel, app, task_id)
+    return render(request, "apps/_task_runs.html", runs=scheduled_tasks.runs(panel, task_id))

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "settings/_tabs.html" %}
+
+<div class="stack">
+  <div class="card">
+    <div class="card-head">
+      <h3><i class="bi bi-collection"></i> {{ t("envg.title") }}</h3>
+    </div>
+    <div class="card-body stack">
+      {% if items %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>{{ t("envg.col_name") }}</th>
+            <th>{{ t("envg.col_count") }}</th>
+            <th>{{ t("envg.col_apps") }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for g in items %}
+          <tr>
+            <td><a href="#envg-{{ g.id }}"><strong>{{ g.name }}</strong></a></td>
+            <td>{{ g.count }}</td>
+            <td>{{ g.apps | join(", ") if g.apps else t("envg.unused") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">{{ t("envg.none") }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% for g in items %}
+  <div class="card" id="envg-{{ g.id }}">
+    <div class="card-head">
+      <h3><i class="bi bi-collection"></i> {{ g.name }}</h3>
+      <form hx-post="/settings/env-groups/{{ g.id }}/delete" hx-confirm="{{ t('envg.delete_confirm', name=g.name) }}" hx-swap="none" style="display: inline">
+        <button class="btn small danger"><i class="bi bi-trash"></i> {{ t("envg.delete") }}</button>
+      </form>
+    </div>
+    <form class="card-body stack" method="post" action="/settings/env-groups/{{ g.id }}">
+      <div>
+        <label class="label">{{ t("envg.name") }}</label>
+        <input class="input" type="text" name="name" value="{{ g.name }}" maxlength="60" required>
+      </div>
+      {% with enved = g.enved %}{% include "apps/_env_editor.html" %}{% endwith %}
+      <div class="row" style="justify-content: flex-end">
+        <button class="btn primary"><i class="bi bi-check-lg"></i> {{ t("envg.save") }}</button>
+      </div>
+    </form>
+  </div>
+  {% endfor %}
+
+  <div class="card">
+    <div class="card-head">
+      <h3><i class="bi bi-plus-lg"></i> {{ t("envg.add_title") }}</h3>
+    </div>
+    <form class="card-body stack" method="post" action="/settings/env-groups">
+      <div>
+        <label class="label">{{ t("envg.name") }}</label>
+        <input class="input" type="text" name="name" placeholder="{{ t('envg.name_placeholder') }}" maxlength="60" required>
+      </div>
+      {% with enved = enved_new %}{% include "apps/_env_editor.html" %}{% endwith %}
+      <div class="row" style="justify-content: flex-end">
+        <button class="btn primary"><i class="bi bi-check-lg"></i> {{ t("envg.submit") }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -24,7 +24,7 @@ router = APIRouter(dependencies=[Depends(current_user)])
 KIND_SLUG = {"hosts": "proxy", "redirects": "redirect", "dead": "dead"}
 SLUG_OF = {v: k for k, v in KIND_SLUG.items()}
 KIND_TITLE = {"proxy": "dashboard.proxy_hosts", "redirect": "proxy.tab_redirects", "dead": "proxy.tab_dead"}
-FLAGS = ("ssl_forced", "http2", "hsts", "hsts_subdomains", "block_exploits", "websockets", "caching", "trust_forwarded_proto", "enabled", "dns")
+FLAGS = ("ssl_forced", "http2", "http3", "hsts", "hsts_subdomains", "block_exploits", "websockets", "caching", "trust_forwarded_proto", "enabled", "dns")
 
 
 def _lines(text: str) -> list[str]:
@@ -345,8 +345,9 @@ async def delete_stream(request: Request, stream_id: int, panel: Panel = Depends
 
 
 @router.get("/proxy/access/new")
-def new_acl(request: Request, user: dict = Depends(require(Permission.ALLOW_PROXY))):
-    return render(request, "proxy/access_form.html", title=t("msg.title_new_acl"), acl={"users": [], "clients": []})
+def new_acl(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_PROXY))):
+    return render(request, "proxy/access_form.html", title=t("msg.title_new_acl"), acl={"users": [], "clients": [], "login_users": []},
+                  panel_users=_panel_users(panel))  # fmt: skip
 
 
 @router.get("/proxy/access/{acl_id}")
@@ -354,7 +355,11 @@ def edit_acl(request: Request, acl_id: int, panel: Panel = Depends(get_panel), u
     acl = panel.db.get("access_lists", acl_id)
     if not acl:
         raise HTTPException(404, t("msg.no_list"))
-    return render(request, "proxy/access_form.html", title=acl["name"], acl=acl)
+    return render(request, "proxy/access_form.html", title=acl["name"], acl=acl, panel_users=_panel_users(panel))
+
+
+def _panel_users(panel: Panel) -> list[dict[str, Any]]:
+    return panel.db.fetchall("SELECT id, email FROM users ORDER BY email")
 
 
 @router.post("/proxy/access/save")
@@ -380,8 +385,15 @@ async def save_acl(request: Request, panel: Panel = Depends(get_panel), user: di
             if directive not in ("allow", "deny"):
                 directive, address = "allow", line
             clients.append(AccessClient(address=address.strip(), directive=directive).model_dump())
-        values = {"name": str(form.get("name") or "lista").strip()[:80], "satisfy_any": int(bool(form.get("satisfy_any"))),
-                  "pass_auth": int(bool(form.get("pass_auth"))), "users": users, "clients": clients}  # fmt: skip
+        deployra = bool(form.get("deployra_login"))
+        satisfy_any = bool(form.get("satisfy_any"))
+        if deployra and users and not satisfy_any:  # hasło Basic + logowanie Deployra tylko w trybie „dowolny warunek”
+            raise ValueError(t("access.login_basic_conflict"))
+        known = {u["id"] for u in panel.db.all("users")}
+        login_users = sorted({int(v) for v in form.getlist("login_users") if str(v).isdigit() and int(v) in known}) if deployra else []
+        values = {"name": str(form.get("name") or "lista").strip()[:80], "satisfy_any": int(satisfy_any),
+                  "pass_auth": int(bool(form.get("pass_auth"))), "users": users, "clients": clients,
+                  "deployra_login": int(deployra), "login_users": login_users}  # fmt: skip
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc), "err", status=400)
     _, result = await save_and_push(panel, "access_lists", acl_id, values)

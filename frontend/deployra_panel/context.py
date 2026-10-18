@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from typing import Any
 
@@ -36,6 +37,7 @@ class Panel:
 
         self.plugins = PluginManager(self, config.plugins_dir)
         self._clients: dict[str, tuple[str, SignedClient]] = {}
+        self.task_runs: dict[int, asyncio.Task] = {}  # przebiegi zadań cyklicznych w toku (ID zadania → zadanie asyncio)
 
     # --- użytkownicy ----------------------------------------------------------------
 

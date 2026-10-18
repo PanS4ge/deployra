@@ -8,7 +8,7 @@
 #   docker logs deployra-gateway   # wyświetli kod parowania dla panelu Deployry
 #
 # Porty na firewallu VPS:
-#   - 80/tcp, 443/tcp (ruch HTTP/HTTPS dla aplikacji)
+#   - 80/tcp, 443/tcp, 443/udp (ruch HTTP/HTTPS dla aplikacji; 443/udp to HTTP/3)
 #   - 51821/tcp (bootstrap/parowanie z panelem)
 #   - 2751/tcp (API zarządzania konfiguracją nginxa, jeśli panel stoi na innej maszynie)
 name: deployra-gateway

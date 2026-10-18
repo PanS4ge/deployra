@@ -53,3 +53,30 @@ def allocate(
 
 def release(state: State, key: str) -> None:
     state.mutate("ports", lambda ports: {k: v for k, v in ports.items() if k != key})
+
+
+# Wdrożenie bez przestojów: port nowej wersji trzymamy pod kluczem `<aplikacja>#next`,
+# żeby nie ruszać przydziału działającej wersji, aż bramka przełączy ruch.
+SPARE = "#next"
+
+
+def allocate_spare(state: State, client: Any, key: str, pool: tuple[int, int], check_host: bool = True) -> int:
+    """Wolny port z puli dla nowej wersji obok działającej (nigdy ten sam, co stary kontener)."""
+    release(state, key + SPARE)  # pozostałość po przerwanym wdrożeniu
+    taken = {int(p) for p in state.get("ports", {}).values()} | docker_ports(client)
+    for port in range(pool[0], pool[1] + 1):
+        if port not in taken and (not check_host or _port_free(port)):
+            state.mutate("ports", lambda ports: {**ports, key + SPARE: port})
+            return port
+    raise RuntimeError(tr("node.no_free_port"))
+
+
+def commit_spare(state: State, key: str) -> None:
+    """Nowa wersja przejmuje port aplikacji (po przełączeniu bramki)."""
+    port = state.get("ports", {}).get(key + SPARE)
+    if port is not None:
+        state.mutate("ports", lambda ports: {**{k: v for k, v in ports.items() if k != key + SPARE}, key: port})
+
+
+def release_spare(state: State, key: str) -> None:
+    release(state, key + SPARE)

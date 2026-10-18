@@ -12,7 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from deployra_common import i18n
-from deployra_common.schemas import AccessList, ProxyState, Site, Stream, Upstream
+from deployra_common.schemas import AccessList, PanelAuth, ProxyState, Site, Stream, Upstream
 
 ROOT = "/etc/nginx/deployra"
 
@@ -122,6 +122,7 @@ def deployra_page() -> str:
 
 
 BAN_CHECK = "if ($deployra_ban) {\n    return 444;\n}"  # zbanowany adres: zamknij połączenie bez odpowiedzi
+ALT_SVC = "add_header Alt-Svc 'h3=\":443\"; ma=86400' always;"  # ogłoszenie HTTP/3 dla klientów (tylko blok 443)
 
 
 def _ind(text: str, level: int = 1) -> str:
@@ -142,7 +143,46 @@ def _upstream_url(up: Upstream) -> str:
     return f"{up.scheme}://{host}:{up.port}{up.path}"
 
 
-def _access_lines(acl: AccessList | None, root: str) -> list[str]:
+def _deployra_lines(auth: PanelAuth | None) -> list[str]:
+    """Logowanie Deployra: podrzędne żądanie do panelu; 401 przekierowuje do logowania."""
+    if auth is None:  # panel nieosiągalny dla bramki: zamknięte, a nie otwarte
+        return ["return 503;"]
+    return [
+        "auth_request /__deployra_auth;",
+        "auth_request_set $deployra_user $upstream_http_x_deployra_user;",
+        "error_page 401 = @deployra_login;",
+    ]
+
+
+def _auth_locations(auth: PanelAuth, root: str) -> str:
+    """Wewnętrzne lokalizacje logowania Deployra (raz na serwer): sprawdzenie, callback tokenu i przekierowanie."""
+    return "\n".join(
+        [
+            "location = /__deployra_auth {",
+            "    internal;",
+            f"    proxy_pass {auth.verify};",
+            "    proxy_method GET;",
+            "    proxy_pass_request_body off;",
+            '    proxy_set_header Content-Length "";',
+            "    proxy_set_header Host $host;",
+            "    proxy_set_header X-Deployra-Host $host;",
+            "    proxy_set_header X-Original-URI $request_uri;",
+            "    proxy_set_header Cookie $http_cookie;",
+            "}",
+            "location = /__deployra_auth/callback {",
+            "    auth_request off;",
+            f"    proxy_pass {auth.callback};",
+            f"    include {root}/snippets/proxy.conf;",
+            "}",
+            # rd: bez query string (nginx nie koduje &), panel sprawdza, czy host należy do listy z logowaniem
+            "location @deployra_login {",
+            f"    return 302 {auth.login}?next=/auth/forward/start?rd=$scheme://$host$uri;",
+            "}",
+        ]
+    )
+
+
+def _access_lines(acl: AccessList | None, root: str, auth: PanelAuth | None = None) -> list[str]:
     if acl is None:
         return []
     lines = []
@@ -154,12 +194,14 @@ def _access_lines(acl: AccessList | None, root: str) -> list[str]:
         lines.append(f"{client.directive} {client.address};")
     if acl.clients and not any(c.address == "all" for c in acl.clients):
         lines.append("deny all;")
-    if acl.users and acl.clients:
+    if acl.deployra_login:
+        lines += _deployra_lines(auth)
+    if (acl.users or acl.deployra_login) and acl.clients:
         lines.append(f"satisfy {'any' if acl.satisfy_any else 'all'};")
     return lines
 
 
-def _proxy_location(path: str, up: Upstream, site: Site, acl_lines: list[str], advanced: str = "") -> str:
+def _proxy_location(path: str, up: Upstream, site: Site, acl_lines: list[str], advanced: str = "", headers: list[str] = ()) -> str:
     body = [f"proxy_pass {_upstream_url(up)};", f"include {ROOT}/snippets/proxy.conf;"]
     body.append(f"proxy_set_header X-Forwarded-Proto {'$deployra_xfp' if site.trust_forwarded_proto else '$scheme'};")
     if site.websockets:
@@ -170,6 +212,7 @@ def _proxy_location(path: str, up: Upstream, site: Site, acl_lines: list[str], a
         body += ["proxy_ssl_server_name on;", "proxy_ssl_name $host;"]
     if site.caching:
         body.append(f"include {ROOT}/snippets/cache.conf;")
+    body += list(headers)  # add_header w lokacji zastępuje ten z bloku serwera (cache.conf), więc nagłówki powtarzamy tutaj
     body += acl_lines
     text = f"location {path} {{\n{_ind(chr(10).join(body))}"
     if advanced.strip():
@@ -177,9 +220,12 @@ def _proxy_location(path: str, up: Upstream, site: Site, acl_lines: list[str], a
     return text + "\n}"
 
 
-def _site_body(site: Site, acl: AccessList | None, root: str) -> str:
+def _site_body(site: Site, acl: AccessList | None, root: str, auth: PanelAuth | None = None, headers: list[str] = ()) -> str:
     parts = []
-    acl_lines = _access_lines(acl, root)
+    acl_lines = _access_lines(acl, root, auth)
+    login = acl is not None and acl.deployra_login and site.kind != "dead"
+    if login and auth is not None:
+        parts.append(_auth_locations(auth, root))
     if site.kind == "proxy":
         parts.append(f"client_max_body_size {site.max_body_mb}m;")
         if site.block_exploits:
@@ -187,11 +233,14 @@ def _site_body(site: Site, acl: AccessList | None, root: str) -> str:
         assert site.upstream is not None
         if site.advanced.strip():
             parts.append(site.advanced.strip())
+        # nagłówek z loginem tylko przy proxy_pass; bez logowania czyścimy go, żeby klient nie mógł go podrobić
+        user_header = "$deployra_user" if login and auth is not None else '""'
+        proxy_acl = acl_lines + [f"proxy_set_header X-Deployra-User {user_header};"]
         custom_paths = {loc.path for loc in site.locations}
         if "/" not in custom_paths:
-            parts.append(_proxy_location("/", site.upstream, site, acl_lines))
+            parts.append(_proxy_location("/", site.upstream, site, proxy_acl, headers=list(headers)))
         for loc in site.locations:
-            parts.append(_proxy_location(loc.path, loc.upstream, site, acl_lines, loc.advanced))
+            parts.append(_proxy_location(loc.path, loc.upstream, site, proxy_acl, loc.advanced, list(headers)))
     elif site.kind == "redirect":
         assert site.redirect is not None
         r = site.redirect
@@ -209,10 +258,14 @@ def _site_body(site: Site, acl: AccessList | None, root: str) -> str:
     return "\n".join(parts)
 
 
-def render_site(site: Site, acl: AccessList | None, cert_ready: bool, ipv6: bool, root: str = ROOT) -> str:
+def render_site(
+    site: Site, acl: AccessList | None, cert_ready: bool, ipv6: bool, root: str = ROOT, auth: PanelAuth | None = None, http3: bool = False
+) -> str:
+    """`http3` = nginx ma moduł HTTP/3; listen quic tylko gdy host ma opcję, certyfikat i moduł są na miejscu."""
     names = " ".join(site.domains)
     out = [f"# Deployra: {site.kind} #{site.id} — {names}"]
-    body = _site_body(site, acl, root)
+    quic = http3 and site.http3 and cert_ready and site.cert_id is not None
+    body = _site_body(site, acl, root, auth)
     http_lines = _listen(80, ipv6) + [f"server_name {names};", BAN_CHECK, f"include {root}/snippets/acme.conf;"]
     if cert_ready and site.ssl_forced:
         http_lines.append("location / {\n    return 301 https://$host$request_uri;\n}")
@@ -223,6 +276,8 @@ def render_site(site: Site, acl: AccessList | None, cert_ready: bool, ipv6: bool
         tls = _listen(443, ipv6, "ssl")
         if site.http2:
             tls.append("http2 on;")
+        if quic:  # reuseport jest tylko na serwerze domyślnym (nginx przyjmuje go raz na adres:port)
+            tls += _listen(443, ipv6, "quic") + ["http3 on;"]
         tls += [
             f"server_name {names};",
             BAN_CHECK,
@@ -236,7 +291,9 @@ def render_site(site: Site, acl: AccessList | None, cert_ready: bool, ipv6: bool
                 + ("; includeSubDomains" if site.hsts_subdomains else "")
                 + '" always;'
             )
-        tls.append(body)
+        if quic:
+            tls.append(ALT_SVC)
+        tls.append(_site_body(site, acl, root, auth, [ALT_SVC] if quic else []))
         out.append("server {\n" + _ind("\n".join(tls)) + "\n}")
     return "\n\n".join(out) + "\n"
 
@@ -259,7 +316,7 @@ def render_stream(stream: Stream, ipv6: bool, bans: list[str] = ()) -> str:
     return "\n\n".join(out) + "\n"
 
 
-def render_default(ipv6: bool, page: str, root: str = ROOT, default_upstream: Upstream | None = None) -> str:
+def render_default(ipv6: bool, page: str, root: str = ROOT, default_upstream: Upstream | None = None, quic: bool = False) -> str:
     if page == "passthrough" and default_upstream:
         target_url = _upstream_url(default_upstream)
         body = (
@@ -271,7 +328,10 @@ def render_default(ipv6: bool, page: str, root: str = ROOT, default_upstream: Up
     else:
         body = "return 404;"
     http = _listen(80, ipv6, default=True) + ["server_name _;", BAN_CHECK, f"include {root}/snippets/acme.conf;"]
-    https = _listen(443, ipv6, "ssl", default=True) + ["server_name _;", "ssl_reject_handshake on;"]
+    https = _listen(443, ipv6, "ssl", default=True)
+    if quic:  # UDP: nieznany SNI trafia tu i dostaje odrzucenie, zamiast certyfikatu pierwszego hosta
+        https += _listen(443, ipv6, "quic reuseport", default=True)
+    https += ["server_name _;", "ssl_reject_handshake on;"]
     return (
         "# Deployra: serwer domyślny\n"
         "server {\n" + _ind("\n".join(http)) + f"\n    location / {{\n        {body}\n    }}\n}}\n\n"
@@ -279,16 +339,23 @@ def render_default(ipv6: bool, page: str, root: str = ROOT, default_upstream: Up
     )
 
 
-def render(state: ProxyState, cert_ready: Callable[[int], bool], ipv6: bool, root: str = ROOT, bans: list[str] = ()) -> dict[str, str]:
+def render(
+    state: ProxyState, cert_ready: Callable[[int], bool], ipv6: bool, root: str = ROOT, bans: list[str] = (), http3: bool = False
+) -> dict[str, str]:
     """Zwraca {ścieżka względna: treść} dla katalogów http/, stream/, access/."""
     acls = {acl.id: acl for acl in state.access_lists}
-    files: dict[str, str] = {"http/00-bans.conf": render_bans(list(bans)), "http/00-default.conf": render_default(ipv6, state.default_page, root, state.default_upstream)}
+    # serwer domyślny dostaje listen quic (z reuseport) tylko wtedy, gdy któryś host faktycznie ma HTTP/3
+    quic = http3 and any(s.enabled and s.http3 and s.cert_id is not None and cert_ready(s.cert_id) for s in state.sites)
+    files: dict[str, str] = {
+        "http/00-bans.conf": render_bans(list(bans)),
+        "http/00-default.conf": render_default(ipv6, state.default_page, root, state.default_upstream, quic=quic),
+    }
     for site in state.sites:
         if not site.enabled:
             continue
         acl = acls.get(site.access_list_id) if site.access_list_id is not None else None
         ready = site.cert_id is not None and cert_ready(site.cert_id)
-        files[f"http/site-{site.id}.conf"] = render_site(site, acl, ready, ipv6, root)
+        files[f"http/site-{site.id}.conf"] = render_site(site, acl, ready, ipv6, root, state.panel_auth, http3=http3)
     for stream in state.streams:
         if stream.enabled:
             files[f"stream/stream-{stream.id}.conf"] = render_stream(stream, ipv6, list(bans))

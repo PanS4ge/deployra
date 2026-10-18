@@ -179,6 +179,52 @@
     </form>
   </div>
 
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-database-check"></i> {{ t("backup.db_title") }}</h3></div>
+    <div class="card-body stack">
+      {% for s in db_schedules %}
+      <div class="stack" style="border-top: 1px solid var(--border); padding-top: 14px">
+        <div class="row" style="justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px">
+          <div>
+            <strong><i class="bi bi-database"></i> {{ s.container }}</strong>
+            <span class="small dim">· {{ s.node_name or "—" }}</span>
+            {% if s.id in db_running %}<span class="badge"><span class="spin"></span> {{ t("backup.db_running") }}</span>{% endif %}
+          </div>
+          <div class="row" style="gap: 6px">
+            <button type="button" class="btn sm" hx-post="/settings/backup/db/{{ s.id }}/run" hx-swap="none"><i class="bi bi-play-fill"></i> {{ t("backup.db_run") }}</button>
+            <button type="button" class="btn sm ghost" hx-get="/settings/backup/db/{{ s.id }}/files" hx-target="#db-files-{{ s.id }}" hx-swap="innerHTML"><i class="bi bi-files"></i> {{ t("backup.db_files") }}</button>
+            <button type="button" class="btn sm danger ghost" hx-post="/settings/backup/db/{{ s.id }}/delete" hx-confirm="{{ t('backup.db_delete_confirm') }}" hx-swap="none"><i class="bi bi-trash"></i> {{ t("backup.db_delete") }}</button>
+          </div>
+        </div>
+        <div class="small dim">
+          {{ t("backup.db_last") }}: {% if s.last_run %}{{ s.last_run|dt }}{% else %}{{ t("backup.db_never") }}{% endif %}
+          {% if s.last_status == "ok" %} · <span class="badge ok"><i class="bi bi-check-circle"></i> {{ t("backup.status_ok") }}</span>{% if s.last_size %} · {{ s.last_size|bytes }}{% endif %}
+          {% elif s.last_status == "error" %} · <span class="badge err"><i class="bi bi-exclamation-circle"></i> {{ t("backup.status_err") }}</span> <span>{{ s.last_message }}</span>{% endif %}
+        </div>
+        <form class="row" method="post" action="/settings/backup/db/{{ s.id }}" style="gap: 8px; flex-wrap: wrap; align-items: flex-end">
+          <div>
+            <label class="label">{{ t("backup.db_cron") }}</label>
+            <input class="input" type="text" name="cron" value="{{ s.cron }}" required style="width: 180px">
+          </div>
+          <div>
+            <label class="label">{{ t("backup.db_retention") }}</label>
+            <input class="input" type="number" name="retention" min="1" max="365" value="{{ s.retention }}" style="width: 100px">
+          </div>
+          <label class="checkbox-label" style="padding-bottom: 8px">
+            <input type="checkbox" name="enabled" value="1" {% if s.enabled %}checked{% endif %}>
+            <span>{{ t("backup.db_enabled") }}</span>
+          </label>
+          <button type="submit" class="btn sm"><i class="bi bi-check-lg"></i> {{ t("backup.db_save") }}</button>
+        </form>
+        <div id="db-files-{{ s.id }}"></div>
+      </div>
+      {% else %}
+      <div class="small dim">{{ t("backup.db_none") }}</div>
+      {% endfor %}
+      <div hx-get="/settings/backup/db/picker" hx-trigger="load" hx-swap="innerHTML"></div>
+    </div>
+  </div>
+
   <div class="grid grid-2">
     <div class="card">
       <div class="card-head"><h3><i class="bi bi-download"></i> {{ t("backup.export") }}</h3></div>

@@ -17,7 +17,7 @@ POWER, LOGS, CONSOLE, FILES, DEPLOY, ENV = "P", "L", "C", "F", "D", "E"
 ALL = (POWER, LOGS, CONSOLE, FILES, DEPLOY, ENV)
 APP_ONLY = {FILES, DEPLOY, ENV}  # przy samym kontenerze nie ma plików ani wdrożeń
 NAMES = {POWER: "power", LOGS: "logs", CONSOLE: "console", FILES: "files", DEPLOY: "deploy", ENV: "env"}
-SCOPED_PREFIXES = ("/servers", "/logout", "/language", "/login", "/static/", "/healthz")
+SCOPED_PREFIXES = ("/servers", "/logout", "/language", "/login", "/static/", "/healthz", "/auth/forward")
 
 
 def clean_perms(perms: str, kind: str) -> str:

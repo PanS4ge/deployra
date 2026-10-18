@@ -104,6 +104,7 @@ def install(ctx: Any, job: Job, spec: AppSpec, client: Any) -> None:
     )
     job.log(tr("node.runtime.installing", image=image))
     job.log(f"$ {command}")
+    # instalacja dostaje wszystkie zmienne (build i both — jako zmienne budowania, runtime — jak dotąd)
     cid = client.api.create_container(
         image, command=["sh", "-c", command], name=name, environment=env_for(runtime, spec.container_port, spec.env),
         working_dir=runtime.mount, labels={docker_svc.SYSTEM_LABEL: "install", docker_svc.APP_LABEL: spec.slug}, host_config=host_config,
@@ -145,6 +146,6 @@ def container_extras(cfg: Any, spec: AppSpec) -> dict[str, Any]:
     return {
         "command": ["sh", "-c", (spec.source.start_command or runtime.start).strip()],
         "working_dir": runtime.mount,
-        "env": env_for(runtime, spec.container_port, spec.env),
+        "env": env_for(runtime, spec.container_port, spec.runtime_env()),
         "volumes": [_mount(cfg, spec, runtime), *spec.volumes],
     }

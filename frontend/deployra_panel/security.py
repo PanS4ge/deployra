@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import os
 import secrets
 import threading
@@ -29,7 +31,12 @@ class Sealer:
                 os.chmod(key_path, 0o600)
             except OSError:
                 pass
-        self._aes = AESGCM(key_path.read_bytes())
+        self._key = key_path.read_bytes()
+        self._aes = AESGCM(self._key)
+
+    def derive(self, purpose: str) -> bytes:
+        """Osobny klucz do podpisów (HMAC) dla danego celu — nie ten sam co do szyfrowania sekretów."""
+        return hmac.new(self._key, b"deployra:" + purpose.encode(), hashlib.sha256).digest()
 
     def seal(self, value: str | bytes | None) -> str | None:
         if value is None or value == "":

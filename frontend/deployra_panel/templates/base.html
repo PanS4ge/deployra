@@ -9,12 +9,12 @@
   <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
   <link rel="alternate icon" href="/static/img/favicon.ico" sizes="any">
   <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-  <link rel="stylesheet" href="/static/css/cosmos.css?v={{ VERSION }}">
+  <link rel="stylesheet" href="{{ asset("css/cosmos.css") }}">
   {% block head %}{% endblock %}
   <script>window.I18N = {{ JS_I18N() | tojson }};</script>
   <script src="/static/vendor/htmx.min.js"></script>
   <script src="/static/vendor/htmx-sse.min.js"></script>
-  <script src="/static/js/app.js?v={{ VERSION }}" defer></script>
+  <script src="{{ asset("js/app.js") }}" defer></script>
   <script src="/static/vendor/alpine.min.js" defer></script>
 </head>
 <body hx-boost="true" x-data="{ nav: false }">

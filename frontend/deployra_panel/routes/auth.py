@@ -6,7 +6,7 @@ import re
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import Response
+from fastapi.responses import PlainTextResponse, RedirectResponse, Response
 
 from deployra_common.passwords import hash_password, verify_password
 
@@ -15,6 +15,7 @@ from ..db import now
 from ..i18n import LANG_COOKIE, catalog, lang, t
 from ..permissions import Permission
 from ..security import SESSION_COOKIE
+from ..services import forward_auth
 from ..web import redirect, render, toast
 
 router = APIRouter()
@@ -36,7 +37,7 @@ def start_session(request: Request, response: Response, panel: Panel, user_id: i
 @router.get("/login")
 def login_page(request: Request, next: str = "/", panel: Panel = Depends(get_panel)):
     if request.state.user:
-        return redirect(request, "/")
+        return redirect(request, next if next.startswith(forward_auth.START_PATH) else "/")
     return render(request, "auth/login.html", title=t("auth.title_login"), next=next if next.startswith("/") and not next.startswith("//") else "/")
 
 
@@ -60,6 +61,49 @@ async def login(
     target = next if next.startswith("/") and not next.startswith("//") else "/"
     response = redirect(request, target)
     start_session(request, response, panel, user["id"])
+    return response
+
+
+# --- logowanie Deployra przed aplikacją (forward auth, patrz services/forward_auth.py) -----------
+
+
+@router.api_route("/auth/forward", methods=["GET", "HEAD"])
+def forward_verify(request: Request, panel: Panel = Depends(get_panel)):
+    """Bramka (auth_request): 204 z X-Deployra-User, gdy ciasteczko jest ważne i konto ma dostęp; inaczej 401."""
+    host = forward_auth.hostname(request.headers.get("x-deployra-host"))
+    user = forward_auth.authorize(panel, host, forward_auth.cookie_user(panel, request.cookies.get(forward_auth.FORWARD_COOKIE), host))
+    headers = {"Cache-Control": "no-store"}
+    if not user:
+        return Response(status_code=401, headers=headers)
+    return Response(status_code=204, headers={**headers, "X-Deployra-User": user["email"]})
+
+
+@router.get("/auth/forward/start")
+def forward_start(request: Request, rd: str = "", panel: Panel = Depends(get_panel)):
+    """Zalogowany użytkownik → jednorazowy token i powrót na host aplikacji (przez callback bramki)."""
+    user = request.state.user
+    if not user or request.state.is_token_auth:
+        return redirect(request, "/login")
+    target = forward_auth.start(panel, user["id"], rd)
+    if not target:
+        return redirect(request, "/", t("auth.forward_failed"), "err")
+    return RedirectResponse(target, status_code=302)
+
+
+@router.get("/auth/forward/callback")
+def forward_callback(request: Request, token: str = "", panel: Panel = Depends(get_panel)):
+    """Host aplikacji: wymienia token na ciasteczko dla tego hosta (bez ciasteczka panelu) i wraca do rd."""
+    host = forward_auth.hostname(request.headers.get("host"))
+    taken = forward_auth.consume_token(panel, token, host)
+    user = forward_auth.authorize(panel, host, taken[0]) if taken else None
+    if not taken or not user:
+        return PlainTextResponse(t("auth.forward_expired"), status_code=401, headers={"Cache-Control": "no-store"})
+    response = RedirectResponse(f"https://{host}{taken[1]}", status_code=302)
+    response.set_cookie(
+        forward_auth.FORWARD_COOKIE, forward_auth.make_cookie(panel, user["id"], host), max_age=panel.config.session_hours * 3600,
+        httponly=True, secure=True, samesite="lax", path="/",
+    )  # fmt: skip
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 

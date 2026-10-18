@@ -133,7 +133,20 @@
       "static_ready": "✔ Static site ready (site server on port {port})",
       "stopping_previous": "Stopping the previous version ({image})",
       "target": "Target: {name} (CT {vmid}, IP {ip})",
-      "unknown_kind": "unknown app kind: {kind}"
+      "unknown_kind": "unknown app kind: {kind}",
+      "handover_starting": "Starting {name} from {image} (port {host_port} → {port}) next to the running version",
+      "health_wait": "Checking the new version's health: {url}",
+      "health_running": "✔ New version is running",
+      "health_ok": "✔ New version answers (HTTP {status})",
+      "health_timeout": "✖ New version does not answer {url} within {timeout} s (last response: {last})",
+      "health_no_answer": "no answer",
+      "handover_kept": "The old version stays and keeps serving traffic — nothing changed",
+      "handover_ready": "New version ready — switching the gateway to port {host_port}",
+      "handover_stale": "Removing a leftover from an interrupted deploy ({name})",
+      "handover_grace": "Traffic already goes to the new version — waiting {seconds} s for old connections to finish",
+      "handover_done": "✔ Switched — the app runs on port {host_port}",
+      "handover_aborted": "Deploy aborted — removing the new version, the old one keeps running",
+      "no_handover": "no deploy waiting for a switch"
     },
     "bad_code": "wrong pairing code",
     "bad_key": "invalid key",
@@ -155,7 +168,8 @@
     "git": {
       "no_commit": "couldn't read the commit",
       "no_dockerfile": "no {file} in the repository",
-      "path_escape": "path {path} escapes the repository"
+      "path_escape": "path {path} escapes the repository",
+      "build_args": "build arguments (values hidden): {names}"
     },
     "job": {
       "adopt": "Adopting a container as {name}",
@@ -167,7 +181,9 @@
       "stack_deploy": "Stack {name}: deploy",
       "stack_remove": "Stack {name}: removal",
       "start": "Start {name}",
-      "stop": "Stop {name}"
+      "stop": "Stop {name}",
+      "handover_commit": "Switching {name} to the new version",
+      "handover_abort": "Aborting the deploy of {name}"
     },
     "join_rejected": "the gateway rejected the join ({code}): {error}",
     "log": {
@@ -318,7 +334,12 @@
       "relative_paths": "paths in the repository must be relative",
       "static_local": "static sites and file-based apps run on the node host's Docker (local endpoint)",
       "volume_source": "source: a volume name or an absolute path",
-      "wildcard_dns": "a wildcard certificate needs the DNS challenge (Cloudflare)"
+      "wildcard_dns": "a wildcard certificate needs the DNS challenge (Cloudflare)",
+      "bad_env_line": "invalid line in the .env file: {line}",
+      "bad_env_quote": "unclosed quote in the .env file near: {line}",
+      "bad_env_scope": "unknown variable scope: {scope}",
+      "bad_url": "invalid panel address",
+      "bad_health_path": "the health check path must start with / (e.g. /up)"
     },
     "upd": {
       "bad_version": "invalid version number: {value}",

@@ -133,7 +133,20 @@
       "static_ready": "✔ Strona statyczna gotowa (serwer stron na porcie {port})",
       "stopping_previous": "Zatrzymuję poprzednią wersję ({image})",
       "target": "Cel: {name} (CT {vmid}, IP {ip})",
-      "unknown_kind": "nieznany rodzaj aplikacji: {kind}"
+      "unknown_kind": "nieznany rodzaj aplikacji: {kind}",
+      "handover_starting": "Uruchamiam {name} z {image} (port {host_port} → {port}) obok działającej wersji",
+      "health_wait": "Sprawdzam zdrowie nowej wersji: {url}",
+      "health_running": "✔ Nowa wersja działa",
+      "health_ok": "✔ Nowa wersja odpowiada (HTTP {status})",
+      "health_timeout": "✖ Nowa wersja nie odpowiada na {url} w ciągu {timeout} s (ostatnia odpowiedź: {last})",
+      "health_no_answer": "brak odpowiedzi",
+      "handover_kept": "Stara wersja zostaje i dalej obsługuje ruch — nic nie zmieniono",
+      "handover_ready": "Nowa wersja gotowa — przełączam bramkę na port {host_port}",
+      "handover_stale": "Usuwam pozostałość po przerwanym wdrożeniu ({name})",
+      "handover_grace": "Ruch już idzie do nowej wersji — czekam {seconds} s na zakończenie starych połączeń",
+      "handover_done": "✔ Przełączono — aplikacja działa na porcie {host_port}",
+      "handover_aborted": "Wdrożenie przerwane — usuwam nową wersję, stara działa dalej",
+      "no_handover": "brak wdrożenia czekającego na przełączenie"
     },
     "bad_code": "zły kod parowania",
     "bad_key": "zły klucz",
@@ -155,7 +168,8 @@
     "git": {
       "no_commit": "nie udało się odczytać commita",
       "no_dockerfile": "brak pliku {file} w repozytorium",
-      "path_escape": "ścieżka {path} wychodzi poza repozytorium"
+      "path_escape": "ścieżka {path} wychodzi poza repozytorium",
+      "build_args": "argumenty budowania (wartości ukryte): {names}"
     },
     "job": {
       "adopt": "Przejęcie kontenera jako {name}",
@@ -167,7 +181,9 @@
       "stack_deploy": "Stack {name}: wdrożenie",
       "stack_remove": "Stack {name}: usuwanie",
       "start": "Start {name}",
-      "stop": "Zatrzymanie {name}"
+      "stop": "Zatrzymanie {name}",
+      "handover_commit": "Przełączenie {name} na nową wersję",
+      "handover_abort": "Wycofanie wdrożenia {name}"
     },
     "join_rejected": "bramka odrzuciła dołączenie ({code}): {error}",
     "log": {
@@ -318,7 +334,12 @@
       "relative_paths": "ścieżki w repozytorium muszą być względne",
       "static_local": "strony statyczne i aplikacje z plików działają na Dockerze hosta węzła (endpoint local)",
       "volume_source": "źródło: nazwa wolumenu albo ścieżka absolutna",
-      "wildcard_dns": "certyfikat wildcard wymaga wyzwania DNS (Cloudflare)"
+      "wildcard_dns": "certyfikat wildcard wymaga wyzwania DNS (Cloudflare)",
+      "bad_env_line": "nieprawidłowa linia w pliku .env: {line}",
+      "bad_env_quote": "niezamknięty cudzysłów w pliku .env przy: {line}",
+      "bad_env_scope": "nieznany zakres zmiennej: {scope}",
+      "bad_url": "nieprawidłowy adres panelu",
+      "bad_health_path": "ścieżka sprawdzania zdrowia musi zaczynać się od / (np. /up)"
     },
     "upd": {
       "bad_version": "nieprawidłowy numer wersji: {value}",

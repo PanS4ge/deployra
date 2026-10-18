@@ -15,7 +15,10 @@
     "satisfy_any": "One condition is enough (IP <b>or</b> password)",
     "users": "Users (login:password, one per line)",
     "users_hint": "Existing users are shown without passwords — keep just the login to keep the password. Passwords are stored as apr1 hashes.",
-    "users_placeholder": "admin:secret-password"
+    "users_placeholder": "admin:secret-password",
+    "deployra_login": "Require Deployra login",
+    "login_basic_conflict": "Deployra login with passwords needs the “any condition” mode",
+    "login_users": "Allowed Deployra users (empty = everyone)"
   },
   "adopt": {
     "as_app": "As an app",
@@ -65,7 +68,8 @@
       "node_disk": "Node: disk",
       "node_offline": "Node not responding",
       "node_ram": "Node: RAM",
-      "update_available": "New Deployra version"
+      "update_available": "New Deployra version",
+      "db_backup_failed": "Database dump failed"
     },
     "rule_column": "Rule",
     "rules": "Rules",
@@ -93,7 +97,8 @@
       "node_disk": "{name}: running out of disk",
       "node_offline": "{name}: node not responding",
       "node_ram": "{name}: running out of RAM",
-      "update_available": "Deployra {name} is available"
+      "update_available": "Deployra {name} is available",
+      "db_backup_failed": "Database dump {name} failed"
     }
   },
   "analytics": {
@@ -253,7 +258,8 @@
         "volumes": "volumes",
         "memory_mb": "RAM limit",
         "cpus": "CPU limit",
-        "slug": "slug"
+        "slug": "slug",
+        "env_scopes": "variable scopes"
       }
     },
     "node_missing": "The app's node no longer exists.",
@@ -267,12 +273,28 @@
     "icon_upload": "Upload",
     "icon_bad_url": "Enter an http(s) image address",
     "icon_bad_file": "Icon: PNG, JPG, WEBP, GIF or ICO up to 256 KB",
-    "icon_saved": "Icon saved"
+    "icon_saved": "Icon saved",
+    "env_add": "Add variable",
+    "env_group_down": "Move down",
+    "env_group_none": "No sets. Add them in Settings → Shared variables.",
+    "env_group_up": "Move up",
+    "env_groups": "Shared variables",
+    "env_key": "Key",
+    "env_mode_form": "Fields",
+    "env_mode_raw": ".env file",
+    "env_none": "No variables.",
+    "env_remove": "Remove variable",
+    "env_scope": "Scope",
+    "env_value": "Value",
+    "health_path": "Health check path",
+    "zero_downtime": "Zero downtime"
   },
   "auth": {
     "login": "Sign in",
     "title_login": "Sign in",
-    "title_setup": "Welcome to Deployra"
+    "title_setup": "Welcome to Deployra",
+    "forward_expired": "The sign-in link has expired or is invalid. Open the application again.",
+    "forward_failed": "Could not open the application. Check the account and the address."
   },
   "backup": {
     "download": "Download backup",
@@ -317,7 +339,41 @@
     "secrets_included": "Include tokens and credentials in backup",
     "test_btn": "Test connection",
     "run_now": "Run backup now",
-    "save_btn": "Save configuration"
+    "save_btn": "Save configuration",
+    "db_add": "Add schedule",
+    "db_already_running": "A dump of this database is already running",
+    "db_container": "Database (container · node)",
+    "db_cron": "Schedule (cron)",
+    "db_delete": "Delete",
+    "db_delete_confirm": "Delete the schedule? Stored dumps stay in the storage.",
+    "db_deleted": "Schedule deleted",
+    "db_download": "Download",
+    "db_enabled": "Enabled",
+    "db_err_container": "Invalid container name",
+    "db_err_cron": "Invalid schedule: {value}",
+    "db_err_file": "Invalid dump name",
+    "db_err_missing": "The schedule does not exist",
+    "db_err_node": "The node does not exist",
+    "db_err_not_database": "The container is not a database",
+    "db_err_retention": "Dumps to keep: 1 to 365",
+    "db_failed": "Database dump {name} failed: {error}",
+    "db_files": "Dumps",
+    "db_last": "Last run",
+    "db_never": "never",
+    "db_no_containers": "No running databases on the nodes",
+    "db_no_files": "No stored dumps",
+    "db_none": "No schedules",
+    "db_restore": "Restore",
+    "db_restore_confirm": "Restoring will overwrite the data in the {container} database. Continue?",
+    "db_restore_failed": "Restore failed (code {code}): {output}",
+    "db_restored": "Dump restored to {container}",
+    "db_retention": "Dumps to keep",
+    "db_run": "Run now",
+    "db_running": "running",
+    "db_save": "Save",
+    "db_saved": "Schedule saved",
+    "db_started": "Dump started in the background",
+    "db_title": "Database backups"
   },
   "registries": {
     "title": "Private Docker Registries",
@@ -514,7 +570,10 @@
     "start": "▶ Deploying {slug} ({kind}) to node {node}",
     "domains_job": "Domains {slug}",
     "domains_only": "Domain change for {slug}: only the gateway, DNS and certificate — the container keeps running",
-    "unexposing": "🌐 The app has no domain — removing its proxy host"
+    "unexposing": "🌐 The app has no domain — removing its proxy host",
+    "handover_abort_failed": "Could not remove the new version on the node: {error}",
+    "handover_kept": "Switch failed — the previous version (port {port}) keeps serving traffic",
+    "handover_switch": "Switching the gateway to the new version (port {port})"
   },
   "dns": {
     "api_token": "API token",
@@ -1277,7 +1336,8 @@
     "tab_registries": "Docker Registries",
     "tab_mcp": "MCP Server & API",
     "tab_risky": "Danger zone",
-    "tab_updates": "Updates"
+    "tab_updates": "Updates",
+    "tab_env_groups": "Shared variables"
   },
   "mcp": {
     "server_status": "MCP Server (Model Context Protocol)",
@@ -1951,5 +2011,89 @@
     "delete_confirm": "Remove {name} from the panel? The server and its files stay.",
     "deleted": "Removed {name}",
     "link_app": "Connect to the Minecraft panel"
+  },
+  "env": {
+    "scope": {
+      "both": "Build and container",
+      "build": "Build only",
+      "runtime": "Container only"
+    }
+  },
+  "envg": {
+    "add_title": "New set",
+    "col_apps": "Used by",
+    "col_count": "Variables",
+    "col_name": "Name",
+    "delete": "Delete",
+    "delete_confirm": "Delete the set {name}? Apps using it lose its variables on their next deploy.",
+    "msg": {
+      "deleted": "Set deleted",
+      "missing": "No such set",
+      "name_required": "Enter a set name (up to 60 characters)",
+      "name_taken": "A set named “{name}” already exists",
+      "saved": "Set saved. Redeploy the apps that use it to apply the changes."
+    },
+    "name": "Set name",
+    "name_placeholder": "e.g. Database",
+    "none": "No sets yet. Add the first one below.",
+    "save": "Save set",
+    "submit": "Add set",
+    "title": "Shared variables",
+    "unused": "unused",
+    "vars_count": "{count} vars"
+  },
+  "tasks": {
+    "add": "Add task",
+    "already_running": "The task is already running",
+    "bad_command": "Enter a command (up to 2000 characters)",
+    "bad_name": "Enter a task name (up to 60 characters)",
+    "bad_schedule": "Invalid schedule: five cron fields or @hourly, @daily, @weekly, @monthly",
+    "bad_timeout": "Timeout must be between 60 and 36000 seconds",
+    "cancelled": "Interrupted",
+    "col_status": "Status",
+    "command": "Command",
+    "created": "Task {name} added",
+    "delete": "Delete",
+    "delete_confirm": "Delete task {name} together with its history?",
+    "deleted": "Task {name} deleted",
+    "details": "Details",
+    "duration": "Duration",
+    "empty": "No tasks",
+    "enabled": "Enabled",
+    "every": {
+      "5m": "Every 5 minutes",
+      "daily": "Daily at midnight",
+      "hourly": "Hourly",
+      "monthly": "Monthly, on the 1st",
+      "weekly": "Weekly, Sunday at midnight"
+    },
+    "exit": "Exit code",
+    "history": "History",
+    "last_run": "Last run",
+    "name": "Name",
+    "no_app": "The app does not exist",
+    "no_container": "No running container for {name}",
+    "not_found": "No such task",
+    "output": "Output",
+    "preset": "Preset schedule",
+    "run": "Run now",
+    "run_started": "Task {name} started",
+    "run_timeout": "Timed out",
+    "runs_empty": "No runs yet",
+    "save": "Save",
+    "schedule": "Schedule",
+    "started": "Started",
+    "status": {
+      "failed": "Failed",
+      "ok": "OK",
+      "running": "Running",
+      "timeout": "Timed out"
+    },
+    "timeout": "Timeout (s)",
+    "timeout_s": "timeout {n} s",
+    "title": "Tasks",
+    "turned_off": "Task {name} disabled",
+    "turned_on": "Task {name} enabled",
+    "updated": "Task {name} saved"
   }
 }

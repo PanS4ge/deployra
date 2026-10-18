@@ -52,7 +52,7 @@
             :aria-expanded="open" aria-haspopup="listbox" {% if label %}aria-label="{{ label }}"{% endif %}>
       <span class="pick-label" x-text="label()">{{ (options | selectattr(0, "equalto", value | string) | first or [value, value])[1] }}</span><i class="bi bi-chevron-down"></i>
     </button>
-    <div class="pick-menu" role="listbox" x-show="open" x-cloak>
+    <div class="pick-menu" role="listbox" x-show="open" x-cloak style="display: none">
       {% for o in options %}
       <button type="button" role="option" class="pick-opt" data-value="{{ o[0] }}" data-label="{{ o[1] }}" :class="value === $el.dataset.value && 'on'" @click="choose($el)">
         <span class="pick-main">{{ o[1] }}</span>{% if o[2] %}<span class="pick-hint">{{ o[2] }}</span>{% endif %}
