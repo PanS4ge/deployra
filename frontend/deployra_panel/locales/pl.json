@@ -1814,7 +1814,56 @@
     "need_content": "podaj wartość rekordu",
     "bad_ip": "{value} to nie jest adres IP pasujący do typu rekordu",
     "edge": "bramka brzegowa",
-    "known_hint": "ten adres to serwer Deployry"
+    "known_hint": "ten adres to serwer Deployry",
+    "type_hint": {
+      "A": "adres IPv4",
+      "AAAA": "adres IPv6",
+      "CNAME": "alias innej nazwy",
+      "MX": "serwer poczty",
+      "TXT": "tekst: SPF, DMARC, weryfikacja",
+      "SRV": "usługa na porcie (Minecraft, SIP…)",
+      "CAA": "kto może wystawiać certyfikaty",
+      "NS": "przekazanie subdomeny",
+      "PTR": "odwrotny DNS"
+    },
+    "templates": "Szablony",
+    "tpl": {
+      "web": "Strona WWW",
+      "minecraft": "Minecraft Java",
+      "bedrock": "Minecraft Bedrock",
+      "mail": "Własny serwer poczty",
+      "google": "Google Workspace",
+      "nomail": "Domena bez poczty",
+      "letsencrypt": "Tylko Let's Encrypt"
+    },
+    "tpl_records": {
+      "web": "A nazwa → IP · CNAME www → nazwa",
+      "minecraft": "A nazwa → IP (bez proxy) · SRV _minecraft._tcp, gdy port ≠ 25565",
+      "bedrock": "A nazwa → IP (bez proxy) · port gry 19132/udp",
+      "mail": "A mail → IP · MX @ → mail.{zone} · TXT SPF · TXT _dmarc",
+      "google": "MX @ → smtp.google.com · TXT SPF · TXT _dmarc",
+      "nomail": "TXT v=spf1 -all · TXT _dmarc p=reject",
+      "letsencrypt": "CAA issue letsencrypt.org · CAA issuewild letsencrypt.org"
+    },
+    "tpl_ip": "Adres IP serwera",
+    "tpl_add": "Dodaj rekordy",
+    "srv_service": "Usługa",
+    "srv_proto": "Protokół",
+    "srv_weight": "Waga",
+    "srv_target": "Cel (host)",
+    "caa_tag": "Znacznik",
+    "caa": {
+      "issue": "certyfikaty",
+      "issuewild": "certyfikaty *.",
+      "iodef": "adres do zgłoszeń"
+    },
+    "bad_number": "{field}: liczba od {low} do {high}",
+    "bad_host": "{value} to nie jest poprawna nazwa hosta",
+    "bad_srv": "SRV: podaj usługę (np. minecraft) i protokół tcp/udp",
+    "bad_template": "nieznany szablon",
+    "notify_template": "{user}: szablon DNS „{template}” — {records}",
+    "template_partial": "Dodano {done}, nie udało się: {failed}",
+    "template_done": "Dodano rekordy: {count}"
   },
   "mc": {
     "not_found": "Nie ma takiego serwera Minecraft",

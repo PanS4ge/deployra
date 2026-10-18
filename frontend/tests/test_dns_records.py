@@ -96,3 +96,57 @@ def test_record_name_and_ttl_helpers():
 
 def test_dns_page_without_token(admin):
     assert "/settings/dns" in admin.get("/dns", headers={"HX-Request": ""}).text
+
+
+def test_payload_srv_caa_and_validation():
+    import pytest
+
+    srv = dns_records.payload({"type": "SRV", "name": "mc", "service": "minecraft", "proto": "tcp", "port": "25566", "target": "mc.example.com",
+                               "priority": "0", "weight": "5", "ttl": "300"}, "example.com")  # fmt: skip
+    assert srv["name"] == "_minecraft._tcp.mc.example.com" and srv["data"] == {"priority": 0, "weight": 5, "port": 25566, "target": "mc.example.com"}
+    edited = dns_records.payload({"name": "_minecraft._tcp.mc.example.com", "port": "25567", "target": "mc.example.com"}, "example.com", "SRV")
+    assert edited["name"] == "_minecraft._tcp.mc.example.com" and edited["data"]["port"] == 25567  # edycja nie dokleja prefiksu drugi raz
+    caa = dns_records.payload({"type": "CAA", "name": "@", "tag": "issue", "value": "letsencrypt.org"}, "example.com")
+    assert caa == {"type": "CAA", "ttl": 1, "data": {"flags": 0, "tag": "issue", "value": "letsencrypt.org"}, "name": "example.com"}
+    assert dns_records.payload({"type": "NS", "name": "dev", "content": "ns1.example.net."}, "example.com")["content"] == "ns1.example.net"
+    for bad in ({"type": "SRV", "name": "mc", "service": "x y", "port": "1", "target": "a.b"}, {"type": "SRV", "name": "mc", "service": "mc", "port": "70000", "target": "a.b"},
+                {"type": "CNAME", "name": "x", "content": "not a host!"}, {"type": "CAA", "name": "@", "tag": "evil", "value": "x"}, {"type": "HINFO", "name": "x", "content": "y"}):  # fmt: skip
+        with pytest.raises(ValueError):
+            dns_records.payload(bad, "example.com")
+    assert dns_records.summary(srv) == "mc.example.com:25566"
+
+
+def test_dns_templates_create_records(admin, monkeypatch):
+    panel = admin.app.state.panel
+    created = []
+
+    def handler(request):
+        if request.method == "POST":
+            body = json.loads(request.content)
+            created.append(body)
+            if body["type"] == "TXT" and body["name"].startswith("_dmarc"):
+                return httpx.Response(400, json={"success": False, "errors": [{"message": "record already exists"}]})
+            return httpx.Response(200, json={"success": True, "result": {"id": str(len(created)), **body}})
+        return httpx.Response(200, json={"success": True, "result": [ZONE], "result_info": {}})
+
+    panel.db.set_setting("cloudflare_token", panel.sealer.seal("token"))
+    monkeypatch.setattr(dns, "client", lambda p: dns.Cloudflare("token", transport=httpx.MockTransport(handler)))
+    base = {"zone": "z1", "zone_name": "example.com"}
+
+    ok = admin.post("/dns/templates", data={**base, "template": "minecraft", "name": "mc", "ip": "203.0.113.7", "port": "25570"})
+    assert ok.status_code == 200 and "dns-changed" in ok.headers["HX-Trigger"]
+    assert [(r["type"], r["name"]) for r in created] == [("A", "mc.example.com"), ("SRV", "_minecraft._tcp.mc.example.com")]
+    assert created[0].get("proxied") is False and created[1]["data"]["port"] == 25570  # gra nie przejdzie przez proxy Cloudflare
+
+    created.clear()
+    web = admin.post("/dns/templates", data={**base, "template": "web", "name": "@", "ip": "203.0.113.7", "proxied": "1"})
+    assert web.status_code == 200 and [(r["type"], r["name"], r.get("content")) for r in created] == [
+        ("A", "example.com", "203.0.113.7"), ("CNAME", "www.example.com", "example.com")]
+    created.clear()
+    mail = admin.post("/dns/templates", data={**base, "template": "mail", "ip": "203.0.113.9"})
+    assert mail.status_code == 200 and "nie udało" in json.loads(mail.headers["HX-Trigger"])["toast"]["message"]  # jeden rekord już był
+    assert [r["type"] for r in created] == ["A", "MX", "TXT", "TXT"]
+
+    created.clear()
+    assert admin.post("/dns/templates", data={**base, "template": "minecraft", "name": "mc", "ip": "nie-ip"}).status_code == 400
+    assert not created  # błąd walidacji — nic nie trafia do Cloudflare

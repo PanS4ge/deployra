@@ -78,6 +78,29 @@
     });
   });
 
+  // ---------- Lista wyboru w stylu Deployry (makro `pick`) ----------
+  document.addEventListener("alpine:init", () => {
+    Alpine.data("pick", (initial) => ({
+      open: false,
+      value: String(initial ?? ""),
+      options() { return [...this.$root.querySelectorAll(".pick-opt")]; },
+      label() {
+        const found = this.options().find((o) => o.dataset.value === this.value);
+        return found ? found.dataset.label : this.value;
+      },
+      choose(el) {
+        this.value = el.dataset.value;
+        this.open = false;
+        this.$nextTick(() => this.$root.querySelector("input[type=hidden]").dispatchEvent(new Event("change", { bubbles: true })));
+      },
+      move(step) {
+        const opts = this.options();
+        const index = Math.max(0, Math.min(opts.length - 1, opts.findIndex((o) => o.dataset.value === this.value) + step));
+        if (opts[index]) this.value = opts[index].dataset.value;
+      },
+    }));
+  });
+
   // ---------- Lista aplikacji: wyszukiwarka, filtr stanu, sortowanie (kolejność przez CSS `order`) ----------
   document.addEventListener("alpine:init", () => {
     Alpine.data("appList", (items) => {

@@ -1,3 +1,5 @@
+{% from "_macros.html" import pick %}
+{% set ttl_options = [] %}{% for s in ttls %}{% set _ = ttl_options.append((s | string, ttl_text(s), "")) %}{% endfor %}
 {% if error %}
 <div class="card-body"><div class="callout err"><i class="bi bi-cloud-slash"></i><div class="small">{{ error }}</div></div></div>
 {% elif not rows %}
@@ -15,7 +17,7 @@
         <td class="mono"><span class="name">{{ short }}</span>{% if short != "@" and short != r.name %}<span class="muted small">.{{ zone_name }}</span>{% endif %}</td>
         <td class="mono small" style="max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" title="{{ r.content }}">
           {% if known.get(r.content) %}<span class="badge ok" title="{{ t('dnsrec.known_hint') }}"><i class="bi bi-hdd-network"></i> {{ known[r.content] | join(" · ") }}</span> {% endif %}
-          {% if r.type == "MX" %}<span class="muted">{{ r.priority }}</span> {% endif %}{{ r.content }}
+          {% if r.type in ("MX", "SRV") %}<span class="muted">{{ r.priority }}</span> {% endif %}{{ r.content }}
         </td>
         <td>{% if r.type in proxiable %}<i class="bi {{ 'bi-cloud-fill' if r.proxied else 'bi-cloud' }}" style="color: {{ '#f6821f' if r.proxied else 'var(--muted, #888)' }}" title="{{ t('dnsrec.proxied') }}"></i>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="small nowrap">{{ ttl_text(r.ttl) }}</td>
@@ -45,9 +47,20 @@
           <form class="row" style="gap: 8px; flex-wrap: wrap" hx-post="/dns/records/{{ r.id }}" hx-swap="none">
             <input type="hidden" name="zone" value="{{ zone_id }}"><input type="hidden" name="zone_name" value="{{ zone_name }}">
             <input type="hidden" name="type" value="{{ r.type }}"><input type="hidden" name="name" value="{{ r.name }}">
-            {% if r.type == "MX" %}<input class="input" style="width: 90px" name="priority" type="number" min="0" max="65535" value="{{ r.priority }}" aria-label="{{ t('dnsrec.priority') }}">{% endif %}
+            {% set d = r.data or {} %}
+            {% if r.type in ("MX", "SRV") %}<input class="input mono" style="width: 90px" name="priority" inputmode="numeric" value="{{ d.priority if r.type == 'SRV' else r.priority }}" aria-label="{{ t('dnsrec.priority') }}" title="{{ t('dnsrec.priority') }}">{% endif %}
+            {% if r.type == "SRV" %}
+            <input class="input mono" style="width: 80px" name="weight" inputmode="numeric" value="{{ d.weight }}" aria-label="{{ t('dnsrec.srv_weight') }}" title="{{ t('dnsrec.srv_weight') }}">
+            <input class="input mono" style="width: 100px" name="port" inputmode="numeric" value="{{ d.port }}" aria-label="Port" title="Port">
+            <input class="input mono" style="flex: 1; min-width: 200px" name="target" value="{{ d.target }}" required aria-label="{{ t('dnsrec.srv_target') }}">
+            {% elif r.type == "CAA" %}
+            <input type="hidden" name="flags" value="{{ d.flags or 0 }}">
+            <div style="width: 140px">{{ pick("tag", [("issue", "issue", ""), ("issuewild", "issuewild", ""), ("iodef", "iodef", "")], d.tag or "issue", label=t("dnsrec.caa_tag")) }}</div>
+            <input class="input mono" style="flex: 1; min-width: 200px" name="value" value="{{ d.value }}" required aria-label="{{ t('dnsrec.content') }}">
+            {% else %}
             <input class="input mono" style="flex: 1; min-width: 220px" name="content" value="{{ r.content }}" required aria-label="{{ t('dnsrec.content') }}">
-            <select class="input" style="width: auto" name="ttl" aria-label="TTL">{% for s in ttls %}<option value="{{ s }}" {{ "selected" if s == r.ttl }}>{{ ttl_text(s) }}</option>{% endfor %}</select>
+            {% endif %}
+            <div style="width: 120px">{{ pick("ttl", ttl_options, r.ttl, label="TTL") }}</div>
             {% if r.type in proxiable %}<label class="check"><input type="checkbox" name="proxied" value="1" {{ "checked" if r.proxied }}><span class="sw"></span><span>Proxy</span></label>{% endif %}
             <button class="btn sm primary"><span class="spin"></span><i class="bi bi-check2"></i> {{ t("common.save") }}</button>
             <button type="button" class="btn sm ghost" @click="edit = false">{{ t("common.cancel") }}</button>

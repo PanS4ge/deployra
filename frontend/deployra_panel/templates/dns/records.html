@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import pick %}
 {% block content %}
 {% if not has_token %}
 <div class="callout"><i class="bi bi-cloud"></i><div>{{ t("dnsrec.no_token") }} <a href="/settings/dns">{{ t("dnsrec.settings_link") }}</a></div></div>
@@ -9,31 +10,77 @@
 {% else %}
 <div class="card" x-data="{ q: '' }">
   <div class="card-head row" style="gap: 10px; flex-wrap: wrap">
-    <select class="input" style="max-width: 260px" onchange="location.href = '/dns?zone=' + this.value" aria-label="{{ t('dnsrec.zone') }}">
-      {% for z in zones %}<option value="{{ z.id }}" {{ "selected" if z.id == zone.id }}>{{ z.name }}</option>{% endfor %}
-    </select>
+    {% set zone_options = [] %}{% for z in zones %}{% set _ = zone_options.append((z.id, z.name, "")) %}{% endfor %}
+    <div style="width: 260px" @change="location.href = '/dns?zone=' + encodeURIComponent($event.target.value)">{{ pick("zone", zone_options, zone.id, label=t("dnsrec.zone")) }}</div>
     <input class="input" style="max-width: 320px" placeholder="{{ t('dnsrec.search') }}" x-model="q">
   </div>
   <div hx-get="/dns/records?zone={{ zone.id | urlencode }}&name={{ zone.name | urlencode }}" hx-trigger="load, dns-changed from:body" hx-swap="innerHTML">
     <div class="card-body muted">…</div>
   </div>
   {% if has(user, P.ALLOW_PROXY) %}
-  <details class="card-body" style="border-top: 1px solid var(--border)" x-data="{ type: 'A' }">
+  {% set type_options = [] %}{% for k in types %}{% set _ = type_options.append((k, k, t("dnsrec.type_hint." ~ k))) %}{% endfor %}
+  {% set ttl_options = [] %}{% for s in ttls %}{% set _ = ttl_options.append((s | string, ttl_text(s), "")) %}{% endfor %}
+  <details class="card-body" style="border-top: 1px solid var(--border)">
     <summary class="small" style="cursor: pointer"><i class="bi bi-plus-lg"></i> {{ t("dnsrec.add") }}</summary>
-    <form class="stack" style="margin-top: 12px" hx-post="/dns/records" hx-swap="none" hx-on::after-request="if (event.detail.successful) this.reset()">
+
+    <div style="margin-top: 12px" x-data="{ tpl: '' }">
+      <div class="tpl-chips">
+        <span class="small muted" style="align-self: center">{{ t("dnsrec.templates") }}:</span>
+        {% for id, icon, fields in templates %}
+        <button type="button" class="chip" :class="tpl === '{{ id }}' && 'active'" @click="tpl = tpl === '{{ id }}' ? '' : '{{ id }}'"><i class="bi bi-{{ icon }}"></i> {{ t("dnsrec.tpl." ~ id) }}</button>
+        {% endfor %}
+      </div>
+      {% for id, icon, fields in templates %}
+      <form class="tpl-form stack" x-show="tpl === '{{ id }}'" x-cloak hx-post="/dns/templates" hx-swap="none">
+        <input type="hidden" name="zone" value="{{ zone.id }}"><input type="hidden" name="zone_name" value="{{ zone.name }}"><input type="hidden" name="template" value="{{ id }}">
+        <div class="small mono muted">{{ t("dnsrec.tpl_records." ~ id, zone=zone.name) }}</div>
+        {% if fields %}
+        <div class="form-grid">
+          {% if "name" in fields %}<div class="field"><label>{{ t("dnsrec.name") }}</label><input class="input mono" name="name" value="{{ 'mc' if id in ('minecraft', 'bedrock') else '@' }}"></div>{% endif %}
+          {% if "ip" in fields %}<div class="field"><label>{{ t("dnsrec.tpl_ip") }}</label><input class="input mono" name="ip" value="{{ gateway_ip or '' }}" required></div>{% endif %}
+          {% if "port" in fields %}<div class="field"><label>Port</label><input class="input mono" name="port" inputmode="numeric" value="25565"></div>{% endif %}
+        </div>
+        {% endif %}
+        <div class="row between">
+          {% if "proxied" in fields %}<label class="check"><input type="checkbox" name="proxied" value="1" checked><span class="sw"></span><span>{{ t("dnsrec.proxied") }}</span></label>{% else %}<span></span>{% endif %}
+          <button class="btn primary sm"><span class="spin"></span><i class="bi bi-plus-lg"></i> {{ t("dnsrec.tpl_add") }}</button>
+        </div>
+      </form>
+      {% endfor %}
+    </div>
+
+    <form class="stack" style="margin-top: 16px" hx-post="/dns/records" hx-swap="none" x-data="{ type: 'A' }" hx-on::after-request="if (event.detail.successful) this.reset()">
       <input type="hidden" name="zone" value="{{ zone.id }}">
       <input type="hidden" name="zone_name" value="{{ zone.name }}">
       <div class="form-grid">
-        <div class="field"><label>{{ t("dnsrec.type") }}</label>
-          <select class="input" name="type" x-model="type">{% for k in types %}<option>{{ k }}</option>{% endfor %}</select></div>
+        <div class="field"><label>{{ t("dnsrec.type") }}</label>{{ pick("type", type_options, "A", model="type", label=t("dnsrec.type")) }}</div>
         <div class="field"><label>{{ t("dnsrec.name") }}</label><input class="input mono" name="name" placeholder="{{ t('dnsrec.name_placeholder') }}" required></div>
-        <div class="field full"><label>{{ t("dnsrec.content") }}</label><input class="input mono" name="content" value="{{ gateway_ip or '' }}" required></div>
-        <div class="field"><label>TTL</label>
-          <select class="input" name="ttl">{% for s in ttls %}<option value="{{ s }}">{{ ttl_text(s) }}</option>{% endfor %}</select></div>
-        <div class="field" x-show="type === 'MX'" x-cloak><label>{{ t("dnsrec.priority") }}</label><input class="input" name="priority" type="number" min="0" max="65535" value="10"></div>
+        <template x-if="!['SRV', 'CAA'].includes(type)">
+          <div class="field full"><label>{{ t("dnsrec.content") }}</label>
+            <input class="input mono" name="content" value="{{ gateway_ip or '' }}" required :placeholder="{A: '203.0.113.10', AAAA: '2001:db8::1', CNAME: 'app.{{ zone.name }}', MX: 'mail.{{ zone.name }}', TXT: 'v=spf1 mx ~all', NS: 'ns1.example.net', PTR: 'host.{{ zone.name }}'}[type]"></div>
+        </template>
+        <template x-if="type === 'SRV'">
+          <div class="field full form-grid" style="grid-template-columns: repeat(auto-fill, minmax(120px, 1fr))">
+            <div class="field"><label>{{ t("dnsrec.srv_service") }}</label><input class="input mono" name="service" placeholder="minecraft" required></div>
+            <div class="field"><label>{{ t("dnsrec.srv_proto") }}</label>{{ pick("proto", [("tcp", "TCP", ""), ("udp", "UDP", ""), ("tls", "TLS", "")], "tcp") }}</div>
+            <div class="field"><label>Port</label><input class="input mono" name="port" inputmode="numeric" placeholder="25565" required></div>
+            <div class="field"><label>{{ t("dnsrec.srv_weight") }}</label><input class="input mono" name="weight" inputmode="numeric" value="5"></div>
+            <div class="field" style="grid-column: span 2"><label>{{ t("dnsrec.srv_target") }}</label><input class="input mono" name="target" placeholder="mc.{{ zone.name }}" required></div>
+          </div>
+        </template>
+        <template x-if="type === 'CAA'">
+          <div class="field full form-grid">
+            <div class="field"><label>{{ t("dnsrec.caa_tag") }}</label>{{ pick("tag", [("issue", "issue", t("dnsrec.caa.issue")), ("issuewild", "issuewild", t("dnsrec.caa.issuewild")), ("iodef", "iodef", t("dnsrec.caa.iodef"))], "issue") }}</div>
+            <div class="field"><label>{{ t("dnsrec.content") }}</label><input class="input mono" name="value" placeholder="letsencrypt.org" required></div>
+            <input type="hidden" name="flags" value="0">
+          </div>
+        </template>
+        <div class="field"><label>TTL</label>{{ pick("ttl", ttl_options, "1", label="TTL") }}</div>
+        <div class="field" x-show="['MX', 'SRV'].includes(type)" x-cloak><label>{{ t("dnsrec.priority") }}</label><input class="input mono" name="priority" inputmode="numeric" :value="type === 'MX' ? 10 : 0"></div>
       </div>
       <div class="row between">
         <label class="check" x-show="['A', 'AAAA', 'CNAME'].includes(type)"><input type="checkbox" name="proxied" value="1"><span class="sw"></span><span>{{ t("dnsrec.proxied") }}</span></label>
+        <span x-show="!['A', 'AAAA', 'CNAME'].includes(type)"></span>
         <button class="btn"><span class="spin"></span><i class="bi bi-plus-lg"></i> {{ t("common.add") }}</button>
       </div>
     </form>

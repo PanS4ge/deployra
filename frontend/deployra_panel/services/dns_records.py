@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import ipaddress
+import re
 from collections.abc import Callable
 from typing import Any
 
 from ..i18n import t
 from .dns import DnsError
 
-TYPES = ("A", "AAAA", "CNAME", "TXT", "MX")
+TYPES = ("A", "AAAA", "CNAME", "MX", "TXT", "SRV", "CAA", "NS", "PTR")
 PROXIABLE = ("A", "AAAA", "CNAME")
+STRUCTURED = ("SRV", "CAA")  # Cloudflare przyjmuje je jako pola `data`, nie `content`
+CAA_TAGS = ("issue", "issuewild", "iodef")
+HOSTNAME = re.compile(r"^(?=.{1,253}$)([A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9])?\.?$")
 TTLS = (1, 60, 300, 3600, 86400)  # 1 = automatycznie (Cloudflare)
 CONTAINER_KINDS = ("image", "git", "runtime")  # te mają jeden kontener `app-<slug>`
 
@@ -32,30 +36,137 @@ def full_name(name: str, zone: str) -> str:
     return name if name == zone or name.endswith("." + zone) else f"{name}.{zone}"
 
 
+def _int(form: Any, key: str, default: int, low: int = 0, high: int = 65535) -> int:
+    raw = str(form.get(key) or "").strip()
+    if not raw:
+        return default
+    if not raw.isdigit() or not low <= int(raw) <= high:
+        raise ValueError(t("dnsrec.bad_number", field=key, low=low, high=high))
+    return int(raw)
+
+
+def _host(value: str, zone: str) -> str:
+    """Cel rekordu (CNAME, MX, SRV, NS, PTR): pełna nazwa hosta; `@` = sama strefa."""
+    value = value.strip().rstrip(".")
+    if value == "@":
+        return zone
+    if not HOSTNAME.match(value):
+        raise ValueError(t("dnsrec.bad_host", value=value))
+    return value
+
+
 def payload(form: Any, zone: str, kind: str | None = None) -> dict[str, Any]:
-    """Dane z formularza → treść rekordu dla Cloudflare (z podstawową walidacją)."""
+    """Dane z formularza → rekord dla Cloudflare (z walidacją pól danego typu)."""
     kind = (kind or str(form.get("type") or "")).upper()
     if kind not in TYPES:
         raise ValueError(t("dnsrec.bad_type"))
+    ttl = int(form.get("ttl") or 1) if str(form.get("ttl") or "1").isdigit() else 1
+    data: dict[str, Any] = {"type": kind, "ttl": ttl if ttl in TTLS else 1}
     content = str(form.get("content") or "").strip()
-    if not content:
-        raise ValueError(t("dnsrec.need_content"))
-    if kind in ("A", "AAAA"):
-        try:
-            address = ipaddress.ip_address(content)
-        except ValueError:
-            raise ValueError(t("dnsrec.bad_ip", value=content)) from None
-        if (address.version == 6) != (kind == "AAAA"):
-            raise ValueError(t("dnsrec.bad_ip", value=content))
-    ttl = int(form.get("ttl") or 1)
-    data: dict[str, Any] = {"type": kind, "content": content, "ttl": ttl if ttl in TTLS else 1}
+    if kind == "SRV":
+        data["data"] = {"priority": _int(form, "priority", 0), "weight": _int(form, "weight", 5), "port": _int(form, "port", 0, 1),
+                        "target": _host(str(form.get("target") or content), zone)}  # fmt: skip
+    elif kind == "CAA":
+        tag = str(form.get("tag") or "issue")
+        value = str(form.get("value") or content).strip().strip('"')
+        if tag not in CAA_TAGS or not value:
+            raise ValueError(t("dnsrec.need_content"))
+        data["data"] = {"flags": _int(form, "flags", 0, 0, 255), "tag": tag, "value": value}
+    else:
+        if not content:
+            raise ValueError(t("dnsrec.need_content"))
+        if kind in ("A", "AAAA"):
+            try:
+                address = ipaddress.ip_address(content)
+            except ValueError:
+                raise ValueError(t("dnsrec.bad_ip", value=content)) from None
+            if (address.version == 6) != (kind == "AAAA"):
+                raise ValueError(t("dnsrec.bad_ip", value=content))
+        elif kind in ("CNAME", "MX", "NS", "PTR"):
+            content = _host(content, zone)
+        elif kind == "TXT" and len(content) > 2048:
+            raise ValueError(t("dnsrec.need_content"))
+        data["content"] = content
     if kind in PROXIABLE:
         data["proxied"] = bool(form.get("proxied"))
     if kind == "MX":
-        data["priority"] = int(form.get("priority") or 10)
+        data["priority"] = _int(form, "priority", 10)
     if "name" in form:
-        data["name"] = full_name(str(form.get("name") or ""), zone)
+        name = full_name(str(form.get("name") or ""), zone)
+        if kind == "SRV" and not form.get("service") and name.startswith("_"):
+            pass  # edycja istniejącego rekordu: nazwa już ma postać _usługa._protokół.nazwa
+        elif kind == "SRV":  # _usługa._protokół.nazwa, np. _minecraft._tcp.mc.example.com
+            service = str(form.get("service") or "").strip().lstrip("_")
+            proto = str(form.get("proto") or "tcp").strip().lstrip("_")
+            if not re.fullmatch(r"[A-Za-z0-9-]{1,40}", service) or proto not in ("tcp", "udp", "tls"):
+                raise ValueError(t("dnsrec.bad_srv"))
+            name = f"_{service}._{proto}.{name}"
+        data["name"] = name
     return data
+
+
+def summary(data: dict[str, Any]) -> str:
+    """Krótki opis wartości rekordu do powiadomień."""
+    if "content" in data:
+        return str(data["content"])
+    d = data.get("data") or {}
+    if data.get("type") == "SRV":
+        return f"{d.get('target')}:{d.get('port')}"
+    return f"{d.get('flags')} {d.get('tag')} {d.get('value')}"
+
+
+# --- szablony: kilka rekordów naraz ---------------------------------------------------------------
+
+
+def _form(**values: Any) -> dict[str, Any]:
+    return {k: v for k, v in values.items() if v is not None}
+
+
+def template_records(template: str, params: dict[str, str], zone: str) -> list[dict[str, Any]]:
+    """Rekordy szablonu jako dane formularza (przechodzą tę samą walidację co pojedynczy rekord)."""
+    ip = (params.get("ip") or "").strip()
+    sub = (params.get("name") or "").strip() or "@"
+    host = full_name(sub, zone)
+    proxied = "1" if params.get("proxied") else None
+    v6 = ":" in ip
+    if template == "web":
+        return [_form(type="AAAA" if v6 else "A", name=sub, content=ip, proxied=proxied),
+                _form(type="CNAME", name="www" if sub == "@" else f"www.{sub}", content=host, proxied=proxied)]  # fmt: skip
+    if template == "minecraft":
+        port = (params.get("port") or "25565").strip()
+        records = [_form(type="AAAA" if v6 else "A", name=sub, content=ip)]  # Cloudflare nie przepuszcza ruchu gry — bez proxy
+        if port != "25565":  # inny port: SRV pozwala wpisać w grze samą domenę
+            records.append(_form(type="SRV", name=sub, service="minecraft", proto="tcp", priority="0", weight="5", port=port, target=host))
+        return records
+    if template == "bedrock":
+        return [_form(type="AAAA" if v6 else "A", name=sub, content=ip)]
+    if template == "mail":
+        mail_host = full_name("mail", zone)
+        return [_form(type="AAAA" if v6 else "A", name="mail", content=ip),
+                _form(type="MX", name="@", content=mail_host, priority="10"),
+                _form(type="TXT", name="@", content="v=spf1 mx ~all"),
+                _form(type="TXT", name="_dmarc", content=f"v=DMARC1; p=quarantine; rua=mailto:postmaster@{zone}")]  # fmt: skip
+    if template == "google":
+        return [_form(type="MX", name="@", content="smtp.google.com", priority="1"),
+                _form(type="TXT", name="@", content="v=spf1 include:_spf.google.com ~all"),
+                _form(type="TXT", name="_dmarc", content=f"v=DMARC1; p=none; rua=mailto:postmaster@{zone}")]  # fmt: skip
+    if template == "nomail":  # domena bez poczty: nikt nie wyśle maili „od” niej
+        return [_form(type="TXT", name="@", content="v=spf1 -all"), _form(type="TXT", name="_dmarc", content="v=DMARC1; p=reject; sp=reject")]
+    if template == "letsencrypt":
+        return [_form(type="CAA", name="@", flags="0", tag="issue", value="letsencrypt.org"),
+                _form(type="CAA", name="@", flags="0", tag="issuewild", value="letsencrypt.org")]  # fmt: skip
+    raise ValueError(t("dnsrec.bad_template"))
+
+
+TEMPLATES = (  # (id, ikona, pola formularza)
+    ("web", "globe2", ("name", "ip", "proxied")),
+    ("minecraft", "controller", ("name", "ip", "port")),
+    ("bedrock", "phone", ("name", "ip")),
+    ("mail", "envelope", ("ip",)),
+    ("google", "google", ()),
+    ("nomail", "envelope-slash", ()),
+    ("letsencrypt", "shield-lock", ()),
+)
 
 
 def _target_text(target: dict | None, nodes: dict[int, dict]) -> str:

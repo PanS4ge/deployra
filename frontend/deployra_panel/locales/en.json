@@ -1814,7 +1814,56 @@
     "need_content": "enter the record value",
     "bad_ip": "{value} isn't an IP address matching the record type",
     "edge": "edge gateway",
-    "known_hint": "this address is a Deployra server"
+    "known_hint": "this address is a Deployra server",
+    "type_hint": {
+      "A": "IPv4 address",
+      "AAAA": "IPv6 address",
+      "CNAME": "alias of another name",
+      "MX": "mail server",
+      "TXT": "text: SPF, DMARC, verification",
+      "SRV": "service on a port (Minecraft, SIP…)",
+      "CAA": "who may issue certificates",
+      "NS": "delegate a subdomain",
+      "PTR": "reverse DNS"
+    },
+    "templates": "Templates",
+    "tpl": {
+      "web": "Website",
+      "minecraft": "Minecraft Java",
+      "bedrock": "Minecraft Bedrock",
+      "mail": "Own mail server",
+      "google": "Google Workspace",
+      "nomail": "Domain without mail",
+      "letsencrypt": "Let's Encrypt only"
+    },
+    "tpl_records": {
+      "web": "A name → IP · CNAME www → name",
+      "minecraft": "A name → IP (no proxy) · SRV _minecraft._tcp when port ≠ 25565",
+      "bedrock": "A name → IP (no proxy) · game port 19132/udp",
+      "mail": "A mail → IP · MX @ → mail.{zone} · TXT SPF · TXT _dmarc",
+      "google": "MX @ → smtp.google.com · TXT SPF · TXT _dmarc",
+      "nomail": "TXT v=spf1 -all · TXT _dmarc p=reject",
+      "letsencrypt": "CAA issue letsencrypt.org · CAA issuewild letsencrypt.org"
+    },
+    "tpl_ip": "Server IP address",
+    "tpl_add": "Add records",
+    "srv_service": "Service",
+    "srv_proto": "Protocol",
+    "srv_weight": "Weight",
+    "srv_target": "Target (host)",
+    "caa_tag": "Tag",
+    "caa": {
+      "issue": "certificates",
+      "issuewild": "* certificates",
+      "iodef": "report address"
+    },
+    "bad_number": "{field}: a number from {low} to {high}",
+    "bad_host": "{value} is not a valid host name",
+    "bad_srv": "SRV: enter a service (e.g. minecraft) and protocol tcp/udp",
+    "bad_template": "unknown template",
+    "notify_template": "{user}: DNS template “{template}” — {records}",
+    "template_partial": "Added {done}, failed: {failed}",
+    "template_done": "Records added: {count}"
   },
   "mc": {
     "not_found": "No such Minecraft server",

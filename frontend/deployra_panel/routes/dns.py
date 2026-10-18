@@ -38,6 +38,7 @@ async def dns_page(request: Request, zone: str = "", panel: Panel = Depends(get_
     current = next((z for z in zones if z["id"] == zone), zones[0] if zones else None)
     return render(request, "dns/records.html", title=t("dnsrec.title"), zones=zones, zone=current, error=error,
                   has_token=bool(panel.db.setting("cloudflare_token")), types=dns_records.TYPES, ttls=dns_records.TTLS,
+                  templates=dns_records.TEMPLATES, caa_tags=dns_records.CAA_TAGS,
                   ttl_text=dns_records.ttl_text, gateway_ip=await dns_records.gateway_ip(panel) if zones else None)  # fmt: skip
 
 
@@ -61,8 +62,30 @@ async def create_record(request: Request, zone: str = Form(...), zone_name: str 
     record, error = await _cf_call(panel, lambda cf: cf.create_record(zone, data))
     if error:
         return toast(error, "err", status=400)
-    panel.notify(t("dnsrec.notify_created", user=user["email"], type=data["type"], name=data["name"], content=data["content"]))
+    panel.notify(t("dnsrec.notify_created", user=user["email"], type=data["type"], name=data["name"], content=dns_records.summary(data)))
     return toast(t("dnsrec.created", name=data["name"]), extra=CHANGED)
+
+
+@router.post("/dns/templates")
+async def apply_template(request: Request, zone: str = Form(...), zone_name: str = Form(...), template: str = Form(...),
+                         panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_PROXY))):  # fmt: skip
+    """Szablon (np. Minecraft, poczta) → kilka rekordów naraz; najpierw walidacja wszystkich, potem zapis."""
+    form = await request.form()
+    params = {k: str(form.get(k) or "") for k in ("name", "ip", "port", "proxied")}
+    try:
+        records = [dns_records.payload(r, zone_name) for r in dns_records.template_records(template, params, zone_name)]
+    except ValueError as exc:
+        return toast(str(exc), "err", status=400)
+    done, failed = [], []
+    for data in records:
+        _, error = await _cf_call(panel, lambda cf, data=data: cf.create_record(zone, data))
+        (failed if error else done).append(f"{data['type']} {data['name']}" + (f": {error}" if error else ""))
+    if done:
+        panel.notify(t("dnsrec.notify_template", user=user["email"], template=t("dnsrec.tpl." + template), records=", ".join(done)))
+    if failed:
+        return toast(t("dnsrec.template_partial", done=len(done), failed="; ".join(failed)[:300]), "warn" if done else "err",
+                     status=200 if done else 400, extra=CHANGED)  # fmt: skip
+    return toast(t("dnsrec.template_done", count=len(done)), extra=CHANGED)
 
 
 @router.post("/dns/records/{record_id}")
@@ -76,7 +99,7 @@ async def update_record(request: Request, record_id: str, zone: str = Form(...),
     _, error = await _cf_call(panel, lambda cf: cf.update_record(zone, record_id, data))
     if error:
         return toast(error, "err", status=400)
-    panel.notify(t("dnsrec.notify_updated", user=user["email"], type=type, name=name, content=data["content"]))
+    panel.notify(t("dnsrec.notify_updated", user=user["email"], type=type, name=name, content=dns_records.summary(data)))
     return toast(t("dnsrec.updated", name=name), extra=CHANGED)
 
 
