@@ -1,5 +1,5 @@
 name: DeployraBridge
-version: 1.1.0
+version: 1.2.0
 main: io.deployra.minecraft.DeployraPlugin
 description: Manage this Minecraft server from the Deployra panel (outbound connection, no open ports).
 author: Deployra

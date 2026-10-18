@@ -1,5 +1,6 @@
 package io.deployra.minecraft;
 
+import java.io.File;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -14,6 +15,7 @@ import org.bukkit.Location;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.java.JavaPlugin;
 
 /** Polecenia z panelu. Wszystko, co dotyka API Bukkita, idzie przez główny wątek serwera. */
 final class Operations {
@@ -70,6 +72,22 @@ final class Operations {
             files.write(Json.str(args.get("path"), ""), Json.str(args.get("data_b64"), ""));
             return new LinkedHashMap<String, Object>();
         }
+        if ("files.write_chunk".equals(op)) {
+            long size = files.writeChunk(Json.str(args.get("path"), ""), Json.str(args.get("upload"), ""), num(args.get("offset")),
+                    Json.str(args.get("data_b64"), ""));
+            return one("size", size);
+        }
+        if ("files.commit".equals(op)) {
+            files.commit(Json.str(args.get("path"), ""), Json.str(args.get("upload"), ""), num(args.get("size")), Json.str(args.get("sha256"), ""));
+            return new LinkedHashMap<String, Object>();
+        }
+        if ("files.abort".equals(op)) {
+            files.abort(Json.str(args.get("path"), ""), Json.str(args.get("upload"), ""));
+            return new LinkedHashMap<String, Object>();
+        }
+        if ("files.read_chunk".equals(op)) {
+            return files.readChunk(Json.str(args.get("path"), ""), num(args.get("offset")), num(args.get("length")));
+        }
         if ("files.delete".equals(op)) {
             files.delete(Json.str(args.get("path"), ""));
             return new LinkedHashMap<String, Object>();
@@ -77,6 +95,26 @@ final class Operations {
         if ("files.mkdir".equals(op)) {
             files.mkdir(Json.str(args.get("path"), ""));
             return new LinkedHashMap<String, Object>();
+        }
+        if ("plugins.list".equals(op)) {
+            return sync(new Callable<Map<String, Object>>() {
+                @Override
+                public Map<String, Object> call() {
+                    return one("plugins", pluginList());
+                }
+            });
+        }
+        if ("plugins.disable".equals(op) || "plugins.enable".equals(op)) {
+            final boolean enable = "plugins.enable".equals(op);
+            final String name = Json.str(args.get("name"), "");
+            final String file = Json.str(args.get("file"), "");
+            final boolean persist = Boolean.TRUE.equals(args.get("persist"));
+            return sync(new Callable<Map<String, Object>>() {
+                @Override
+                public Map<String, Object> call() throws Exception {
+                    return enable ? enablePlugin(name, file) : disablePlugin(name, persist);
+                }
+            });
         }
         if ("papi".equals(op)) {
             final String text = Json.str(args.get("text"), "");
@@ -97,6 +135,7 @@ final class Operations {
         out.put("software", Bukkit.getName());
         out.put("mc_version", Bukkit.getBukkitVersion().split("-")[0]);
         out.put("plugin_version", plugin.getDescription().getVersion());
+        out.put("features", java.util.Arrays.asList("files.chunks", "plugins.manage"));  // co ten plugin umie ponad 1.1
         out.put("players_online", Bukkit.getOnlinePlayers().size());
         out.put("players_max", Bukkit.getMaxPlayers());
         out.put("motd", Bukkit.getMotd());
@@ -246,6 +285,111 @@ final class Operations {
         return out;
     }
 
+    // --- pluginy serwera: lista, wyłączanie (od razu albo na stałe: jar → .jar.disabled) i włączanie --------------------
+
+    private static final String DISABLED = ".disabled";
+
+    private File pluginsDir() {
+        return plugin.getDataFolder().getParentFile();
+    }
+
+    /** Plik jar pluginu — JavaPlugin#getFile jest chronione, więc przez refleksję (bez niego tylko wyłączanie do restartu). */
+    private static File jarOf(Plugin p) {
+        try {
+            Method getFile = JavaPlugin.class.getDeclaredMethod("getFile");
+            getFile.setAccessible(true);
+            return (File) getFile.invoke(p);
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
+    private List<Map<String, Object>> pluginList() {
+        List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+        for (Plugin p : Bukkit.getPluginManager().getPlugins()) {
+            File jar = jarOf(p);
+            Map<String, Object> item = new LinkedHashMap<String, Object>();
+            item.put("name", p.getName());
+            item.put("version", p.getDescription().getVersion());
+            item.put("description", p.getDescription().getDescription());
+            item.put("authors", p.getDescription().getAuthors());
+            item.put("enabled", p.isEnabled());
+            item.put("file", jar != null ? jar.getName() : null);
+            item.put("persisted", jar != null && !jar.isFile() && new File(jar.getPath() + DISABLED).isFile());
+            item.put("self", p == plugin);
+            out.add(item);
+        }
+        File[] files = pluginsDir().listFiles();
+        for (File f : files == null ? new File[0] : files) {  // wyłączone na stałe i niewczytane (po restarcie)
+            String name = f.getName();
+            if (!f.isFile() || !name.toLowerCase(java.util.Locale.ROOT).endsWith(".jar" + DISABLED)) {
+                continue;
+            }
+            boolean loaded = false;
+            for (Map<String, Object> item : out) {
+                loaded |= (name.substring(0, name.length() - DISABLED.length())).equals(item.get("file"));
+            }
+            if (!loaded) {
+                Map<String, Object> item = new LinkedHashMap<String, Object>();
+                item.put("name", name.substring(0, name.length() - (".jar" + DISABLED).length()));
+                item.put("enabled", false);
+                item.put("file", name.substring(0, name.length() - DISABLED.length()));
+                item.put("persisted", true);
+                item.put("loaded", false);
+                out.add(item);
+            }
+        }
+        return out;
+    }
+
+    private Map<String, Object> disablePlugin(String name, boolean persist) throws Exception {
+        Plugin p = Bukkit.getPluginManager().getPlugin(name);
+        if (p == null) {
+            throw new IllegalArgumentException("no such plugin: " + name);
+        }
+        if (p == plugin) {
+            throw new IllegalArgumentException("refusing to disable DeployraBridge: it connects this server to the panel");
+        }
+        if (p.isEnabled()) {
+            Bukkit.getPluginManager().disablePlugin(p);
+        }
+        if (persist) {
+            File jar = jarOf(p);
+            if (jar == null || !jar.isFile()) {
+                throw new java.io.IOException("plugin file not found: " + name);
+            }
+            if (!jar.renameTo(new File(jar.getPath() + DISABLED))) {
+                throw new java.io.IOException("could not rename " + jar.getName());
+            }
+        }
+        return one("restart", false);
+    }
+
+    /** Wyłączony do restartu → od razu z powrotem; wyłączony na stałe → jar wraca na miejsce (niewczytany plugin dopiero po restarcie). */
+    private Map<String, Object> enablePlugin(String name, String file) throws Exception {
+        Plugin p = name.isEmpty() ? null : Bukkit.getPluginManager().getPlugin(name);
+        File jar = p != null ? jarOf(p) : null;
+        if (jar == null && !file.isEmpty()) {
+            jar = new File(pluginsDir(), new File(file).getName());  // tylko nazwa — bez wychodzenia poza plugins/
+        }
+        if (jar != null && !jar.isFile()) {
+            File disabled = new File(jar.getPath() + DISABLED);
+            if (disabled.isFile() && !disabled.renameTo(jar)) {
+                throw new java.io.IOException("could not rename " + disabled.getName());
+            }
+        }
+        if (p == null) {
+            if (jar == null || !jar.isFile()) {
+                throw new IllegalArgumentException("no such plugin: " + (name.isEmpty() ? file : name));
+            }
+            return one("restart", true);
+        }
+        if (!p.isEnabled()) {
+            Bukkit.getPluginManager().enablePlugin(p);
+        }
+        return one("restart", false);
+    }
+
     private <T> T sync(Callable<T> task) throws Exception {
         if (Bukkit.isPrimaryThread()) {
             return task.call();
@@ -257,5 +401,9 @@ final class Operations {
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         out.put(key, value);
         return out;
+    }
+
+    private static long num(Object value) {
+        return value instanceof Number ? ((Number) value).longValue() : 0L;
     }
 }

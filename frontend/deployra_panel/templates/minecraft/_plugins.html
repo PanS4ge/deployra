@@ -1,0 +1,46 @@
+{% from "_macros.html" import empty %}
+{% if error %}<div class="card"><div class="card-body"><div class="callout warn"><i class="bi bi-plug"></i> {{ error }}</div></div></div>
+{% elif not plugins %}<div class="card">{{ empty("puzzle", t("mc.plugins.none")) }}</div>
+{% else %}
+{% set act = "/minecraft/" ~ s.id ~ "/plugins/action" %}
+<div class="card">
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>{{ t("common.name") }}</th><th>{{ t("mc.plugins.state") }}</th><th></th></tr></thead>
+      <tbody>
+        {% for p in plugins %}
+        <tr>
+          <td>
+            <b>{{ p.name }}</b>{% if p.version %} <span class="muted mono small">{{ p.version }}</span>{% endif %}
+            {% if p.file %}<div class="small muted mono trunc">{{ p.file }}</div>{% endif %}
+          </td>
+          <td>
+            {% if p.self %}<span class="badge violet">{{ t("mc.plugins.self") }}</span>
+            {% elif p.enabled %}<span class="badge ok">{{ t("mc.plugins.enabled") }}</span>
+            {% elif p.persisted %}<span class="badge err">{{ t("mc.plugins.persisted") }}</span>{% if p.loaded == false %} <span class="small muted">{{ t("mc.plugins.not_loaded") }}</span>{% endif %}
+            {% else %}<span class="badge warn">{{ t("mc.plugins.until_restart") }}</span>{% endif %}
+          </td>
+          <td>
+            {% if can and not p.self %}
+            <div class="actions" style="justify-content: flex-end">
+              {% if p.enabled %}
+              <button class="btn xs ghost" hx-post="{{ act }}" hx-swap="none" hx-vals="{{ {'name': p.name, 'action': 'disable'} | jsonattr }}"
+                      hx-confirm="{{ t('mc.plugins.disable_confirm', name=p.name) }}"><i class="bi bi-pause-circle"></i> {{ t("mc.plugins.disable") }}</button>
+              {% endif %}
+              {% if not p.persisted and p.file %}
+              <button class="btn xs ghost danger" hx-post="{{ act }}" hx-swap="none" hx-vals="{{ {'name': p.name, 'action': 'disable_persist'} | jsonattr }}"
+                      hx-confirm="{{ t('mc.plugins.persist_confirm', name=p.name) }}"><i class="bi bi-slash-circle"></i> {{ t("mc.plugins.disable_persist") }}</button>
+              {% endif %}
+              {% if not p.enabled or p.persisted %}
+              <button class="btn xs" hx-post="{{ act }}" hx-swap="none" hx-vals="{{ {'name': p.name if p.loaded != false else '', 'file': p.file or '', 'action': 'enable'} | jsonattr }}"><i class="bi bi-play-circle"></i> {{ t("mc.plugins.enable") }}</button>
+              {% endif %}
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}

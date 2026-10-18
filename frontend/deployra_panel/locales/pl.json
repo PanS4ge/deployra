@@ -1958,7 +1958,8 @@
       "properties": "Ustawienia gry",
       "files": "Pliki",
       "papi": "PlaceholderAPI",
-      "settings": "Połączenie"
+      "settings": "Połączenie",
+      "plugins": "Pluginy"
     },
     "macro": {
       "day": "Dzień",
@@ -2025,6 +2026,37 @@
       "not_empty": "Folder nie jest pusty.",
       "exists": "Plik o tej nazwie już istnieje.",
       "outside": "Ścieżka wychodzi poza katalog serwera."
+    },
+    "upload_chunked": "Pliki ponad 8 MB i całe foldery idą w tle, kawałkami przez plugin — postęp w zadaniu.",
+    "upload_needs_update": "Pliki ponad 8 MB i duże foldery wymagają DeployraBridge 1.2 — zaktualizuj plugin w ustawieniach serwera.",
+    "upload_too_big": "Za dużo danych naraz (limit 2 GB).",
+    "upload_job": "Wysyłanie {count} plików na {name}",
+    "upload_file": "[{n}/{total}] {path} · {size}",
+    "upload_done": "Wysłano {count} plików",
+    "plugin_outdated": "DeployraBridge {current} — dostępna wersja {bundled} (duże pliki i foldery przez plugin).",
+    "plugin_update": "Zaktualizuj plugin",
+    "plugin_updated": "DeployraBridge {version} czeka w plugins/update/{name} — wczyta się przy restarcie serwera.",
+    "plugins": {
+      "none": "Brak pluginów",
+      "state": "Stan",
+      "self": "łączy z panelem",
+      "enabled": "włączony",
+      "persisted": "wyłączony na stałe",
+      "until_restart": "wyłączony do restartu",
+      "not_loaded": "wczyta się po włączeniu i restarcie",
+      "disable": "Wyłącz",
+      "disable_persist": "Wyłącz na stałe",
+      "enable": "Włącz",
+      "disable_confirm": "Wyłączyć {name} do restartu serwera?",
+      "persist_confirm": "Wyłączyć {name} na stałe? Plik dostanie końcówkę .disabled i plugin nie wczyta się po restarcie.",
+      "needs_update": "Zarządzanie pluginami wymaga DeployraBridge 1.2 — zaktualizuj plugin w zakładce Pliki albo Połączenie.",
+      "notify": "{user}: {action} — {plugin} na serwerze {server}",
+      "done": {
+        "disable": "Wyłączono {name} (do restartu)",
+        "disable_persist": "Wyłączono {name} na stałe",
+        "enable": "Włączono {name}",
+        "restart_needed": "{name} wczyta się po restarcie serwera"
+      }
     }
   },
   "env": {

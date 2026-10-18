@@ -1958,7 +1958,8 @@
       "properties": "Game settings",
       "files": "Files",
       "papi": "PlaceholderAPI",
-      "settings": "Connection"
+      "settings": "Connection",
+      "plugins": "Plugins"
     },
     "macro": {
       "day": "Day",
@@ -2025,6 +2026,37 @@
       "not_empty": "The folder isn't empty.",
       "exists": "A file with this name already exists.",
       "outside": "The path points outside the server directory."
+    },
+    "upload_chunked": "Files over 8 MB and whole folders go in the background, in chunks through the plugin — progress in the job.",
+    "upload_needs_update": "Files over 8 MB and large folders need DeployraBridge 1.2 — update the plugin in the server settings.",
+    "upload_too_big": "Too much data at once (2 GB limit).",
+    "upload_job": "Uploading {count} files to {name}",
+    "upload_file": "[{n}/{total}] {path} · {size}",
+    "upload_done": "Uploaded {count} files",
+    "plugin_outdated": "DeployraBridge {current} — version {bundled} is available (large files and folders through the plugin).",
+    "plugin_update": "Update plugin",
+    "plugin_updated": "DeployraBridge {version} is waiting in plugins/update/{name} — it loads on the next server restart.",
+    "plugins": {
+      "none": "No plugins",
+      "state": "State",
+      "self": "connects to the panel",
+      "enabled": "enabled",
+      "persisted": "disabled permanently",
+      "until_restart": "disabled until restart",
+      "not_loaded": "loads after enabling and a restart",
+      "disable": "Disable",
+      "disable_persist": "Disable permanently",
+      "enable": "Enable",
+      "disable_confirm": "Disable {name} until the server restarts?",
+      "persist_confirm": "Disable {name} permanently? The file gets a .disabled suffix and the plugin won't load after a restart.",
+      "needs_update": "Managing plugins needs DeployraBridge 1.2 — update the plugin in the Files or Connection tab.",
+      "notify": "{user}: {action} — {plugin} on server {server}",
+      "done": {
+        "disable": "Disabled {name} (until restart)",
+        "disable_persist": "Disabled {name} permanently",
+        "enable": "Enabled {name}",
+        "restart_needed": "{name} loads on the next server restart"
+      }
     }
   },
   "env": {

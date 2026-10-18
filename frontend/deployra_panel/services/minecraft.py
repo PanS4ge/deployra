@@ -9,6 +9,7 @@ komponentami Deployry: ts, nonce, skrót body) — podrobione albo powtórzone p
 from __future__ import annotations
 
 import asyncio
+import base64
 import ftplib
 import hashlib
 import io
@@ -18,6 +19,7 @@ import re
 import secrets
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from deployra_common import hmac_auth
@@ -292,6 +294,94 @@ def clean_command(text: str) -> str:
 
 def clean_path(path: str) -> str:
     return posixpath.normpath("/" + (path or "/").strip("/")).replace("//", "/")
+
+
+# --- duże pliki kawałkami (plugin 1.2+): „boczny FTP” bez otwierania portów, przez ten sam podpisany kanał --------------
+
+CHUNK = 4 * 1024 * 1024  # zgodnie z ServerFiles.CHUNK w pluginie; base64 kawałka mieści się w limicie odpowiedzi (16 MB)
+UPLOAD_LIMIT = 2 * 1024 * 1024 * 1024
+JAR = Path(__file__).resolve().parent.parent / "static" / "downloads" / "DeployraBridge.jar"
+_BRIDGE_JAR = re.compile(r"(?i)^deployra.*bridge.*\.jar$")
+
+
+def manages_plugins(row: dict) -> bool:
+    """Plugin 1.2+ umie wyłączać i włączać inne pluginy serwera."""
+    return "plugins.manage" in (info(row).get("features") or [])
+
+
+def chunked(row: dict) -> bool:
+    """Plugin umie pliki kawałkami (zapis, odczyt) — bez limitu 8 MB."""
+    return "files.chunks" in (info(row).get("features") or [])
+
+
+async def push_file(panel: Any, row: dict, path: str, source: Path, progress: Any = None) -> int:
+    """Plik z dysku panelu na serwer kawałkami; plugin podmienia cel dopiero po zgodnym rozmiarze i SHA-256."""
+    upload, digest, offset = secrets.token_hex(8), hashlib.sha256(), 0
+    try:
+        with source.open("rb") as fh:
+            while True:
+                data = fh.read(CHUNK)
+                digest.update(data)
+                args = {"path": path, "upload": upload, "offset": offset, "data_b64": base64.b64encode(data).decode()}
+                await call(panel, row, "files.write_chunk", args, timeout=120)
+                offset += len(data)
+                if progress:
+                    progress(offset)
+                if len(data) < CHUNK:
+                    break
+        await call(panel, row, "files.commit", {"path": path, "upload": upload, "size": offset, "sha256": digest.hexdigest()}, timeout=180)
+    except BaseException:
+        try:  # niedokończony plik tymczasowy nie zostaje na serwerze
+            await call(panel, row, "files.abort", {"path": path, "upload": upload}, timeout=20)
+        except Exception:  # noqa: BLE001 — serwer mógł zniknąć w trakcie
+            pass
+        raise
+    return offset
+
+
+async def read_chunk(panel: Any, row: dict, path: str, offset: int) -> tuple[bytes, int]:
+    data = await call(panel, row, "files.read_chunk", {"path": path, "offset": offset, "length": CHUNK}, timeout=120)
+    return base64.b64decode(data.get("data_b64") or ""), int(data.get("size") or 0)
+
+
+async def rest_chunks(panel: Any, row: dict, path: str, offset: int, size: int) -> Any:
+    """Dalsze kawałki pliku dla odpowiedzi strumieniowej (pierwszy pobiera trasa — błąd wraca wtedy jako zwykły kod)."""
+    while offset < size:
+        data, _ = await read_chunk(panel, row, path, offset)
+        if not data:
+            return
+        offset += len(data)
+        yield data
+
+
+def _version(text: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in re.findall(r"\d+", text or "")[:3]) or (0,)
+
+
+def bundled_version() -> str:
+    """Wersja pluginu dołączonego do panelu (plugin.yml w DeployraBridge.jar)."""
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(JAR) as jar:
+            found = re.search(r"(?m)^version:\s*([\w.\-]+)", jar.read("plugin.yml").decode("utf-8", "replace"))
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return ""
+    return found.group(1) if found else ""
+
+
+def plugin_outdated(row: dict) -> bool:
+    current, bundled = info(row).get("plugin_version"), bundled_version()
+    return bool(current and bundled and _version(current) < _version(bundled))
+
+
+async def update_plugin(panel: Any, row: dict) -> str:
+    """Nowy jar do plugins/update/<ta sama nazwa> — Bukkit/Paper podmienia go przy starcie; zwykły zapis działa też w starym pluginie."""
+    items = (await call(panel, row, "files.list", {"path": "/plugins"}, timeout=30)).get("items") or []
+    names = [item["name"] for item in items if not item.get("is_dir") and _BRIDGE_JAR.match(str(item.get("name") or ""))]
+    name = names[0] if names else "DeployraBridge.jar"
+    await call(panel, row, "files.write", {"path": f"/plugins/update/{name}", "data_b64": base64.b64encode(JAR.read_bytes()).decode()}, timeout=60)
+    return name
 
 
 # --- FTP: pliki, gdy serwer (a z nim plugin) jest wyłączony ----------------------------------------------

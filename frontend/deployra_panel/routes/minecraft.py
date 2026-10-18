@@ -5,12 +5,15 @@ from __future__ import annotations
 import base64
 import json
 import posixpath
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from deployra_common import hmac_auth
 
@@ -24,7 +27,7 @@ from ..web import redirect, render, toast
 public = APIRouter()
 router = APIRouter(dependencies=[Depends(current_user)])
 JAR = Path(__file__).resolve().parent.parent / "static" / "downloads" / "DeployraBridge.jar"
-TABS = ("console", "players", "properties", "files", "papi", "settings")
+TABS = ("console", "players", "plugins", "properties", "files", "papi", "settings")
 
 
 def panel_url(request: Request, panel: Panel) -> str:
@@ -39,15 +42,20 @@ def _server(server_id: int, panel: Panel = Depends(get_panel)) -> dict:
     return row
 
 
-def _bridge_error(exc: Exception, path: str = "") -> Response:
-    """Błąd z pluginu jako czytelny komunikat z kodem 4xx — to odpowiedź serwera, a nie awaria bramki (502)."""
+def _explain(exc: Exception, path: str = "") -> tuple[str, int]:
+    """Błąd z pluginu → czytelny komunikat i kod 4xx — to odpowiedź serwera, a nie awaria bramki (502)."""
     if isinstance(exc, mc.Offline):
-        return toast(t("mc.offline"), "err", status=409)
+        return t("mc.offline"), 409
     known = mc.explain(str(exc))
     if known:
         key, status = known
-        return toast(t(key) + (f" · {path}" if path else ""), "err", status=status)
-    return toast(t("mc.bridge_error", error=str(exc)), "err", status=400)
+        return t(key) + (f" · {path}" if path else ""), status
+    return t("mc.bridge_error", error=str(exc)), 400
+
+
+def _bridge_error(exc: Exception, path: str = "") -> Response:
+    message, status = _explain(exc, path)
+    return toast(message, "err", status=status)
 
 
 # --- plugin: parowanie i kanał poleceń (bez sesji, podpis HMAC) ---------------------------------------
@@ -128,7 +136,7 @@ def detail_page(request: Request, tab: str = "console", row: dict = Depends(_ser
     ftp = {k: v for k, v in ftp.items() if k != "password"} if ftp else None
     return render(request, "minecraft/detail.html", title=row["name"], s=row, tab=tab, online=mc.online(row), info=mc.info(row), app=app,
                   code=mc.pending_code(panel, row) if manager else None, panel_url=panel_url(request, panel), macros=mc.macros(row), ftp=ftp,
-                  manager=manager)  # fmt: skip
+                  manager=manager, chunked=mc.chunked(row), outdated=mc.plugin_outdated(row), bundled=mc.bundled_version())  # fmt: skip
 
 
 @router.get("/minecraft/{server_id}/status")
@@ -170,6 +178,45 @@ async def players(request: Request, row: dict = Depends(_server), panel: Panel =
     except (mc.Offline, mc.BridgeError) as exc:
         data, error = {}, t("mc.offline") if isinstance(exc, mc.Offline) else str(exc)
     return render(request, "minecraft/_players.html", s=row, players=data.get("players") or [], error=error)
+
+
+@router.get("/minecraft/{server_id}/plugins")
+async def plugins(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                  user: dict = Depends(require(Permission.ALLOW_SEEKING_CONTAINER))):  # fmt: skip
+    from ..permissions import has
+
+    error, items = None, []
+    if not mc.manages_plugins(row):
+        error = t("mc.plugins.needs_update")
+    else:
+        try:
+            items = (await mc.call(panel, row, "plugins.list")).get("plugins") or []
+        except (mc.Offline, mc.BridgeError) as exc:
+            error = _explain(exc)[0]
+    items.sort(key=lambda p: (not p.get("self"), str(p.get("name") or "").lower()))
+    return render(request, "minecraft/_plugins.html", s=row, plugins=items, error=error, can=has(user, Permission.ALLOW_MODIFY_DOCKERS))
+
+
+PLUGIN_ACTIONS = {"disable": ("plugins.disable", False), "disable_persist": ("plugins.disable", True), "enable": ("plugins.enable", False)}
+
+
+@router.post("/minecraft/{server_id}/plugins/action")
+async def plugin_action(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                        user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
+    """Wyłączenie pluginu do restartu, na stałe (jar → .jar.disabled) albo ponowne włączenie."""
+    form = await request.form()
+    action, name, file = str(form.get("action") or ""), str(form.get("name") or "")[:80], str(form.get("file") or "")[:200]
+    if action not in PLUGIN_ACTIONS or not (name or file):
+        return toast(t("msg.bad_data"), "err", status=400)
+    op, persist = PLUGIN_ACTIONS[action]
+    try:
+        result = await mc.call(panel, row, op, {"name": name, "file": file, "persist": persist}, timeout=30)
+    except (mc.Offline, mc.BridgeError) as exc:
+        return _bridge_error(exc)
+    label = name or file
+    key = "restart_needed" if result.get("restart") else action
+    panel.notify(t("mc.plugins.notify", user=user["email"], server=row["name"], plugin=label, action=t(f"mc.plugins.{action}")))
+    return toast(t(f"mc.plugins.done.{key}", name=label), extra={"mc-plugins": True})
 
 
 @router.post("/minecraft/{server_id}/player")
@@ -285,14 +332,29 @@ async def files_read(path: str, row: dict = Depends(_server), panel: Panel = Dep
 @router.get("/minecraft/{server_id}/files/download")
 async def files_download(path: str, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
                          user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES))):  # fmt: skip
+    name = posixpath.basename(path) or "file"
+    headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"}
+    if mc.online(row) and row.get("secret") and mc.chunked(row):
+        clean = mc.clean_path(path)
+        try:  # pierwszy kawałek przed odpowiedzią: błąd (brak pliku, uprawnienia) wraca zwykłym kodem
+            first, size = await mc.read_chunk(panel, row, clean, 0)
+        except (mc.Offline, mc.BridgeError) as exc:
+            message, status = _explain(exc, clean)
+            raise HTTPException(status, message) from exc
+
+        async def body() -> Any:
+            yield first
+            async for data in mc.rest_chunks(panel, row, clean, len(first), size):
+                yield data
+
+        return StreamingResponse(body(), media_type="application/octet-stream", headers={**headers, "Content-Length": str(size)})
     try:
         raw = base64.b64decode((await _files(panel, row, "read", {"path": mc.clean_path(path)})).get("data_b64") or "")
     except mc.Offline as exc:
         raise HTTPException(409, t("mc.files_offline")) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, str(exc)[:300]) from exc
-    name = posixpath.basename(path) or "file"
-    return Response(raw, media_type="application/octet-stream", headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
+    return Response(raw, media_type="application/octet-stream", headers=headers)
 
 
 async def _write(panel: Panel, row: dict, path: str, data: bytes) -> Response | None:
@@ -320,16 +382,81 @@ async def files_upload(request: Request, row: dict = Depends(_server), panel: Pa
                        user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES_WRITE))):  # fmt: skip
     form = await request.form()
     directory = mc.clean_path(str(form.get("dir_path") or "/"))
-    count = 0
+    uploads = []
     for upload in form.getlist("files"):
-        name = posixpath.basename(str(getattr(upload, "filename", "") or "").replace("\\", "/"))
-        if not name or name in (".", ".."):
+        raw = str(getattr(upload, "filename", "") or "").replace("\\", "/")
+        parts = [part for part in raw.split("/") if part not in ("", ".")]
+        if not parts:
             continue
-        error = await _write(panel, row, posixpath.join(directory, name), await upload.read(mc.FILE_LIMIT + 1))
-        if error:
-            return error
-        count += 1
-    return redirect(request, f"/minecraft/{row['id']}?{urlencode({'tab': 'files', 'path': directory})}", t("containers.files_uploaded", count=count))
+        if ".." in parts:
+            return toast(t("containers.upload_bad_name", name=raw), "err", status=400)
+        uploads.append(("/".join(parts), upload))  # z „Wgraj folder” przychodzi ścieżka względna
+    if not uploads:
+        return toast(t("common.required_field"), "err", status=400)
+    back = f"/minecraft/{row['id']}?{urlencode({'tab': 'files', 'path': directory})}"
+    total = sum(upload.size or 0 for _, upload in uploads)
+    if all((upload.size or 0) <= mc.FILE_LIMIT for _, upload in uploads) and total <= SYNC_UPLOAD and len(uploads) <= 20:
+        for rel, upload in uploads:  # małe pliki od razu — wynik widać bez przechodzenia do zadań
+            error = await _write(panel, row, posixpath.join(directory, rel), await upload.read(mc.FILE_LIMIT + 1))
+            if error:
+                return error
+        return redirect(request, back, t("containers.files_uploaded", count=len(uploads)))
+    if not mc.chunked(row):
+        return toast(t("mc.upload_needs_update"), "err", status=413)
+    if total > mc.UPLOAD_LIMIT:
+        return toast(t("mc.upload_too_big"), "err", status=413)
+    # duże pliki albo folder: kopia na dysk panelu i wysyłka kawałkami w tle — postęp w zadaniu
+    tmp = Path(tempfile.mkdtemp(prefix="mc-upload-", dir=panel.config.data_dir))
+    items = []
+    for index, (rel, upload) in enumerate(uploads):
+        target = tmp / str(index)
+        with target.open("wb") as out:
+            await run_in_threadpool(shutil.copyfileobj, upload.file, out, 1 << 20)
+        items.append((mc.clean_path(posixpath.join(directory, rel)), target))
+    job = panel.jobs.start("upload", t("mc.upload_job", name=row["name"], count=len(items)), lambda job: _upload_job(panel, row, items, tmp, job))
+    return redirect(request, f"/jobs/{job.id}")
+
+
+SYNC_UPLOAD = 16 * 1024 * 1024  # do tylu bajtów (i 20 plików) wgrywanie idzie od razu, większe — w tle
+
+
+async def _upload_job(panel: Panel, row: dict, items: list[tuple[str, Path]], tmp: Path, job: Any) -> dict:
+    """Wysyłka plików kawałkami przez plugin; postęp co 25% przy dużych plikach, błąd pluginu jako czytelny komunikat."""
+    from deployra_common.jobs import JobFailed
+
+    from ..web import human_bytes
+
+    try:
+        for number, (path, source) in enumerate(items, 1):
+            size = source.stat().st_size
+            job.log(t("mc.upload_file", n=number, total=len(items), path=path, size=human_bytes(size)))
+            shown = [0]
+
+            def progress(done: int, size: int = size, shown: list = shown) -> None:
+                step = done * 4 // size if size >= 4 * mc.CHUNK else 0
+                if 0 < step < 4 and step > shown[0]:
+                    shown[0] = step
+                    job.log(f"  {step * 25}% · {human_bytes(done)}")
+
+            try:
+                await mc.push_file(panel, row, path, source, progress)
+            except (mc.Offline, mc.BridgeError) as exc:
+                raise JobFailed(_explain(exc, path)[0]) from None
+        job.log(t("mc.upload_done", count=len(items)))
+        return {"files": len(items)}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@router.post("/minecraft/{server_id}/plugin/update")
+async def plugin_update(row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                        user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
+    """Nowa wersja DeployraBridge do plugins/update — serwer wczyta ją przy następnym starcie."""
+    try:
+        name = await mc.update_plugin(panel, row)
+    except (mc.Offline, mc.BridgeError) as exc:
+        return _bridge_error(exc, "/plugins/update")
+    return toast(t("mc.plugin_updated", version=mc.bundled_version(), name=name))
 
 
 @router.post("/minecraft/{server_id}/files/delete")

@@ -21,6 +21,17 @@ konsola z makrami, gracze (tryb gry, leczenie, OP, whitelist, kick, ban), `serve
 
 Pliki wyłączonego serwera: w zakładce **Połączenie** można podać FTP hostingu — panel użyje go, gdy plugin jest offline.
 
+Duże pliki (od 1.2): `files.write_chunk` dopisuje kolejne kawałki (do 4 MB, base64) do ukrytego pliku `.<nazwa>.deployra-<id>.part`
+obok celu i odrzuca kawałek spoza kolejności; `files.commit` sprawdza rozmiar i SHA-256, po czym atomowo podmienia plik; `files.abort`
+usuwa niedokończony plik. `files.read_chunk` zwraca fragment pliku dowolnej wielkości. Plugin ogłasza to panelowi w `info.features`
+(`files.chunks`), więc starszy plugin dalej działa z limitem 8 MB na plik.
+
+Pluginy (od 1.2): `plugins.list` zwraca wczytane pluginy i jary wyłączone na stałe, `plugins.disable` wyłącza plugin od razu
+(z `persist` — dodatkowo zmienia `X.jar` na `X.jar.disabled`, więc nie wczyta się po restarcie), `plugins.enable` cofa jedno i drugie.
+DeployraBridge nie da się wyłączyć z panelu — to on łączy serwer z panelem.
+
+Aktualizacja z panelu: nowy jar trafia do `plugins/update/` pod nazwą obecnego pliku pluginu, a Bukkit/Paper podmienia go przy starcie.
+
 ## Serwer jako aplikacja Deployry
 
 **Aplikacje → Nowa → Minecraft (Paper)** stawia `itzg/minecraft-server` na węźle (port gry 25565). Obraz pobiera plugin z panelu

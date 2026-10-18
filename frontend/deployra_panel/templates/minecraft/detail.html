@@ -24,7 +24,7 @@
 {% endif %}
 
 <nav class="tabs">
-  {% for key, icon in [("console", "terminal"), ("players", "people"), ("properties", "sliders"), ("files", "folder2-open"), ("papi", "braces"), ("settings", "gear")] %}
+  {% for key, icon in [("console", "terminal"), ("players", "people"), ("plugins", "puzzle"), ("properties", "sliders"), ("files", "folder2-open"), ("papi", "braces"), ("settings", "gear")] %}
   <a class="{{ 'active' if tab == key }}" href="/minecraft/{{ s.id }}?tab={{ key }}"><i class="bi bi-{{ icon }}"></i> {{ t("mc.tab." ~ key) }}</a>
   {% endfor %}
 </nav>
@@ -72,6 +72,11 @@
   <div class="card"><div class="card-body small muted">{{ t("common.loading") }}</div></div>
 </div>
 
+{% elif tab == "plugins" %}
+<div id="mc-plugins" hx-get="/minecraft/{{ s.id }}/plugins" hx-trigger="load, mc-plugins from:body" hx-swap="innerHTML">
+  <div class="card"><div class="card-body small muted">{{ t("common.loading") }}</div></div>
+</div>
+
 {% elif tab == "properties" %}
 <div hx-get="/minecraft/{{ s.id }}/properties" hx-trigger="load" hx-swap="innerHTML">
   <div class="card"><div class="card-body small muted">{{ t("common.loading") }}</div></div>
@@ -81,6 +86,12 @@
 <div class="stack" x-data="containerFiles({{ {'read': '/minecraft/' ~ s.id ~ '/files/read', 'write': '/minecraft/' ~ s.id ~ '/files/write', 'download': '/minecraft/' ~ s.id ~ '/files/download', 'ep': 'local'} | jsonattr }})"
      @files-upload.window="showUpload = true" @files-mkdir.window="showMkdir = true">
   {% if app and has(user, P.ALLOW_CONTAINER_FILES) %}<div><a class="btn sm ghost" href="/apps/{{ app.id }}/files"><i class="bi bi-box"></i> {{ t("mc.container_files") }}</a></div>{% endif %}
+  {% if outdated and manager %}
+  <div class="callout row between" style="gap: 10px; flex-wrap: wrap">
+    <div><i class="bi bi-arrow-up-circle"></i> {{ t("mc.plugin_outdated", current=info.plugin_version, bundled=bundled) }}</div>
+    <button class="btn sm" hx-post="/minecraft/{{ s.id }}/plugin/update" hx-swap="none"><span class="spin"></span><i class="bi bi-cloud-arrow-up"></i> {{ t("mc.plugin_update") }}</button>
+  </div>
+  {% endif %}
   <div id="files-browser" data-url="/minecraft/{{ s.id }}/files?path={{ request.query_params.get('path', '/') | urlencode }}"
        hx-get="/minecraft/{{ s.id }}/files?path={{ request.query_params.get('path', '/') | urlencode }}" hx-trigger="load" hx-swap="outerHTML">
     <div class="card"><div class="card-body small muted">{{ t("common.loading") }}</div></div>
@@ -122,7 +133,11 @@
   <div class="card">
     <div class="card-head compact"><h3><i class="bi bi-link-45deg"></i> {{ t("mc.pairing") }}</h3></div>
     <div class="card-body stack">
-      <div class="small">{% if s.secret %}<span class="badge ok">{{ t("mc.paired") }}</span>{% else %}<span class="badge warn">{{ t("mc.not_paired") }}</span>{% endif %}</div>
+      <div class="small">{% if s.secret %}<span class="badge ok">{{ t("mc.paired") }}</span>{% else %}<span class="badge warn">{{ t("mc.not_paired") }}</span>{% endif %}
+        {% if info.plugin_version %}<span class="muted"> · DeployraBridge {{ info.plugin_version }}</span>{% endif %}</div>
+      {% if outdated %}
+      <form hx-post="/minecraft/{{ s.id }}/plugin/update" hx-swap="none"><button class="btn sm"><span class="spin"></span><i class="bi bi-cloud-arrow-up"></i> {{ t("mc.plugin_update") }} ({{ bundled }})</button></form>
+      {% endif %}
       {% if has(user, P.ALLOW_MODIFY_DOCKERS) %}
       <form hx-post="/minecraft/{{ s.id }}/pair" hx-swap="none" hx-confirm="{{ t('mc.repair_confirm') }}"><button class="btn sm"><i class="bi bi-arrow-repeat"></i> {{ t("mc.repair") }}</button></form>
       {% endif %}

@@ -243,7 +243,8 @@ a node with more room. The wizard shows free RAM next to every node; runtimes co
 ## Minecraft
 
 The **Minecraft** section manages servers running the **DeployraBridge** plugin (Paper/Spigot/Purpur 1.8.8–1.21): console with
-macros, players (game mode, heal, OP, whitelist, kick, ban), `server.properties`, files and PlaceholderAPI.
+macros, players (game mode, heal, OP, whitelist, kick, ban), **plugins** (disable until restart or permanently, enable),
+`server.properties`, files and PlaceholderAPI.
 
 - **Server on a node**: Apps → New → **Minecraft (Paper)** (`itzg/minecraft-server`, game port 25565). The plugin downloads from the
   panel and pairs itself.
@@ -252,6 +253,11 @@ macros, players (game mode, heal, OP, whitelist, kick, ban), `server.properties`
 
 The server opens no port: the plugin connects to the panel itself (long polling over HTTPS) and requests and responses are signed
 with HMAC and replay protection. Details: `minecraft-plugin/README.md`.
+
+Files without FTP and without an extra port: since DeployraBridge 1.2, files over 8 MB and whole folders go through the plugin in
+4 MB chunks, in the background (progress in the job, SHA-256 check and file swap at the end); downloading large files works the same
+way. An older plugin can be updated from the panel (**Files** or **Settings → Update plugin**): the new jar goes to `plugins/update/`
+and loads on the next server restart.
 
 ## Moving apps between nodes
 

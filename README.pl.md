@@ -244,7 +244,8 @@ i podpowiada węzeł z większym zapasem. Kreator pokazuje wolny RAM przy każdy
 ## Minecraft
 
 Sekcja **Minecraft** zarządza serwerami z pluginem **DeployraBridge** (Paper/Spigot/Purpur 1.8.8–1.21): konsola z makrami, gracze
-(tryb gry, leczenie, OP, whitelist, kick, ban), `server.properties`, pliki i PlaceholderAPI.
+(tryb gry, leczenie, OP, whitelist, kick, ban), **pluginy** (wyłączanie do restartu albo na stałe i włączanie), `server.properties`,
+pliki i PlaceholderAPI.
 
 - **Serwer na węźle**: Aplikacje → Nowa → **Minecraft (Paper)** (`itzg/minecraft-server`, port gry 25565). Plugin pobiera się z panelu
   i paruje sam.
@@ -253,6 +254,11 @@ Sekcja **Minecraft** zarządza serwerami z pluginem **DeployraBridge** (Paper/Sp
 
 Serwer nie otwiera żadnego portu: plugin sam łączy się z panelem (długie zapytanie po HTTPS), a żądania i odpowiedzi są podpisane
 HMAC z ochroną przed powtórzeniem. Szczegóły: `minecraft-plugin/README.md`.
+
+Pliki bez FTP i bez dodatkowego portu: od DeployraBridge 1.2 pliki ponad 8 MB i całe foldery idą przez plugin kawałkami po 4 MB,
+w tle (postęp w zadaniu, na końcu sprawdzenie SHA-256 i podmiana pliku); pobieranie dużych plików działa tak samo. Starszy plugin
+zaktualizujesz z panelu (**Pliki** albo **Ustawienia → Zaktualizuj plugin**): nowy jar trafia do `plugins/update/` i wczytuje się
+przy restarcie serwera.
 
 ## Przenoszenie aplikacji między węzłami
 
