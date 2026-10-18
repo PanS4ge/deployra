@@ -151,6 +151,19 @@ async def external_wg_check(request: Request, node: dict = Depends(_external_nod
     return render(request, "nodes/_external_wg_check.html", node=node, conf=node["external_wg"], check=await external_wg.check(panel, node))
 
 
+@router.post("/nodes/{node_id}/external-wg/client-conf")
+async def external_wg_client_conf(request: Request, conf: str = Form(...), node: dict = Depends(_external_node),
+                                  user: dict = Depends(require(Permission.ALLOW_ADD_DOCKERS))):  # fmt: skip
+    """wg0.conf węzła z pliku klienta wg-easy — tylko w odpowiedzi, klucz prywatny nie trafia do bazy panelu."""
+    from ..services import external_wg
+
+    try:
+        wg0 = external_wg.client_conf(node, conf)
+    except ValueError as exc:
+        return toast(str(exc), "err", status=400)
+    return render(request, "nodes/_external_wg_conf.html", wg0=wg0, install=external_wg.install_snippet(wg0))
+
+
 @router.post("/nodes/{node_id}/external-wg/pair")
 async def external_wg_pair(request: Request, code: str = Form(...), node: dict = Depends(_external_node), panel: Panel = Depends(get_panel),
                            user: dict = Depends(require(Permission.ALLOW_ADD_DOCKERS))):  # fmt: skip

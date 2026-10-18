@@ -42,3 +42,65 @@ def test_map_hangs_external_node_on_its_gateway(panel):
     node_id = external_wg.create(panel, "cezary", "10.8.0.1", gateway_id=gw)
     edges = {(link["source"], link["target"], link["kind"]) for link in topology.build(panel)["links"]}
     assert (f"gw-{gw}", f"node-{node_id}", "tunnel") in edges
+
+
+WG_EASY = """[Interface]
+PrivateKey = yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=
+Address = 10.8.0.28/24
+DNS = 1.1.1.1
+
+[Peer]
+PublicKey = xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=
+PresharedKey = Tq4lN6ZfS4cMv9mYxQ0oKZ3wP1aLb2Dg7XcVrSuE8hI=
+AllowedIPs = 0.0.0.0/0, ::/0
+PersistentKeepalive = 0
+Endpoint = vpn.example.com:51820
+"""
+
+
+def test_client_conf_limits_tunnel_to_wg_subnet(panel):
+    node = panel.node(external_wg.create(panel, "promilek", "10.8.0.28"))
+    wg0 = external_wg.client_conf(node, WG_EASY)
+    assert "AllowedIPs = 10.8.0.0/24" in wg0 and "0.0.0.0/0" not in wg0  # reszta ruchu serwera nie idzie tunelem
+    assert "DNS" not in wg0 and "PersistentKeepalive = 25" in wg0 and "PresharedKey = Tq4l" in wg0
+    assert "Endpoint = vpn.example.com:51820" in wg0
+    install = external_wg.install_snippet(wg0)
+    assert "install -m 600 /dev/stdin /etc/wireguard/wg0.conf <<'EOF'" in install and "systemctl enable --now wg-quick@wg0" in install
+    other = panel.node(external_wg.create(panel, "inny", "10.8.0.5"))
+    with pytest.raises(ValueError):
+        external_wg.client_conf(other, WG_EASY)
+
+
+def test_client_conf_route_does_not_store_private_key(admin, panel):
+    node_id = external_wg.create(panel, "promilek", "10.8.0.28")
+    response = admin.post(f"/nodes/{node_id}/external-wg/client-conf", data={"conf": WG_EASY})
+    assert response.status_code == 200 and "AllowedIPs = 10.8.0.0/24" in response.text
+    assert "yAnz5TF" not in str(panel.node(node_id))
+    assert admin.post(f"/nodes/{node_id}/external-wg/client-conf", data={"conf": "[Interface]\nfoo"}).status_code == 400
+
+
+def test_check_uses_gateway_probe(panel, monkeypatch):
+    import asyncio
+
+    calls = []
+
+    class FakeGateway:
+        async def post(self, path, json):
+            calls.append((path, json["url"]))
+            return {"ok": True, "status": 200, "ms": 12}
+
+        async def get(self, path):
+            raise AssertionError("trasy tuneli sprawdzamy tylko, gdy test nie przeszedł")
+
+    gw = panel.db.insert("gateway", name="cezary", role="proxy", status="paired", public_host="1.2.3.4", wg_enabled=0)
+    node = panel.node(external_wg.create(panel, "promilek", "10.8.0.28", gateway_id=gw))
+    monkeypatch.setattr(panel, "client_for_gateway", lambda _gw: FakeGateway())
+    result = asyncio.run(external_wg.check(panel, node))
+    assert result["gateway"]["ok"] is True and calls == [("/api/check", "http://10.8.0.28:2750/health")]
+
+
+def test_host_mode_page_offers_wg0_conf_form(admin, panel):
+    host = external_wg.create(panel, "promilek", "10.8.0.28")
+    shared = external_wg.create(panel, "cezary", "10.8.0.1", container="wg-easy")
+    assert f"/nodes/{host}/external-wg/client-conf" in admin.get(f"/nodes/{host}/external-wg").text
+    assert "client-conf" not in admin.get(f"/nodes/{shared}/external-wg").text  # węzeł w sieci kontenera wg-easy nie potrzebuje klienta

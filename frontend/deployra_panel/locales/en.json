@@ -2146,7 +2146,7 @@
     "step_pair": "Pair with the code from the logs",
     "check_panel": "Panel reaches the node API ({address})",
     "check_panel_fix": "The panel machine must be in the {subnet} network (e.g. as a wg-easy client).",
-    "check_gateway": "Gateway {gateway} has a route to {address}",
+    "check_gateway": "Gateway {gateway} reaches the node ({address})",
     "check_gateway_fix": "Add a wg-easy client for the gateway and paste its config with the {subnet} route.",
     "check_tunnel_offline": "Tunnel {tunnel} is configured but not connected.",
     "to_tunnel": "Tunnel → External WireGuard",
@@ -2157,6 +2157,11 @@
     "bad_subnet": "Invalid subnet (e.g. 10.8.0.0/24).",
     "outside_subnet": "Address {address} is not in subnet {subnet}.",
     "bad_container": "Invalid container name.",
-    "bad_proxy": "The gateway address must be an IP address."
+    "bad_proxy": "The gateway address must be an IP address.",
+    "client_title": "This server is a wg-easy client — wg0.conf",
+    "client_paste": "Client config downloaded from wg-easy",
+    "client_generate": "Generate wg0.conf",
+    "client_install": "Install on the node server (root)",
+    "conf_other_address": "This config is for {found}, but the node address is {address}."
   }
 }

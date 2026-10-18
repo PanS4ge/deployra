@@ -2146,7 +2146,7 @@
     "step_pair": "Sparuj kodem z logów",
     "check_panel": "Panel widzi API węzła ({address})",
     "check_panel_fix": "Maszyna panelu musi być w sieci {subnet} (np. jako klient wg-easy).",
-    "check_gateway": "Bramka {gateway} ma trasę do {address}",
+    "check_gateway": "Bramka {gateway} dochodzi do węzła ({address})",
     "check_gateway_fix": "Dodaj w wg-easy klienta dla bramki i wklej jego konfigurację z trasą {subnet}.",
     "check_tunnel_offline": "Tunel {tunnel} jest skonfigurowany, ale nie ma połączenia.",
     "to_tunnel": "Tunel → Zewnętrzny WireGuard",
@@ -2157,6 +2157,11 @@
     "bad_subnet": "Nieprawidłowa podsieć (np. 10.8.0.0/24).",
     "outside_subnet": "Adres {address} nie należy do podsieci {subnet}.",
     "bad_container": "Nieprawidłowa nazwa kontenera.",
-    "bad_proxy": "Adres dla bramki musi być adresem IP."
+    "bad_proxy": "Adres dla bramki musi być adresem IP.",
+    "client_title": "Ten serwer jest klientem wg-easy — wg0.conf",
+    "client_paste": "Konfiguracja klienta pobrana z wg-easy",
+    "client_generate": "Generuj wg0.conf",
+    "client_install": "Instalacja na serwerze węzła (root)",
+    "conf_other_address": "Ta konfiguracja jest dla {found}, a węzeł ma adres {address}."
   }
 }

@@ -19,6 +19,20 @@
         <button type="button" class="btn sm" data-copy="{{ compose }}"><i class="bi bi-clipboard"></i> {{ t("common.copy") }}</button>
       </div>
     </div>
+    {% if not conf.container %}
+    <details class="card-body" style="border-top: 1px solid var(--border)" {{ "open" if node.status != "paired" }}>
+      <summary class="small" style="cursor: pointer"><i class="bi bi-file-earmark-lock"></i> {{ t("extnode.client_title") }}</summary>
+      <form class="stack" style="margin-top: 12px" hx-post="/nodes/{{ node.id }}/external-wg/client-conf" hx-target="#extwg-conf" hx-swap="innerHTML">
+        <div class="field">
+          <label>{{ t("extnode.client_paste") }}</label>
+          <textarea class="textarea mono" name="conf" rows="7" required spellcheck="false" autocomplete="off"
+                    placeholder="[Interface]&#10;PrivateKey = …&#10;Address = {{ conf.address }}/24&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = vpn.example.com:51820"></textarea>
+        </div>
+        <div class="row" style="justify-content: flex-end"><button class="btn sm"><span class="spin"></span><i class="bi bi-gear"></i> {{ t("extnode.client_generate") }}</button></div>
+      </form>
+      <div id="extwg-conf"></div>
+    </details>
+    {% endif %}
   </div>
 
   <div class="stack">

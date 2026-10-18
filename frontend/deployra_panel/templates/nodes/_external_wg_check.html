@@ -8,14 +8,17 @@
     </div>
   </li>
   {% if gw %}
-  {% set ok = gw.tunnel and gw.online %}
-  <li class="{{ 'ok' if ok else ('warn' if gw.tunnel else 'err') }}">
-    <i class="bi {{ 'bi-check-circle-fill' if ok else ('bi-exclamation-circle-fill' if gw.tunnel else 'bi-x-circle-fill') }}"></i>
+  <li class="{{ 'ok' if gw.ok else 'err' }}">
+    <i class="bi {{ 'bi-check-circle-fill' if gw.ok else 'bi-x-circle-fill' }}"></i>
     <div>
-      <b>{{ t("extnode.check_gateway", gateway=gw.name, address=conf.proxy_address) }}</b>
-      {% if gw.error %}<div class="small muted">{{ gw.error }}</div>
-      {% elif gw.tunnel and not gw.online %}<div class="small muted">{{ t("extnode.check_tunnel_offline", tunnel=gw.tunnel) }}</div>
-      {% elif not gw.tunnel %}<div class="small muted">{{ t("extnode.check_gateway_fix", subnet=conf.subnet) }} <a href="/tunnel#external-card">{{ t("extnode.to_tunnel") }}</a></div>{% endif %}
+      <b>{{ t("extnode.check_gateway", gateway=gw.name, address=conf.address ~ ":2750") }}</b>
+      {% if not gw.ok %}
+      <div class="small muted">
+        {% if gw.error %}<span class="mono">{{ gw.error }}</span> · {% endif %}
+        {% if gw.tunnel and not gw.online %}{{ t("extnode.check_tunnel_offline", tunnel=gw.tunnel) }}
+        {% elif not gw.tunnel %}{{ t("extnode.check_gateway_fix", subnet=conf.subnet) }} <a href="/tunnel#external-card">{{ t("extnode.to_tunnel") }}</a>{% endif %}
+      </div>
+      {% endif %}
     </div>
   </li>
   {% else %}

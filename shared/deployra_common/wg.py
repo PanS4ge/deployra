@@ -17,6 +17,7 @@ import subprocess
 import tempfile
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from typing import Any
 from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
@@ -149,6 +150,67 @@ def render_sync(iface: WgInterface, peers: Iterable[WgPeer]) -> str:
     for peer in peers:
         lines += _peer_block(peer)
     return "\n".join(lines) + "\n"
+
+
+# --- konfiguracja klienta cudzego serwera (wg-easy itp.) — bramka (zewnętrzny WG) i panel (węzeł za zewnętrznym WG) ---
+
+CLIENT_KEEPALIVE = 25
+CLIENT_IGNORED = ("dns", "postup", "postdown", "preup", "predown", "saveconfig", "table", "fwmark", "listenport")
+
+
+def parse_client_conf(text: str) -> dict[str, Any]:
+    """Plik .conf klienta (np. z wg-easy) → klucze, adresy, jeden peer (serwer) i lista pominiętych pól (DNS, PostUp…)."""
+    interface: dict[str, Any] = {}
+    peers: list[dict[str, Any]] = []
+    section = None
+    ignored: list[str] = []
+    for raw in text.replace("\r\n", "\n").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].strip().lower()
+            if section == "peer":
+                peers.append({})
+            elif section != "interface":
+                raise ValueError(tr("gw.ext.bad_conf", error=line))
+            continue
+        key, sep, value = line.partition("=")
+        key, value = key.strip().lower(), value.strip()
+        target = interface if section == "interface" else peers[-1] if section == "peer" else None
+        if not sep or target is None:
+            raise ValueError(tr("gw.ext.bad_conf", error=line))
+        if key in CLIENT_IGNORED:
+            ignored.append(key)
+        elif key in ("address", "allowedips"):
+            target.setdefault(key, []).extend(v.strip() for v in value.split(",") if v.strip())
+        else:
+            target[key] = value
+    if not interface.get("privatekey") or not interface.get("address"):
+        raise ValueError(tr("gw.ext.need_key_address"))
+    if len(peers) != 1:
+        raise ValueError(tr("gw.ext.one_peer"))
+    peer = peers[0]
+    if not peer.get("endpoint"):
+        raise ValueError(tr("gw.ext.need_endpoint"))
+    try:
+        mtu = int(interface["mtu"]) if interface.get("mtu") else None
+        keepalive = int(peer.get("persistentkeepalive") or 0)
+    except ValueError as exc:
+        raise ValueError(tr("gw.ext.bad_conf", error=exc)) from None
+    return {
+        "private_key": interface["privatekey"],
+        "addresses": interface["address"],
+        "mtu": mtu,
+        "peer": {
+            "public_key": peer.get("publickey", ""),
+            "preshared_key": peer.get("presharedkey") or None,
+            "endpoint": peer["endpoint"],
+            "allowed_ips": peer.get("allowedips", []),
+            "keepalive": keepalive or CLIENT_KEEPALIVE,  # bez keepalive handshake wygasa, a stan w panelu kłamie
+        },
+        "ignored": sorted(set(ignored)),
+    }
 
 
 def allocate_ip(subnet: str, used: Iterable[str], skip_first: int = 1) -> str:
