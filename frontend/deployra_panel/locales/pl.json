@@ -538,7 +538,12 @@
     "refresh": "Odśwież",
     "size": "Rozmiar",
     "download": "Pobierz",
-    "truncated": "Plik jest duży — pokazano pierwsze 2 MB, edycja wyłączona."
+    "truncated": "Plik jest duży — pokazano pierwsze 2 MB, edycja wyłączona.",
+    "upload_folder": "Wgraj folder",
+    "upload_mode_files": "Pliki",
+    "upload_mode_folder": "Folder",
+    "download_zip": "Pobierz folder (ZIP)",
+    "exit_code": "kod {code}"
   },
   "dashboard": {
     "apps_error": "z błędem: {count}",

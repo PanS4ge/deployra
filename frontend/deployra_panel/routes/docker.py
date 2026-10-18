@@ -22,7 +22,7 @@ from ..deps import current_user, node_or_404, require
 from ..i18n import t
 from ..permissions import Permission
 from ..services import relay
-from ..web import redirect, render, templates, toast
+from ..web import redirect, render, templates, toast, toast_headers
 from .jobs import line_html
 
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -222,15 +222,16 @@ async def container(request: Request, cid: str, node: dict = Depends(node_or_404
                   profile=profile, initial_logs=initial_logs, raw=json.dumps(info, indent=2, ensure_ascii=False), ep=ep)  # fmt: skip
 
 
-async def quick_action(panel: Panel, node: dict, cid: str, ep: str, action_id: str) -> Response:
-    """Szybka akcja profilu (np. VACUUM, FLUSHALL) — wspólna dla kontenera i aplikacji."""
+async def quick_action(request: Request, panel: Panel, node: dict, cid: str, ep: str, action_id: str) -> Response:
+    """Szybka akcja profilu (np. VACUUM, df -h) — wspólna dla kontenera i aplikacji; pełny wynik w ramce pod przyciskami."""
     res = await _client(panel, node).post(_p(f"/api/containers/{cid}/action/quick/{action_id}", ep))
     output = (res or {}).get("output", "")
     code = (res or {}).get("exit_code", 0)
+    label = str((await request.form()).get("label") or action_id)[:80]
+    response = render(request, "partials/quick_output.html", label=label, code=code, output=output.rstrip())
     if code != 0:
-        return toast(t("containers.quick_failed", code=code, output=output[:120]), "err")
-    summary = output.strip().splitlines()[0] if output.strip() else t("containers.quick_done")
-    return toast(summary[:120])
+        response.headers.update(toast_headers(t("containers.quick_failed", code=code, output=output.strip()[:120]), "err"))
+    return response
 
 
 async def _dump(panel: Panel, node: dict, cid: str, ep: str) -> tuple[bytes, str]:
@@ -259,9 +260,9 @@ async def dump_to_storage(panel: Panel, node: dict, cid: str, ep: str) -> Respon
 
 
 @router.post("/nodes/{node_id}/containers/{cid}/action/quick/{action_id}")
-async def container_quick_action(cid: str, action_id: str, node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
+async def container_quick_action(request: Request, cid: str, action_id: str, node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
                                  panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
-    return await quick_action(panel, node, cid, ep, action_id)
+    return await quick_action(request, panel, node, cid, ep, action_id)
 
 
 @router.get("/nodes/{node_id}/containers/{cid}/dump")
@@ -677,7 +678,7 @@ async def container_files(request: Request, cid: str, path: str | None = None, n
         acc += "/" + part
         crumbs.append({"name": part, "url": url(acc)})
     items = [{**item, "url": url(item["path"]) if item.get("is_dir") else None,
-              "download": None if item.get("is_dir") else files_url(node["id"], cid, item["path"], ep, "/download")}
+              "download": files_url(node["id"], cid, item["path"], ep, "/download")}  # folder pobiera się jako ZIP
              for item in data.get("items") or []]  # fmt: skip
     mounts = [{**m, "url": url(m["destination"])} for m in data.get("mounts") or []]
     parent = _parent(cur)

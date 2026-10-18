@@ -713,15 +713,72 @@ def read_container_file(client: Any, cid: str, path: str, max_bytes: int = 2 * 1
 
 
 def get_container_file_bytes(client: Any, cid: str, path: str) -> tuple[str, bytes]:
-    """Surowe bajty pliku do pobrania."""
+    """Surowe bajty pliku do pobrania; folder → archiwum ZIP z całą zawartością."""
+    import io
     import posixpath
+    import tarfile
+    import zipfile
 
     clean_path = _clean(path)
     strm, stat = _archive(client, cid, clean_path)
-    member, data = _first_member(strm)
-    if member.isdir() or data is None:
-        raise FileNotFoundError(tr("node.files.not_file", path=clean_path))
-    return stat.get("name") or posixpath.basename(clean_path), data
+    name = stat.get("name") or posixpath.basename(clean_path) or "root"
+    buffer = io.BytesIO()
+    for chunk in strm:
+        buffer.write(chunk)
+    buffer.seek(0)
+    tar = tarfile.open(fileobj=buffer, mode="r")
+    first = tar.next()
+    if first is None:
+        raise FileNotFoundError(tr("node.files.empty_archive"))
+    if not first.isdir():
+        data = tar.extractfile(first).read() if first.isfile() else None
+        if data is None:
+            raise FileNotFoundError(tr("node.files.not_file", path=clean_path))
+        return name, data
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        for member in [first, *tar]:
+            if member.isdir():
+                zf.writestr(member.name.rstrip("/") + "/", b"")
+            elif member.isfile():
+                zf.writestr(member.name, tar.extractfile(member).read())  # dowiązania i urządzenia pomijamy
+    return f"{name}.zip", out.getvalue()
+
+
+def _rel_parts(rel: str) -> list[str]:
+    """Ścieżka względna z przeglądarki (wgrywanie folderu) → bezpieczne segmenty, bez `..`."""
+    parts = [p for p in rel.replace("\\", "/").split("/") if p not in ("", ".")]
+    if not parts or ".." in parts:
+        raise ValueError(tr("node.files.bad_path"))
+    return parts
+
+
+def upload_container_tree(client: Any, cid: str, directory: str, files: list[tuple[str, bytes]]) -> list[dict]:
+    """Wiele plików (także z podfolderami) jednym archiwum — put_archive sam tworzy brakujące foldery."""
+    import io
+    import tarfile
+    import time
+
+    target = _clean(directory)
+    uid, gid = _default_owner(client.api.inspect_container(cid))
+    now = int(time.time())
+    tar_stream, dirs, done = io.BytesIO(), set(), []
+    with tarfile.open(fileobj=tar_stream, mode="w") as tar:
+        for rel, data in files:
+            parts = _rel_parts(rel)
+            for depth in range(1, len(parts)):
+                folder = "/".join(parts[:depth])
+                if folder not in dirs:
+                    dirs.add(folder)
+                    info = tarfile.TarInfo(name=folder)
+                    info.type, info.mode, info.mtime, info.uid, info.gid = tarfile.DIRTYPE, 0o755, now, uid, gid
+                    tar.addfile(info)
+            info = tarfile.TarInfo(name="/".join(parts))
+            info.size, info.mtime, info.mode, info.uid, info.gid = len(data), now, 0o644, uid, gid
+            tar.addfile(info, io.BytesIO(data))
+            done.append({"name": "/".join(parts), "size": len(data)})
+    client.api.put_archive(cid, target, tar_stream.getvalue())
+    return done
 
 
 def _owner(client: Any, cid: str, path: str) -> tuple[int, int, int] | None:

@@ -519,12 +519,12 @@ async def _app_target_or_toast(panel: Panel, app: dict):
 
 
 @router.post("/apps/{app_id}/quick/{action_id}")
-async def app_quick_action(action_id: str, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+async def app_quick_action(request: Request, action_id: str, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
                            user: dict = Depends(require(Permission.ALLOW_MODIFY_DOCKERS))):  # fmt: skip
     from .docker import quick_action
 
     target, error = await _app_target_or_toast(panel, app)
-    return error or await quick_action(panel, *target, action_id)
+    return error or await quick_action(request, panel, *target, action_id)
 
 
 @router.get("/apps/{app_id}/dump")

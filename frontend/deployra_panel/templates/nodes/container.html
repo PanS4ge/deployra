@@ -53,7 +53,7 @@
       {% else %}
         <button class="btn sm {{ a.style }}"
                 hx-post="/nodes/{{ node.id }}/containers/{{ c.Id }}/action/quick/{{ a.id }}{{ epa }}"
-                hx-swap="none"
+                hx-target="#quick-output" hx-swap="innerHTML" hx-vals="{{ {'label': a.label} | jsonattr }}"
                 {% if a.confirm %}hx-confirm="{{ a.confirm }}"{% endif %}
                 title="{{ a.description }}">
           <i class="bi {{ a.icon }}"></i> {{ a.label }}
@@ -61,6 +61,7 @@
       {% endif %}
     {% endfor %}
   </div>
+  <div id="quick-output"></div>
 </div>
 {% endif %}
 

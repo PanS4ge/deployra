@@ -52,7 +52,9 @@
             <div class="actions" style="justify-content: flex-end">
               {% if not item.is_dir %}
               <button class="btn icon sm ghost" data-path="{{ item.path }}" @click="openFile($el.dataset.path)" title="{{ t('containers.edit_file') }}"><i class="bi bi-pencil-square"></i></button>
-              <a class="btn icon sm ghost" href="{{ item.download }}" hx-boost="false" download title="{{ t('containers.download') }}"><i class="bi bi-download"></i></a>
+              {% endif %}
+              {% if item.type != "mount" %}
+              <a class="btn icon sm ghost" href="{{ item.download }}" hx-boost="false" download title="{{ t('containers.download_zip' if item.is_dir else 'containers.download') }}"><i class="bi {{ 'bi-file-earmark-zip' if item.is_dir else 'bi-download' }}"></i></a>
               {% endif %}
               {% if has(user, P.ALLOW_CONTAINER_FILES_WRITE) and item.type != "mount" %}
               <button class="btn icon sm ghost danger" hx-post="/nodes/{{ node.id }}/containers/{{ cid }}/files/delete{{ epa }}" hx-swap="none"

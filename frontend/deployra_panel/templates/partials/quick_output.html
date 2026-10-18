@@ -1,0 +1,7 @@
+<div class="card-body" style="border-top: 1px solid var(--border)" x-data>
+  <div class="row between" style="margin-bottom: 8px">
+    <span class="small"><b>{{ label }}</b>{% if code %} · <span class="badge err">{{ t("containers.exit_code", code=code) }}</span>{% endif %}</span>
+    <button type="button" class="btn icon sm ghost" @click="$el.closest('#quick-output').innerHTML = ''" aria-label="{{ t('common.close') }}"><i class="bi bi-x-lg"></i></button>
+  </div>
+  <pre class="mono small" style="margin: 0; max-height: 360px; overflow: auto; white-space: pre; padding: 10px 12px; border-radius: var(--radius-sm); background: rgba(5, 7, 20, 0.5)">{{ output or t("containers.quick_done") }}</pre>
+</div>

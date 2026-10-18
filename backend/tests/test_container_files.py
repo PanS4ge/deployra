@@ -142,3 +142,36 @@ def test_write_keeps_owner_and_mode(ctx):
     docker_svc.write_container_file(fake, cid, "/app/run.sh", "echo hi")
     member = tarfile.open(fileobj=io.BytesIO(sent[0])).next()
     assert (member.uid, member.gid, member.mode) == (1000, 1001, 0o755)
+
+
+def test_folder_upload_tree_and_zip_download(ctx):
+    import io
+    import zipfile
+
+    fake = ctx.docker_for("local")
+    cid = fake.api.create_container("python:3.11-slim", name="c-tree")["Id"]
+    fake.api.start(cid)
+
+    done = docker_svc.upload_container_tree(fake, cid, "/app", [("site/index.html", b"<h1>hi</h1>"), ("site/css/a.css", b"body{}")])
+    assert [d["name"] for d in done] == ["site/index.html", "site/css/a.css"]
+
+    name, data = docker_svc.get_container_file_bytes(fake, cid, "/app/site")
+    assert name == "site.zip"
+    zf = zipfile.ZipFile(io.BytesIO(data))
+    assert zf.read("site/index.html") == b"<h1>hi</h1>"
+    assert zf.read("site/css/a.css") == b"body{}"
+
+
+def test_folder_upload_rejects_parent_paths(ctx):
+    fake = ctx.docker_for("local")
+    cid = fake.api.create_container("python:3.11-slim", name="c-evil")["Id"]
+    with pytest.raises(ValueError):
+        docker_svc.upload_container_tree(fake, cid, "/app", [("x/../../etc/passwd", b"x")])
+
+
+def test_processes_action_has_proc_fallback():
+    from deployra_common import container_profiles
+
+    profile = container_profiles.detect_profile("python:3.11-slim")
+    cmd, _, _ = container_profiles.build_action_command(profile, "processes")
+    assert "/proc/" in cmd[-1] and "\x00" not in cmd[-1]

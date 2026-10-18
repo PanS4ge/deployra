@@ -39,7 +39,7 @@
     Alpine.data("containerFiles", (urls) => {
       const q = (path) => new URLSearchParams(urls.ep === "local" ? {path} : {path, ep: urls.ep}).toString();
       return {
-        showEditor: false, showUpload: false, showMkdir: false, loading: false, saving: false,
+        showEditor: false, showUpload: false, uploadFolder: false, showMkdir: false, loading: false, saving: false,
         filePath: "", fileContent: "", isBinary: false, isTruncated: false, fileSize: 0,
         browser() { return document.getElementById("files-browser"); },
         currentPath() { return new URL(this.browser().dataset.url, location.origin).searchParams.get("path") || "/"; },

@@ -12,13 +12,14 @@
 <a class="btn ghost sm" href="/nodes/{{ node.id }}/containers/{{ cid }}{{ epa }}"><i class="bi bi-arrow-left"></i> {{ c_name }}</a>
 {% if has(user, P.ALLOW_CONTAINER_FILES_WRITE) %}
 <button class="btn sm" x-data @click="$dispatch('files-upload')"><i class="bi bi-upload"></i> {{ t("containers.upload_file") }}</button>
+<button class="btn sm" x-data @click="$dispatch('files-upload-folder')"><i class="bi bi-folder-symlink"></i> {{ t("containers.upload_folder") }}</button>
 <button class="btn sm" x-data @click="$dispatch('files-mkdir')"><i class="bi bi-folder-plus"></i> {{ t("containers.new_folder") }}</button>
 {% endif %}
 {% endblock %}
 
 {% block content %}
 <div x-data="containerFiles({{ {'read': '/nodes/' ~ node.id ~ '/containers/' ~ cid ~ '/files/read', 'write': '/nodes/' ~ node.id ~ '/containers/' ~ cid ~ '/files/write' ~ epa, 'download': '/nodes/' ~ node.id ~ '/containers/' ~ cid ~ '/files/download', 'ep': ep} | jsonattr }})"
-     @files-upload.window="showUpload = true" @files-mkdir.window="showMkdir = true">
+     @files-upload.window="showUpload = true; uploadFolder = false" @files-upload-folder.window="showUpload = true; uploadFolder = true" @files-mkdir.window="showMkdir = true">
 
   {% include "nodes/_container_files_table.html" %}
 
@@ -56,7 +57,12 @@
       <div class="card-head"><h3><i class="bi bi-upload"></i> {{ t("containers.upload_file") }}</h3></div>
       <div class="card-body stack">
         <div class="mono small muted" x-text="currentPath()"></div>
-        <input class="input" type="file" name="files" multiple required>
+        <div class="row" style="gap: 6px">
+          <button type="button" class="chip" :class="!uploadFolder && 'active'" @click="uploadFolder = false"><i class="bi bi-files"></i> {{ t("containers.upload_mode_files") }}</button>
+          <button type="button" class="chip" :class="uploadFolder && 'active'" @click="uploadFolder = true"><i class="bi bi-folder"></i> {{ t("containers.upload_mode_folder") }}</button>
+        </div>
+        <template x-if="!uploadFolder"><input class="input" type="file" name="files" multiple required></template>
+        <template x-if="uploadFolder"><input class="input" type="file" name="files" webkitdirectory directory multiple required></template>
       </div>
       <div class="card-body row" style="justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border)">
         <button type="button" class="btn ghost sm" @click="showUpload = false">{{ t("common.cancel") }}</button>

@@ -194,7 +194,8 @@ def container_files_download(cid: str, path: str, client: Any = Depends(dk)) -> 
 
     filename, data = _files_call(docker_svc.get_container_file_bytes, client, cid, path)
     disposition = f"attachment; filename*=UTF-8''{quote(filename)}"  # polskie znaki nie psują nagłówka
-    return Response(content=data, media_type="application/octet-stream", headers={"Content-Disposition": disposition})
+    media = "application/zip" if filename.endswith(".zip") else "application/octet-stream"
+    return Response(content=data, media_type=media, headers={"Content-Disposition": disposition})
 
 
 @router.post("/containers/{cid}/files/write")
@@ -204,15 +205,14 @@ def container_files_write(cid: str, body: FileWriteRequest, client: Any = Depend
 
 @router.post("/containers/{cid}/files/upload")
 async def container_files_upload(cid: str, dir_path: str = Form("/"), files: list[UploadFile] = File(...), client: Any = Depends(dk)) -> dict:
-    import posixpath
-
     uploaded = []
     clean_dir = "/" + dir_path.strip("/")
-    for f in files:
-        name = posixpath.basename((f.filename or "").replace("\\", "/"))
-        if not name or name in (".", ".."):
-            continue
-        content = await f.read()
+    payload = [((f.filename or "").replace("\\", "/").strip("/"), await f.read()) for f in files]
+    payload = [(name, content) for name, content in payload if name and name not in (".", "..")]
+    if any("/" in name for name, _ in payload):  # wgrany folder: ścieżki względne, jedno archiwum z podfolderami
+        uploaded = await asyncio.to_thread(_files_call, docker_svc.upload_container_tree, client, cid, clean_dir, payload)
+        return {"ok": True, "dir": clean_dir, "uploaded": uploaded}
+    for name, content in payload:  # pojedyncze pliki: zachowują właściciela i tryb nadpisywanych
         await asyncio.to_thread(_files_call, docker_svc.write_container_file, client, cid, f"{clean_dir.rstrip('/')}/{name}", content)
         uploaded.append({"name": name, "size": len(content)})
     return {"ok": True, "dir": clean_dir, "uploaded": uploaded}

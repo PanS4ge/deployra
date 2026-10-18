@@ -538,7 +538,12 @@
     "refresh": "Refresh",
     "size": "Size",
     "download": "Download",
-    "truncated": "Large file — showing the first 2 MB, editing disabled."
+    "truncated": "Large file — showing the first 2 MB, editing disabled.",
+    "upload_folder": "Upload folder",
+    "upload_mode_files": "Files",
+    "upload_mode_folder": "Folder",
+    "download_zip": "Download folder (ZIP)",
+    "exit_code": "exit code {code}"
   },
   "dashboard": {
     "apps_error": "with errors: {count}",

@@ -162,12 +162,13 @@
           </button>
           {% endif %}
           {% for a in app_profile.actions if not a.is_dump %}
-          <button class="btn sm ghost" title="{{ a.description }}" hx-post="/apps/{{ app.id }}/quick/{{ a.id }}" hx-swap="none"{% if a.confirm %} hx-confirm="{{ a.confirm }}"{% endif %}>
+          <button class="btn sm ghost" title="{{ a.description }}" hx-post="/apps/{{ app.id }}/quick/{{ a.id }}" hx-target="#quick-output" hx-swap="innerHTML" hx-vals="{{ {'label': a.label} | jsonattr }}"{% if a.confirm %} hx-confirm="{{ a.confirm }}"{% endif %}>
             <span class="spin"></span><i class="bi {{ a.icon }}"></i> {{ a.label }}
           </button>
           {% endfor %}
         </span>
       </div>
+      <div id="quick-output"></div>
       {% endif %}
       {% if spec.source.kind in ("image", "git") and has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
       <div class="row between"><span class="small dim">{{ t("apps.rollback_hint") }}</span>

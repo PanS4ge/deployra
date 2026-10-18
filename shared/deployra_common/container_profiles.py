@@ -306,6 +306,14 @@ def detect_profile(
     )
 
 
+# obrazy slim nie mają `ps` — wtedy lista z /proc (PID i pełne polecenie)
+PROCESSES = (
+    "if command -v ps >/dev/null 2>&1; then ps aux 2>/dev/null || ps -ef 2>/dev/null || ps; else "
+    "printf 'PID    COMMAND\\n'; for p in /proc/[0-9]*; do c=$(tr '\\0' ' ' < \"$p/cmdline\" 2>/dev/null); "
+    "[ -n \"$c\" ] || c=\"[$(cat \"$p/comm\" 2>/dev/null)]\"; printf '%-6s %s\\n' \"${p#/proc/}\" \"$c\"; done; fi"
+)
+
+
 def build_action_command(
     profile: ContainerProfile,
     action_id: str,
@@ -388,7 +396,7 @@ def build_action_command(
 
     # Generic
     if action_id == "processes":
-        return ["sh", "-c", "ps aux 2>/dev/null || ps -ef 2>/dev/null || ps 2>/dev/null"], False, ""
+        return ["sh", "-c", PROCESSES], False, ""
     if action_id == "disk_usage":
         return ["df", "-h"], False, ""
 

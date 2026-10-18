@@ -284,6 +284,19 @@ class FakeAPI:
 
         self._find(cid)
         fn = os.path.basename(path.strip("/")) or "file.txt"
+        prefix = path.rstrip("/") + "/"
+        inside = {k[len(prefix):]: v for k, v in self._files.items() if k.startswith(prefix)}
+        if inside:  # folder: jak Docker — wpis katalogu, potem zawartość pod jego nazwą
+            strm = io.BytesIO()
+            with tarfile.open(fileobj=strm, mode="w") as tar:
+                ti = tarfile.TarInfo(name=fn)
+                ti.type = tarfile.DIRTYPE
+                tar.addfile(ti)
+                for rel, data in sorted(inside.items()):
+                    ti = tarfile.TarInfo(name=f"{fn}/{rel}")
+                    ti.size = len(data)
+                    tar.addfile(ti, io.BytesIO(data))
+            return [strm.getvalue()], {"name": fn, "size": 0, "mode": 0o755 | 0x80000000}
         data = self._files.get(path, b"Sample file content for " + fn.encode())
         strm = io.BytesIO()
         with tarfile.open(fileobj=strm, mode="w") as tar:
