@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty, app_icon with context %}
+{% macro sev(level) -%}
+<span class="badge {{ {'critical': 'crit', 'high': 'err', 'medium': 'warn', 'low': 'info'}.get(level, '') }}">{{ t("vuln.sev." ~ level) }}</span>
+{%- endmacro %}
+{% block actions %}
+{% if has(user, P.ALLOW_SETTINGS) %}<a class="btn ghost icon" href="/settings/security" title="{{ t('nav.settings') }}" aria-label="{{ t('nav.settings') }}"><i class="bi bi-gear"></i></a>{% endif %}
+{% if has(user, P.ALLOW_DEPLOYMENT) %}
+<button class="btn primary" hx-post="/security/scan" hx-swap="none" {{ "disabled" if running }}><span class="spin"></span><i class="bi bi-arrow-repeat"></i> {{ t("vuln.scan_now") }}</button>
+{% endif %}
+{% endblock %}
+{% block content %}
+<div class="grid grid-4 stats-compact">
+  <div class="card stat"><div class="label"><i class="bi bi-radioactive"></i> {{ t("vuln.sev.critical") }}</div><div class="value">{{ counts.critical }}</div></div>
+  <div class="card stat"><div class="label"><i class="bi bi-exclamation-octagon"></i> {{ t("vuln.sev.high") }}</div><div class="value">{{ counts.high }}</div></div>
+  <div class="card stat"><div class="label"><i class="bi bi-exclamation-triangle"></i> {{ t("vuln.medium_low") }}</div><div class="value">{{ counts.medium + counts.low + counts.unknown }}</div></div>
+  <div class="card stat"><div class="label"><i class="bi bi-fire"></i> {{ t("vuln.exploited") }}</div><div class="value">{{ counts.kev }}</div></div>
+</div>
+
+{% if job %}
+<div class="card" hx-ext="sse" sse-connect="/jobs/{{ job.id }}/stream" sse-close="end">
+  <div class="card-head">
+    <h3><i class="bi bi-terminal"></i> {{ job.title }}</h3>
+    <span class="spacer"></span>
+    <span sse-swap="end" hx-swap="innerHTML" hx-disinherit="*" {% if not job.done %}data-reload="/security"{% endif %}>
+      {% if job.done %}{% if job.status == "ok" %}<span class="badge ok">{{ t("jobs.finished") }}</span>{% else %}<span class="badge err">{{ t("jobs.error") }}</span>{% endif %}{% else %}<span class="badge info"><span class="spin" style="width: 10px; height: 10px"></span> {{ t("jobs.running") }}</span>{% endif %}
+    </span>
+    {% if not job.done %}<a class="btn sm ghost" href="/security" style="margin-left: 8px"><i class="bi bi-arrow-clockwise"></i> {{ t("vuln.reload") }}</a>{% endif %}
+  </div>
+  <div class="card-body"><pre class="log short" sse-swap="line" hx-swap="beforeend"></pre></div>
+</div>
+{% endif %}
+
+{% set node_errors = (status.nodes or {}).values() | selectattr("error") | list %}
+{% if status.error %}<div class="callout err"><i class="bi bi-wifi-off"></i><div>{{ status.error }}</div></div>{% endif %}
+{% for n in node_errors %}<div class="callout warn"><i class="bi bi-hdd-network"></i><div><b>{{ n.name }}</b> — {{ n.error }}</div></div>{% endfor %}
+
+<div class="card">
+  <div class="card-head">
+    <nav class="tabs" style="border: 0">
+      <a href="/security" class="{{ 'active' if show == 'open' }}"><i class="bi bi-bug"></i> {{ t("vuln.tab_open") }}</a>
+      <a href="/security?show=ignored" class="{{ 'active' if show == 'ignored' }}"><i class="bi bi-eye-slash"></i> {{ t("vuln.tab_ignored") }}{% if tabs.ignored %} <span class="muted">{{ tabs.ignored }}</span>{% endif %}</a>
+      <a href="/security?show=resolved" class="{{ 'active' if show == 'resolved' }}"><i class="bi bi-check2-circle"></i> {{ t("vuln.tab_resolved") }}{% if tabs.resolved %} <span class="muted">{{ tabs.resolved }}</span>{% endif %}</a>
+    </nav>
+    <span class="spacer"></span>
+    <span class="small muted nowrap">{% if status.scanned_at %}{{ t("vuln.last_scan", ago=status.scanned_at | ago, packages=status.packages or 0) }}{% else %}{{ t("vuln.never") }}{% endif %}</span>
+  </div>
+  {% if not groups %}
+  {{ empty("shield-check", t("vuln.empty_" ~ show)) }}
+  {% else %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>{{ t("vuln.software") }}</th><th>{{ t("vuln.severity") }}</th><th>{{ t("vuln.vulns") }}</th><th>{{ t("vuln.fixed_in") }}</th><th></th></tr></thead>
+      {% for g in groups %}{% set app = apps.get(g.app_id) %}
+      <tbody>
+        <tr class="group-row">
+          <td colspan="5">
+            <div class="row" style="gap: 8px; flex-wrap: wrap">
+              {% if app %}{{ app_icon(app, 20) }}<a class="name" href="/apps/{{ app.id }}">{{ app.name }}</a>
+              {% else %}<i class="bi bi-box"></i><a class="name" href="/nodes/{{ g.node_id }}/containers/{{ g.container }}{{ '?ep=' ~ g.endpoint if g.endpoint != 'local' }}">{{ g.label }}</a>{% endif %}
+              <span class="small muted"><i class="bi bi-hdd-network"></i> {{ (nodes.get(g.node_id) or {}).name or "?" }}{% if g.endpoint != "local" %} · {{ g.endpoint }}{% endif %}</span>
+              <span class="spacer"></span>
+              {% if show == "open" and app and app.kind in fixable and has(user, P.ALLOW_DEPLOYMENT) %}
+              <button class="btn sm primary" hx-post="/security/{{ g.rows[0].id }}/fix" hx-swap="none"
+                      hx-confirm="{{ t('vuln.fix_confirm', name=app.name) }}"><span class="spin"></span><i class="bi bi-bandaid"></i> {{ t("vuln.fix") }}</button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% for r in g.rows %}
+        <tr>
+          <td>
+            <span class="mono">{{ r.package }}</span> <span class="mono dim">{{ r.version }}</span>
+            <div class="small muted">{{ r.ecosystem if r.ecosystem != "Bitnami" else t("vuln.from_image") }}{% if r.source %} · <span class="mono">{{ r.source }}</span>{% endif %}{% if r.container and app %} · {{ r.container }}{% endif %}</div>
+          </td>
+          <td class="nowrap">{{ sev(r.severity) }}{% if r.kev %} <span class="badge crit" title="CISA KEV"><i class="bi bi-fire"></i> {{ t("vuln.kev") }}</span>{% endif %}</td>
+          <td>
+            <details>
+              <summary class="small">{{ t("vuln.count", count=r.vulns | length) }}</summary>
+              <ul class="vuln-list">
+                {% for v in r.vulns %}
+                <li>
+                  <a class="mono" href="https://osv.dev/vulnerability/{{ v.id }}" target="_blank" rel="noopener">{{ v.cve or v.id }}</a>
+                  {{ sev(v.severity) }}{% if v.kev %} <span class="badge crit"><i class="bi bi-fire"></i></span>{% endif %}
+                  {% if v.fixed %}<span class="small muted">→ {{ v.fixed }}</span>{% elif v.fixed == "" %}<span class="small muted">{{ t("vuln.no_fix") }}</span>{% endif %}
+                  {% if v.summary %}<div class="small dim">{{ v.summary }}</div>{% endif %}
+                </li>
+                {% endfor %}
+              </ul>
+            </details>
+          </td>
+          <td class="mono nowrap">{% if r.fixed %}<span class="badge ok">{{ r.fixed }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="actions">
+            {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
+            {% if show == "open" %}<button class="btn sm ghost" hx-post="/security/{{ r.id }}/ignore" hx-swap="none" title="{{ t('vuln.ignore') }}"><i class="bi bi-eye-slash"></i></button>
+            {% elif show == "ignored" %}<button class="btn sm ghost" hx-post="/security/{{ r.id }}/restore" hx-swap="none" title="{{ t('vuln.restore') }}"><i class="bi bi-eye"></i></button>{% endif %}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

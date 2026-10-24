@@ -119,6 +119,7 @@ Formularze POST w szablonach pluginu działają jak reszta panelu: używaj `hx-p
 | `monitor.down` / `monitor.up` | `monitor`, `message` |
 | `node.paired` | `node` (bez sekretu) |
 | `update.available` | `version`, `current`, `release` |
+| `vulns.scanned` | `findings` (podatne paczki), `new` (nowo znalezione w tym skanie) |
 | `notification` | `message`, `level` — każde powiadomienie panelu |
 | `*` | wszystkie powyższe |
 

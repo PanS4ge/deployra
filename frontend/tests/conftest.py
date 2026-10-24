@@ -18,6 +18,8 @@ def config(tmp_path, monkeypatch):
     monkeypatch.setenv("DEPLOYRA_WG", "off")
     monkeypatch.setenv("DEPLOYRA_MONITORING", "off")
     monkeypatch.setenv("DEPLOYRA_UPDATE_CHECKS", "off")
+    monkeypatch.setenv("DEPLOYRA_VULN_CHECKS", "off")
+    monkeypatch.setenv("DEPLOYRA_IMAGE_CHECKS", "off")
     monkeypatch.setenv("DEPLOYRA_UPDATE_DIR", str(tmp_path / "update"))
     return Config()
 

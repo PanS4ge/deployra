@@ -27,6 +27,7 @@
       <span><b>Deployra</b></span>
     </a>
     {% set section = path.split('/')[1] if path != '/' else '' %}
+    {% set vulns = vuln_banner(panel) if user and not user.scoped else {} %}
     {% if user and user.scoped %}
     <a class="nav-item {{ 'active' if section == 'servers' }}" href="/servers"><i class="bi bi-hdd-stack"></i> {{ t("servers.my_servers") }}</a>
     {% else %}
@@ -37,6 +38,7 @@
     <a class="nav-item {{ 'active' if section == 'uptime' }}" href="/uptime"><i class="bi bi-heart-pulse"></i> {{ t("nav.uptime") }}</a>
     <div class="nav-label">{{ t("nav.traffic") }}</div>
     <a class="nav-item {{ 'active' if section == 'traffic' }}" href="/traffic"><i class="bi bi-shield-shaded"></i> {{ t("nav.traffic_page") }}</a>
+    <a class="nav-item {{ 'active' if section == 'security' }}" href="/security"><i class="bi bi-bug"></i> {{ t("nav.security") }}{% if vulns.high %}<span class="nav-count">{{ vulns.high }}</span>{% endif %}</a>
     <a class="nav-item {{ 'active' if section == 'proxy' }}" href="/proxy"><i class="bi bi-signpost-split"></i> {{ t("nav.proxy") }}</a>
     <a class="nav-item {{ 'active' if section == 'dns' }}" href="/dns"><i class="bi bi-globe2"></i> {{ t("nav.dns") }}</a>
     <a class="nav-item {{ 'active' if section == 'certs' }}" href="/certs"><i class="bi bi-shield-lock"></i> {{ t("nav.certs") }}</a>
@@ -93,6 +95,7 @@
     </header>
     <main class="content fade-in">
       {% if user and has(user, P.ALLOW_SETTINGS) %}{% set offer = update_offer(panel) %}{% if offer %}{% include "partials/update_banner.html" %}{% endif %}{% endif %}
+      {% if vulns.show and section != "security" %}{% include "partials/vuln_banner.html" %}{% endif %}
       {% block content %}{% endblock %}
     </main>
   </div>

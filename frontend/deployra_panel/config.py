@@ -33,6 +33,8 @@ class Config:
     update_repo: str = field(default_factory=lambda: _env("DEPLOYRA_UPDATE_REPO", "PanS4ge/deployra"))  # owner/repo z wydaniami albo URL JSON
     update_dir: Path = field(default_factory=lambda: Path(_env("DEPLOYRA_UPDATE_DIR", "/run/deployra-update")))
     update_checks: bool = field(default_factory=lambda: _flag("DEPLOYRA_UPDATE_CHECKS", True))  # pętla sprawdzania wydań
+    vuln_checks: bool = field(default_factory=lambda: _flag("DEPLOYRA_VULN_CHECKS", True))  # pętla skanowania podatności (OSV.dev)
+    image_checks: bool = field(default_factory=lambda: _flag("DEPLOYRA_IMAGE_CHECKS", True))  # pętla aktualizacji obrazów aplikacji
     plugins_dir_env: str = field(default_factory=lambda: _env("DEPLOYRA_PLUGINS_DIR"))
     # węzeł na tej samej maszynie (deploy/panel-node.compose.yml): panel paruje go sam kodem ze wspólnego wolumenu
     local_node: str = field(default_factory=lambda: _env("DEPLOYRA_LOCAL_NODE"))

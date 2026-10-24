@@ -68,8 +68,9 @@ async def _push(panel: Any, job: Job) -> None:
         raise JobFailed(t("msg.gateway_rejected"))
 
 
-async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = None) -> dict:
-    """Wdrożenie aplikacji; z `adopt_container` węzeł zamiast stawiać od zera przejmuje istniejący kontener."""
+async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = None, refresh: bool = False) -> dict:
+    """Wdrożenie aplikacji; z `adopt_container` węzeł zamiast stawiać od zera przejmuje istniejący kontener,
+    z `refresh` pobiera od nowa obraz środowiska i bazowy obraz Dockerfile'a (naprawa podatności)."""
     app = panel.db.get("apps", app_id)
     if not app:
         raise JobFailed(t("msg.no_app"))
@@ -78,6 +79,8 @@ async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = N
     if not node:
         raise JobFailed(t("msg.app_node_missing"))
     spec = env_groups.effective(panel, app_id, spec)  # zmienne współdzielone wchodzą przy każdym wdrożeniu
+    if refresh:
+        spec = spec.model_copy(update={"refresh_image": True})
     first = app["status"] == "new"
     panel.db.update("apps", app_id, status="deploying", last_job=job.id, last_error=None)
     try:
@@ -107,6 +110,9 @@ async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = N
         else:
             await _expose(panel, job, app, node, host_port, options, upstream_host)
         panel.db.update("apps", app_id, status="running", last_deploy_at=now())
+        from . import app_updates
+
+        app_updates.after_deploy(panel, app, refresh)
         job.log(t("deploy.done"))
         panel.plugins.emit("app.deployed", app=panel.db.get("apps", app_id), job=job.id)
         return {"host_port": host_port}

@@ -1,56 +1,91 @@
-{% extends "base.html" %}
-{% block content %}
-{% include "settings/_tabs.html" %}
-<form class="card" hx-post="/settings" hx-swap="none">
-  <div class="card-body form-grid">
-    <div class="field"><label>{{ t("settings.panel_domain") }}</label><input class="input" name="panel_domain" value="{{ s.panel_domain or '' }}" placeholder="deploy.example.com"><div class="hint">{{ t("settings.panel_domain_hint") }}</div></div>
-    <div class="field"><label>{{ t("settings.base_domain") }}</label><input class="input" name="base_domain" value="{{ s.base_domain or '' }}" placeholder="example.com"><div class="hint">{{ t("settings.base_domain_hint", base=s.base_domain or "example.com") }}</div></div>
-    <div class="field"><label>{{ t("settings.acme_email") }}</label><input class="input" name="acme_email" type="email" value="{{ s.acme_email or '' }}"></div>
-    <div class="field" style="justify-content: flex-end"><label class="check"><input type="checkbox" name="acme_staging" value="1" {{ "checked" if s.acme_staging }}><span class="sw"></span><span>{{ t("settings.acme_staging") }}</span></label></div>
-    <div class="field"><label>{{ t("settings.default_language") }}</label>
-      <select class="select" name="language">
-        <option value="" {{ "selected" if not s.language }}>{{ t("settings.language_auto") }}</option>
-        {% for code, name in LANGUAGES().items() %}<option value="{{ code }}" {{ "selected" if s.language == code }}>{{ name }}</option>{% endfor %}
-      </select>
-      <div class="hint">{{ t("settings.default_language_hint") }}</div>
+{% extends "settings/_layout.html" %}
+{% block settings %}
+<form class="stack" hx-post="/settings" hx-swap="none">
+  <div class="card set-section">
+    <div class="card-head"><h3><i class="bi bi-globe2"></i> {{ t("settings.section_domains") }}</h3></div>
+    <div class="set-row">
+      <div class="set-label"><b>{{ t("settings.panel_domain") }}</b><div class="hint">{{ t("settings.panel_domain_hint") }}</div></div>
+      <div class="set-control"><input class="input" name="panel_domain" value="{{ s.panel_domain or '' }}" placeholder="deploy.example.com"></div>
     </div>
-    <div class="field" x-data="{ mode: '{{ s.default_page or 'deployra' }}' }">
-      <label>{{ t("settings.default_page") }}</label>
-      <div class="stack" style="gap: 8px; flex: 1">
+    <div class="set-row">
+      <div class="set-label"><b>{{ t("settings.base_domain") }}</b><div class="hint">{{ t("settings.base_domain_hint", base=s.base_domain or "example.com") }}</div></div>
+      <div class="set-control"><input class="input" name="base_domain" value="{{ s.base_domain or '' }}" placeholder="example.com"></div>
+    </div>
+  </div>
+
+  <div class="card set-section">
+    <div class="card-head"><h3><i class="bi bi-shield-lock"></i> {{ t("settings.section_certs") }}</h3></div>
+    <div class="set-row">
+      <div class="set-label"><b>{{ t("settings.acme_email") }}</b></div>
+      <div class="set-control"><input class="input" name="acme_email" type="email" value="{{ s.acme_email or '' }}"></div>
+    </div>
+    <div class="set-row">
+      <div class="set-label"><b>{{ t("settings.acme_staging") }}</b></div>
+      <div class="set-control"><label class="check"><input type="checkbox" name="acme_staging" value="1" {{ "checked" if s.acme_staging }}><span class="sw"></span></label></div>
+    </div>
+  </div>
+
+  <div class="card set-section">
+    <div class="card-head"><h3><i class="bi bi-palette"></i> {{ t("settings.section_look") }}</h3></div>
+    <div class="set-row">
+      <div class="set-label"><b>{{ t("settings.default_language") }}</b><div class="hint">{{ t("settings.default_language_hint") }}</div></div>
+      <div class="set-control">
+        <select class="select" name="language">
+          <option value="" {{ "selected" if not s.language }}>{{ t("settings.language_auto") }}</option>
+          {% for code, name in LANGUAGES().items() %}<option value="{{ code }}" {{ "selected" if s.language == code }}>{{ name }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="set-row">
+      <div class="set-label"><b>{{ t("settings.gravatar") }}</b></div>
+      <div class="set-control">
+        <select class="select" name="gravatar_default">{% for g in ["identicon", "retro", "robohash", "monsterid", "wavatar", "mp"] %}<option {{ "selected" if s.gravatar_default == g }}>{{ g }}</option>{% endfor %}</select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card set-section" x-data="{ mode: '{{ s.default_page or 'deployra' }}' }">
+    <div class="card-head"><h3><i class="bi bi-signpost-split"></i> {{ t("settings.default_page") }}</h3></div>
+    <div class="set-row">
+      <div class="set-label"><b>{{ t("settings.section_unknown_hosts") }}</b><div class="hint" x-show="mode === 'passthrough'" x-cloak>{{ t("settings.default_page_passthrough_hint") }}</div></div>
+      <div class="set-control">
         <select class="select" name="default_page" x-model="mode">
           <option value="deployra" {{ "selected" if s.default_page == "deployra" or not s.default_page }}>{{ t("settings.default_page_cosmic") }}</option>
           <option value="404" {{ "selected" if s.default_page == "404" }}>{{ t("settings.default_page_404") }}</option>
           <option value="passthrough" {{ "selected" if s.default_page == "passthrough" }}>{{ t("settings.default_page_passthrough") }}</option>
         </select>
-        <div x-show="mode === 'passthrough'" x-cloak class="stack" style="gap: 6px">
-          <select class="select" name="default_page_target">
-            <option value="">{{ t("settings.default_page_select_app") }}</option>
-            {% if apps %}
-            <optgroup label="{{ t('nav.apps') }}">
-              {% for a in apps %}
-              <option value="app:{{ a.id }}" {{ "selected" if s.default_page_target == 'app:' ~ a.id }}>{{ a.name }} ({{ a.domains | join(', ') if a.domains else (':' ~ a.port if a.port else '') }})</option>
-              {% endfor %}
-            </optgroup>
-            {% endif %}
-            {% if sites %}
-            <optgroup label="{{ t('nav.proxy') }}">
-              {% for st in sites if st.kind == 'proxy' %}
-              <option value="site:{{ st.id }}" {{ "selected" if s.default_page_target == 'site:' ~ st.id }}>{{ st.domains | join(', ') }}</option>
-              {% endfor %}
-            </optgroup>
-            {% endif %}
-          </select>
-          <div class="hint small muted">{{ t("settings.default_page_passthrough_hint") }}</div>
-        </div>
+        <select class="select" name="default_page_target" x-show="mode === 'passthrough'" x-cloak>
+          <option value="">{{ t("settings.default_page_select_app") }}</option>
+          {% if apps %}
+          <optgroup label="{{ t('nav.apps') }}">
+            {% for a in apps %}
+            <option value="app:{{ a.id }}" {{ "selected" if s.default_page_target == 'app:' ~ a.id }}>{{ a.name }} ({{ a.domains | join(', ') if a.domains else (':' ~ a.port if a.port else '') }})</option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
+          {% if sites %}
+          <optgroup label="{{ t('nav.proxy') }}">
+            {% for st in sites if st.kind == 'proxy' %}
+            <option value="site:{{ st.id }}" {{ "selected" if s.default_page_target == 'site:' ~ st.id }}>{{ st.domains | join(', ') }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
+        </select>
       </div>
     </div>
-    <div class="field"><label>{{ t("settings.gravatar") }}</label>
-      <select class="select" name="gravatar_default">{% for g in ["identicon", "retro", "robohash", "monsterid", "wavatar", "mp"] %}<option {{ "selected" if s.gravatar_default == g }}>{{ g }}</option>{% endfor %}</select>
-    </div>
-    <div class="field"><label>{{ t("settings.image_prefix") }}</label><input class="input mono" name="image_prefix" value="{{ s.image_prefix or '' }}" placeholder="ghcr.io/pans4ge/deployra"><div class="hint">{{ t("settings.image_prefix_hint") }}</div></div>
-    <div class="field"><label>{{ t("settings.notifications") }}</label><a class="btn" href="/settings/alerts"><i class="bi bi-bell"></i> {{ t("settings.tab_alerts") }}</a></div>
-    <div class="callout full"><i class="bi bi-database"></i><div class="small">{{ t("settings.database", db="SQLite" if db == "sqlite" else "MySQL/MariaDB", path=panel.config.data_dir) }}</div></div>
   </div>
-  <div class="card-body row" style="justify-content: flex-end; border-top: 1px solid var(--border)"><button class="btn primary"><i class="bi bi-check2"></i> {{ t("common.save") }}</button></div>
+
+  <div class="card set-section">
+    <div class="card-head"><h3><i class="bi bi-wrench-adjustable"></i> {{ t("settings.section_advanced") }}</h3></div>
+    <div class="set-row">
+      <div class="set-label"><b>{{ t("settings.image_prefix") }}</b><div class="hint">{{ t("settings.image_prefix_hint") }}</div></div>
+      <div class="set-control"><input class="input mono" name="image_prefix" value="{{ s.image_prefix or '' }}" placeholder="ghcr.io/pans4ge/deployra"></div>
+    </div>
+    <div class="set-row">
+      <div class="set-label"><b>{{ t("settings.section_database") }}</b></div>
+      <div class="set-control small dim">{{ t("settings.database", db="SQLite" if db == "sqlite" else "MySQL/MariaDB", path=panel.config.data_dir) }}</div>
+    </div>
+  </div>
+  <div class="save-bar"><button class="btn primary"><i class="bi bi-check2"></i> {{ t("common.save") }}</button></div>
 </form>
 {% endblock %}

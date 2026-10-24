@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+{% set groups = [
+  ("settings.group_panel", [("general", "/settings", "gear", t("settings.tab_general")), ("users", "/settings/users", "people", t("nav.users")),
+                            ("alerts", "/settings/alerts", "bell", t("settings.tab_alerts"))]),
+  ("settings.group_network", [("dns", "/settings/dns", "cloud", t("settings.tab_dns"))]),
+  ("settings.group_apps", [("app_updates", "/settings/app-updates", "arrow-up-circle", t("settings.tab_app_updates")),
+                           ("registries", "/settings/registries", "box-seam", t("settings.tab_registries")),
+                           ("env_groups", "/settings/env-groups", "collection", t("settings.tab_env_groups"))]),
+  ("settings.group_security", [("security", "/settings/security", "bug", t("settings.tab_security"))]),
+  ("settings.group_system", [("updates", "/settings/updates", "cloud-arrow-down", t("settings.tab_updates")),
+                             ("backup", "/settings/backup", "archive", t("settings.tab_backup")), ("plugins", "/settings/plugins", "puzzle", t("settings.tab_plugins")),
+                             ("mcp", "/settings/mcp", "robot", t("settings.tab_mcp")), ("import", "/import/npm", "box-arrow-in-down", t("nav.import"))]),
+] %}
+<div class="settings-layout">
+  <nav class="card settings-nav" aria-label="{{ t('nav.settings') }}">
+    {% for label, items in groups %}
+    <div class="settings-group">{{ t(label) }}</div>
+    {% for key, href, icon, name in items %}
+    <a href="{{ href }}" class="{{ 'active' if tab == key }}"><i class="bi bi-{{ icon }}"></i><span>{{ name }}</span></a>
+    {% endfor %}
+    {% endfor %}
+    <div class="settings-sep"></div>
+    <a href="/settings/risky" class="danger {{ 'active' if tab == 'risky' }}"><i class="bi bi-exclamation-octagon"></i><span>{{ t("settings.tab_risky") }}</span></a>
+  </nav>
+  <div class="settings-main stack">
+    {% block settings %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

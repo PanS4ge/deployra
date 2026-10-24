@@ -256,6 +256,7 @@ class AppSpec(BaseModel):
     domains: list[str] = Field(default_factory=list)
     zero_downtime: bool = False  # nowy kontener startuje obok starego; przełączenie dopiero po teście zdrowia
     health_path: str | None = Field(default=None, max_length=200)  # np. /up — HTTP < 500 = zdrowy; brak = wystarczy „działa”
+    refresh_image: bool = False  # jednorazowo (naprawa podatności): obraz środowiska i bazowy Dockerfile'a pobrane od nowa
 
     @field_validator("slug")
     @classmethod

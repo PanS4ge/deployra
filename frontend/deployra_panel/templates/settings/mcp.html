@@ -1,8 +1,7 @@
-{% extends "base.html" %}
+{% extends "settings/_layout.html" %}
 {% from "_macros.html" import copy_pill %}
 {% block crumbs %}<div class="crumbs"><a href="/settings">{{ t("nav.settings") }}</a> /</div>{% endblock %}
-{% block content %}
-{% include "settings/_tabs.html" %}
+{% block settings %}
 
 {% if new_token %}
 <div class="callout ok" style="margin-bottom: 20px">

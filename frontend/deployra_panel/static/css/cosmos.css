@@ -610,3 +610,64 @@ select option, select optgroup { background: var(--surface-solid); color: var(--
 .checklist li.ok > i { color: var(--ok); }
 .checklist li.warn > i { color: var(--warn); }
 .checklist li.err > i { color: var(--err); }
+
+/* ---------- 1.7: podatności ---------- */
+.badge.crit { color: #fff; border-color: rgba(244, 63, 94, 0.9); background: rgba(225, 29, 72, 0.75); }
+.table .group-row td { background: rgba(139, 150, 255, 0.05); padding-top: 9px; padding-bottom: 9px; }
+.table td.right { text-align: right; }
+.vuln-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; max-height: 340px; overflow-y: auto; min-width: 280px; }
+.vuln-list a.mono { white-space: nowrap; }
+.vuln-list li { display: block; }
+.vuln-list .badge { margin-left: 4px; }
+details > summary.small { cursor: pointer; color: var(--text-dim); }
+.vuln-banner { border-color: rgba(244, 63, 94, 0.45); background: rgba(225, 29, 72, 0.12); box-shadow: none; }
+.vuln-banner > i { color: #fda4af; }
+.nav-count { margin-left: auto; min-width: 20px; padding: 1px 7px; border-radius: 10px; background: rgba(225, 29, 72, 0.8); color: #fff; font-size: 0.72rem; font-weight: 700; text-align: center; }
+
+/* ---------- 1.7: ustawienia (menu z grupami, sekcje, wybór trybu) ---------- */
+.settings-layout { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 20px; align-items: start; }
+.settings-nav { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 2px; padding: 10px; }
+.settings-group { padding: 12px 10px 5px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.settings-group:first-child { padding-top: 4px; }
+.settings-nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--text-dim); font-weight: 500; }
+.settings-nav a i { width: 18px; text-align: center; opacity: 0.85; }
+.settings-nav a:hover { background: var(--surface-hover); color: var(--text); }
+.settings-nav a.active { background: rgba(139, 92, 246, 0.16); color: #fff; box-shadow: inset 2px 0 0 var(--violet); }
+.settings-nav a.danger { color: #fda4af; }
+.settings-sep { height: 1px; margin: 8px 6px; background: var(--border); }
+.settings-main { min-width: 0; }
+.set-section .card-head h3 { display: flex; align-items: center; gap: 9px; }
+.set-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 18px; align-items: center; padding: 14px 18px; border-top: 1px solid var(--border); }
+.set-row:first-child { border-top: 0; }
+.set-label b { display: block; font-weight: 600; color: var(--text); }
+.set-label .hint { margin-top: 3px; }
+.set-control { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.set-control .check { align-self: flex-start; }
+.set-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); }
+.choice-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.choice { position: relative; display: flex; gap: 12px; align-items: flex-start; padding: 13px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: rgba(5, 7, 20, 0.35); cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.choice:hover { border-color: rgba(139, 92, 246, 0.45); }
+.choice input { position: absolute; opacity: 0; pointer-events: none; }
+.choice > i { font-size: 1.25rem; color: var(--violet-2); margin-top: 1px; }
+.choice b { display: block; font-weight: 600; }
+.choice:has(input:checked) { border-color: var(--violet); background: rgba(139, 92, 246, 0.13); box-shadow: var(--glow); }
+.choice:has(input:focus-visible) { outline: 2px solid var(--violet-2); outline-offset: 2px; }
+@media (max-width: 900px) {
+  .settings-layout { grid-template-columns: 1fr; gap: 14px; }
+  .settings-nav { position: static; flex-direction: row; overflow-x: auto; padding: 6px; gap: 4px; }
+  .settings-group, .settings-sep { display: none; }
+  .settings-nav a { white-space: nowrap; flex: none; }
+  .settings-nav a.active { box-shadow: inset 0 -2px 0 var(--violet); }
+}
+@media (max-width: 720px) { .set-row { grid-template-columns: 1fr; gap: 10px; } }
+
+/* ---------- 1.7: aktualizacje obrazów (strzałka na ikonie aplikacji) ---------- */
+.app-up { position: absolute; z-index: 1; top: -5px; right: -6px; width: max(14px, calc(var(--s, 24px) * 0.55)); height: max(14px, calc(var(--s, 24px) * 0.55));
+  border-radius: 50%; display: grid; place-items: center; background: var(--ok); color: #052e1c; border: 2px solid var(--bg-1);
+  box-shadow: 0 0 10px rgba(52, 211, 153, 0.55); }
+.app-icon .app-up i { font-size: max(9px, calc(var(--s, 24px) * 0.34)); color: inherit; -webkit-text-stroke: 0.6px currentColor; }
+.app-up.auto { background: var(--violet-2); color: #1e1035; box-shadow: 0 0 10px rgba(167, 139, 250, 0.6); }
+.update-row td { vertical-align: middle; }
+.save-bar { position: sticky; bottom: 14px; z-index: 5; display: flex; justify-content: flex-end; pointer-events: none; }
+.save-bar .btn { pointer-events: auto; box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.7), var(--glow); }

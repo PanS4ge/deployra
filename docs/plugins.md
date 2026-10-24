@@ -119,6 +119,7 @@ POST forms in plugin templates work like the rest of the panel: use `hx-post` (h
 | `monitor.down` / `monitor.up` | `monitor`, `message` |
 | `node.paired` | `node` (without the secret) |
 | `update.available` | `version`, `current`, `release` |
+| `vulns.scanned` | `findings` (vulnerable packages), `new` (newly found in this scan) |
 | `notification` | `message`, `level` — every panel notification |
 | `*` | all of the above |
 

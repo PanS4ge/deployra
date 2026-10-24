@@ -81,6 +81,25 @@ def _fake_tar(container: dict) -> None:
                 tar.addfile(info, io.BytesIO(data))
 
 
+# metadane obrazów jak w oficjalnych obrazach (spis oprogramowania do skanowania podatności); klucz — repozytorium bez tagu
+IMAGE_ENV = {
+    "ghost": ["NODE_VERSION=18.20.4", "GHOST_VERSION=5.96.0"],
+    "nextcloud": ["PHP_VERSION=8.2.23", "NEXTCLOUD_VERSION=29.0.7"],
+    "mariadb": ["MARIADB_VERSION=1:11.4.3+maria~ubu2404"],
+    "nginx": ["NGINX_VERSION=1.26.2"],
+    "redis": ["REDIS_VERSION=7.2.5"],
+    "php": ["PHP_VERSION=8.3.12"],
+    "deployra/rt-php": ["PHP_VERSION=8.3.12"],
+    "python": ["PYTHON_VERSION=3.13.0"],
+    "node": ["NODE_VERSION=22.9.0"],
+}
+REGISTRY_ENV = {"php": ["PHP_VERSION=8.3.36"]}  # co jest teraz w rejestrze — `pull` podmienia lokalną kopię
+
+
+def _repo(ref: str) -> str:
+    return ref.rsplit(":", 1)[0] if ":" in ref.rsplit("/", 1)[-1] else ref
+
+
 def _bytes(limit: Any) -> int:
     """"256m" → bajty (jak HostConfig.Memory w Dockerze; 0 = bez limitu)."""
     if not limit:
@@ -106,6 +125,10 @@ class FakeAPI:
         self.on_oneoff: Any = None  # testy: podgląd/emulacja jednorazowych kontenerów (instalacja, tar wolumenów)
         self.crash_images: set[str] = set()
         self._cpu = 0
+        self.image_env = {repo: list(env) for repo, env in IMAGE_ENV.items()}
+        self._image_gen: dict[str, int] = {}  # przebudowany obraz dostaje nowe ID, jak w Dockerze
+        self.registry_env = {repo: list(env) for repo, env in REGISTRY_ENV.items()}
+        self.image_labels: dict[str, dict] = {}
         self._files: dict[str, bytes] = {}
         self._exec_commands: dict[str, Any] = {}
         if demo:
@@ -137,7 +160,7 @@ class FakeAPI:
                 continue
             out.append(
                 {
-                    "Id": c["id"], "Names": ["/" + c["name"]], "Image": c["image"], "ImageID": "sha256:" + "a" * 64,
+                    "Id": c["id"], "Names": ["/" + c["name"]], "Image": c["image"], "ImageID": self._image_id(c["image"]),
                     "State": c["state"], "Status": "Up 3 hours" if c["state"] == "running" else "Exited (1) 2 days ago",
                     "Created": c["created"],
                     # jak w Dockerze: zatrzymany kontener nie trzyma portu hosta
@@ -188,8 +211,14 @@ class FakeAPI:
         c = self._find(cid)
         return {"StatusCode": 1 if c["image"] in self.crash_images else 0}
 
-    def build(self, fileobj: Any = None, tag: str | None = None, **_: Any):
+    def build(self, fileobj: Any = None, tag: str | None = None, pull: bool = False, labels: dict | None = None, **_: Any):
         self.built.append(tag or "")
+        repo = _repo(tag or "")
+        if repo.startswith("deployra/rt-"):  # obraz bazowy dziedziczy zmienne obrazu języka (FROM php:8.3-apache)
+            base = repo.removeprefix("deployra/rt-")
+            self.image_env[repo] = list(self.image_env.get(base, []))
+            self._image_gen[repo] = self._image_gen.get(repo, 0) + 1
+        self.image_labels[repo] = dict(labels or {})
         return iter([{"stream": "Step 1/2 : FROM base\n"}, {"stream": f"Successfully tagged {tag}\n"}])
 
     def stop(self, cid: str) -> None:
@@ -326,11 +355,29 @@ class FakeAPI:
     def images(self, name: str | None = None) -> list[dict]:
         return list(self.images_)
 
+    def _image_id(self, ref: str) -> str:
+        repo = _repo(ref)
+        return "sha256:" + hashlib.sha256(f"{repo}#{self._image_gen.get(repo, 0)}".encode()).hexdigest()
+
     def inspect_image(self, image: str) -> dict:
-        return {"Id": "sha256:" + "a" * 64}
+        ref = next((c["image"] for c in self.containers_.values() if self._image_id(c["image"]) == image), image)
+        repo = _repo(ref).removeprefix("library/")
+        env = self.image_env.get(repo, [])
+        # obraz z rejestru ma digest manifestu; zbudowany lokalnie (deployra/…) — nie
+        digests = [] if repo.startswith("deployra/") else [f"{repo}@{self.image_digest(ref)}"]
+        return {"Id": self._image_id(ref), "RepoTags": [ref], "RepoDigests": digests,
+                "Config": {"Env": ["PATH=/usr/bin", *env], "Labels": dict(self.image_labels.get(repo, {}))}}  # fmt: skip
+
+    def image_digest(self, ref: str) -> str:
+        """Digest manifestu lokalnej kopii obrazu (zmienia się po pobraniu nowszej wersji)."""
+        return "sha256:" + hashlib.sha256(f"manifest:{_repo(ref)}#{self._image_gen.get(_repo(ref), 0)}".encode()).hexdigest()
 
     def pull(self, repo: str, tag: str | None = None, stream: bool = False, decode: bool = False, **_: Any):
         self.pulled.append(f"{repo}:{tag}")
+        name = repo.removeprefix("library/")
+        if name in self.registry_env and self.image_env.get(name) != self.registry_env[name]:
+            self.image_env[name] = list(self.registry_env[name])
+            self._image_gen[name] = self._image_gen.get(name, 0) + 1
         events = [{"status": f"Pulling from {repo}"}, {"status": "Pull complete", "id": "4f4fb700ef54"}, {"status": f"Downloaded newer image for {repo}:{tag}"}]
         return iter(events) if stream else events
 

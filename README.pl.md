@@ -33,6 +33,8 @@ Ruch publiczny idzie **jednym skokiem**: `nginx na bramce → wg0 → węzeł �
 | **Tunel** | hub WireGuard, dołączanie węzłów tokenem, routing podsieci LAN (NAS, Home Assistant…), węzły widzą się nawzajem · kilka bramek, także czysty nginx bez WireGuarda · węzły za **zewnętrznym WireGuardem** (wg-easy) |
 | **Cloudflare** | rekordy A/AAAA per host (bez wildcarda), certyfikaty wildcard (DNS-01), **Cloudflare Tunnel** (cloudflared — bez publicznego IP i otwartych portów) |
 | **Odwiedziny** | unikalni i powracający per domena, wykresy jak w Cloudflare — bez ciasteczek, bez botów, liczone na bramce z logów nginx |
+| **Podatności (CVE)** | skan oprogramowania w kontenerach (PHP, Node, Python, nginx, bazy… z metadanych obrazów) i zależności aplikacji (composer.lock, package-lock.json, poetry.lock…) w bazie OSV.dev, oznaczenie wykorzystywanych w atakach (CISA KEV), alerty i naprawa jednym kliknięciem (wdrożenie ze świeżym obrazem) — bez klucza API |
+| **Aktualizacje aplikacji** | nowy build tego samego tagu (`php:8.3-apache`, `ghost:5-alpine`) i nowsze wersje przypiętych tagów (`grafana:11.2.0` → `11.3.0`) — strzałka na ikonie aplikacji albo automatyczna aktualizacja, do wyboru w ustawieniach i per aplikacja |
 | **Ruch i bezpieczeństwo** | topka adresów IP z krajem i ISP (DB-IP Lite), podejrzane adresy (zalew zapytań, skanery, szukanie dziur), bany w nginx i firewallu (ipset), opcjonalny auto-ban z białą listą |
 | **Uptime** (à la Uptime Kuma) | monitory aplikacji, kontenerów, węzłów i URL, uptime 24 h / 7 dni / 30 dni, powiadomienia (panel, Discord, ntfy, Slack) |
 | **Panel** | FastAPI + Jinja2 + htmx + Alpine (bez NiceGUI, bez kroku build), ciemny kosmiczny motyw, użytkownicy i uprawnienia, SQLite albo MySQL/MariaDB |
@@ -154,6 +156,56 @@ Bramka liczy zapytania per adres IP z tych samych logów nginx co statystyki odw
 - **auto-ban** (domyślnie wyłączony) dla adresów ponad progiem, z białą listą adresów, których nigdy nie banujemy.
 
 Surowe adresy IP trzymamy 7 dni (`DEPLOYRA_IP_RETENTION_DAYS`) — adres IP to dana osobowa.
+
+## Aktualizacje aplikacji
+
+**Ustawienia → Aktualizacje aplikacji** decyduje, co Deployra robi z nowszymi obrazami (co 3–24 h albo **Sprawdź teraz**):
+
+- **Wyłączone** — nic nie sprawdza;
+- **Pokaż strzałkę** (domyślnie) — zielona strzałka w rogu ikony aplikacji, ostrzeżenie na jej stronie, przycisk **Aktualizuj** i powiadomienie
+  z reguły alertu **Aktualizacje aplikacji**;
+- **Aktualizuj sam** — nowe buildy tego samego tagu są wdrażane automatycznie, po kolei, w jednym zadaniu; z opcją „także wersje
+  poprawkowe” również przypięte tagi w obrębie X.Y (`11.2.0` → `11.2.3`). Większych skoków wersji Deployra sama nie robi.
+
+Każda aplikacja może mieć własny tryb (edycja aplikacji albo tabela w ustawieniach) — np. automatycznie dla stron, a bazy danych tylko
+ze strzałką.
+
+Jak to działa: węzeł podaje digesty obrazów kontenerów (aplikacje „z plików” — obraz języka, z którego zbudowano obraz bazowy), a panel
+pyta rejestr zapytaniem HEAD o manifest tagu — tak jak Watchtower, więc Docker Hub nie liczy tego do limitu pobrań. Dla tagu z dokładną
+wersją czyta też listę tagów i szuka nowszych wersji o tym samym kształcie (`29.0.7-apache` → `29.0.9-apache`, bez wersji testowych).
+Prywatne rejestry działają z danymi z **Ustawienia → Rejestry**. Aktualizacja to ponowne wdrożenie ze świeżym obrazem (w compose podmieniamy
+dokładny `image:`); aplikacje z Gita budują się z Dockerfile'a, więc ich nie sprawdzamy. `DEPLOYRA_IMAGE_CHECKS=off` wyłącza sprawdzanie.
+
+## Podatności (CVE)
+
+Strona **Podatności** pokazuje znane dziury w tym, co działa na węzłach — np. PHP2Shell (CVE-2026-109618, CVE-2026-109619) w PHP 5.4–8.5.
+Co 6 godzin (albo po **Skanuj teraz**) panel:
+
+1. pyta każdy węzeł o spis oprogramowania. Węzeł niczego nie uruchamia w kontenerach (działa też na zatrzymanych) — wersje bierze z metadanych
+   obrazu: zmiennych oficjalnych obrazów (`PHP_VERSION`, `NODE_VERSION`, `PG_VERSION`, `MARIADB_VERSION`…, także odziedziczonych — WordPress
+   i Nextcloud stoją na obrazie PHP), z etykiety `org.opencontainers.image.version` albo dokładnego tagu (`grafana/grafana:11.2.0`). Dla aplikacji
+   „z plików” i z Gita czyta też pliki lock: `composer.lock`, `package-lock.json`, `yarn.lock`, `requirements.txt` (`==`), `poetry.lock`,
+   `uv.lock`, `Pipfile.lock`, `go.mod`, `Cargo.lock`, `Gemfile.lock` oraz to, co instalacja naprawdę wgrała (`vendor/composer/installed.json`,
+   `node_modules/.package-lock.json`, venv);
+2. sprawdza wersje w [OSV.dev](https://osv.dev) (oprogramowanie z obrazów to ekosystem „Bitnami”, zależności — Packagist, npm, PyPI, Go,
+   crates.io, RubyGems). Nie trzeba klucza API ani konta;
+3. oznacza podatności z katalogu [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) (wykorzystywane w atakach),
+   podaje wagę (z bazy źródłowej albo z wektora CVSS 3) i wersję, w której wszystko jest załatane.
+
+Krytyczne i wykorzystywane w atakach podatności pokazują pasek u góry panelu, aplikacja ma ostrzeżenie na swojej stronie, a reguła alertu
+**Znane podatności (CVE)** wysyła powiadomienie na wybrane kanały (próg wagi — w ustawieniach na stronie Podatności).
+
+**Napraw** wdraża aplikację ponownie ze świeżo pobranym obrazem: aplikacje z obrazu i compose robią `pull`, aplikacje z Gita budują się
+z `--pull`, a aplikacje „z plików” przebudowują obraz środowiska (np. `php:8.3-apache` z rozszerzeniami) — bez tego obraz bazowy zostaje
+w wersji z pierwszego wdrożenia. Potem panel skanuje jeszcze raz. Gdy obraz ma przypięty tag (np. `nextcloud:29.0.7`) albo gałąź nie
+dostaje już poprawek (PHP 8.1 i starsze), trzeba zmienić obraz/wersję w ustawieniach aplikacji. Kontenery spoza aplikacji Deployry
+aktualizujesz sam (strona kontenera albo stack).
+
+**Ignoruj** chowa paczkę, dopóki nie pojawi się dla niej nowa podatność. Węzeł, który nie odpowiada, zostawia swoje wyniki bez zmian
+(brak spisu to nie naprawa). `DEPLOYRA_VULN_CHECKS=off` wyłącza automatyczne skanowanie (np. panel bez internetu).
+
+Ograniczenia: pakiety systemowe obrazu (apt/apk, np. OpenSSL) nie są skanowane, a oprogramowanie bez zmiennej z wersją i bez znanego
+tagu nie zostanie rozpoznane.
 
 ## Logowanie Deployra przed aplikacją
 

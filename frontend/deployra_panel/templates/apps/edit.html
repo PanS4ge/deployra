@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import app_icon %}
+{% from "_macros.html" import app_icon with context %}
 {% block crumbs %}<div class="crumbs"><a href="/apps">{{ t("nav.apps") }}</a> / <a href="/apps/{{ app.id }}">{{ app.name }}</a> /</div>{% endblock %}
 {% block content %}
 <form class="stack" hx-post="/apps/{{ app.id }}/edit" hx-swap="none"
@@ -69,4 +69,17 @@
     <div class="row" style="justify-content: flex-end"><button class="btn primary sm"><span class="spin"></span><i class="bi bi-check2"></i> {{ t("common.save") }}</button></div>
   </div>
 </form>
+
+{% if spec.source.kind in ("image", "compose", "runtime") %}
+<form class="card" hx-post="/apps/{{ app.id }}/update-policy" hx-trigger="change" hx-swap="none">
+  <div class="card-head"><h3><i class="bi bi-arrow-up-circle"></i> {{ t("appupd.app_card") }}</h3><span class="spacer"></span><a class="small" href="/settings/app-updates">{{ t("nav.settings") }}</a></div>
+  <div class="card-body">
+    <div class="seg">
+      {% for p in ("", "notify", "auto", "off") %}
+      <label><input type="radio" name="policy" value="{{ p }}" {{ "checked" if (app.update_policy or "") == p }}><span>{{ t("appupd.policy_default", mode=t("appupd.mode_" ~ update_mode)) if not p else t("appupd.mode_" ~ p) }}</span></label>
+      {% endfor %}
+    </div>
+  </div>
+</form>
+{% endif %}
 {% endblock %}

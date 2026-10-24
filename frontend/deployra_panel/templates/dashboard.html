@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge, app_icon %}
+{% from "_macros.html" import status_badge, app_icon with context %}
 {% block actions %}{% if has(user, P.ALLOW_DEPLOYMENT) %}<a class="btn primary" href="/apps/new"><i class="bi bi-rocket-takeoff"></i> {{ t("dashboard.deploy") }}</a>{% endif %}{% endblock %}
 {% block content %}
 {% if firing %}

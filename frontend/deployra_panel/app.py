@@ -60,6 +60,14 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
             tasks.append(asyncio.create_task(resources.loop(panel)))
         if panel.config.update_checks:
             tasks.append(asyncio.create_task(updates.loop(panel)))
+        if panel.config.vuln_checks:
+            from .services import vulns
+
+            tasks.append(asyncio.create_task(vulns.loop(panel)))
+        if panel.config.image_checks:
+            from .services import app_updates
+
+            tasks.append(asyncio.create_task(app_updates.loop(panel)))
         tasks.append(asyncio.create_task(scheduled_tasks.loop(panel)))
         yield
         for task in tasks:

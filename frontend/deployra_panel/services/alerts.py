@@ -43,6 +43,8 @@ RULES: dict[str, Rule] = {
     "db_backup_failed": Rule("event", level="err"),
     "app_moved": Rule("event", level="info"),
     "update_available": Rule("event", level="info"),
+    "vulnerability": Rule("event", level="err"),  # próg wagi — w ustawieniach skanowania podatności
+    "app_update": Rule("event", level="info"),  # nowa wersja obrazu aplikacji / aktualizacja automatyczna
 }
 
 

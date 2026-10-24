@@ -155,7 +155,7 @@ def _git_image(ctx: Any, job: Job, spec: AppSpec) -> tuple[str, str]:
     )  # fmt: skip
     tag = f"deployra/{spec.slug}:{sha[:12]}"
     git_build.build(job, repo, spec.source.dockerfile, spec.source.build_context, tag, env=ctx.endpoints.docker_host_env(spec.endpoint),
-                    build_args=spec.build_env())
+                    build_args=spec.build_env(), pull=spec.refresh_image)  # fmt: skip
     return tag, sha
 
 

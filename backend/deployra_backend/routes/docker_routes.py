@@ -43,6 +43,24 @@ def logs_search(body: LogQuery, ep: str = "local", ctx: Context = Depends(get_ct
         raise HTTPException(400, tr("node.logs.bad_range"))
     return logsearch.search(ctx.docker_for(ep), must, exclude, body.since, body.until, set(body.containers) or None,
                             set(body.apps) or None, limit=max(1, min(body.limit, 1000)))  # fmt: skip
+
+
+@router.get("/security/inventory")
+def security_inventory(ctx: Context = Depends(get_ctx)) -> dict:
+    """Oprogramowanie kontenerów (z metadanych obrazów) i zależności aplikacji — panel sprawdza je w bazie podatności."""
+    from ..services import inventory
+
+    return inventory.collect(ctx)
+
+
+@router.get("/images/digests")
+def image_digests(ctx: Context = Depends(get_ctx)) -> dict:
+    """Digesty obrazów kontenerów — panel porównuje je z rejestrem (nowy build tagu, nowa wersja)."""
+    from ..services import inventory
+
+    return inventory.collect_digests(ctx)
+
+
 ws_router = APIRouter(prefix="/api")
 
 SHELLS = {

@@ -1,6 +1,5 @@
-{% extends "base.html" %}
-{% block content %}
-{% include "settings/_tabs.html" %}
+{% extends "settings/_layout.html" %}
+{% block settings %}
 <div x-data="{ edit: null }">
   <div class="grid grid-auto">
     {% for u in users %}{% set perms = parse(u.permissions) %}

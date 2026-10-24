@@ -163,6 +163,18 @@ def update_offer(panel: Any) -> dict | None:
     return updates.offer(panel)
 
 
+def app_badges(panel: Any) -> dict:
+    from .services import app_updates
+
+    return app_updates.badges(panel)
+
+
+def vuln_banner(panel: Any) -> dict:
+    from .services import vulns
+
+    return vulns.banner(panel)
+
+
 def js_i18n() -> dict[str, str]:
     """Teksty dla app.js (window.I18N) — klucze `js.*` z paczki bieżącego języka."""
     return {key[3:]: catalog.raw(key) for key in catalog.pack(catalog.default) if key.startswith("js.")}
@@ -208,7 +220,7 @@ def asset(path: str) -> str:
 
 templates.env.globals.update(
     NAME=NAME, VERSION=__version__, P=Permission, PERM_LABELS=LABELS, has=has, gravatar=gravatar, now=time.time,
-    update_offer=update_offer, t=tm, LANG=lang, LANGUAGES=catalog.names, JS_I18N=js_i18n, RUNTIMES=runtimes, RUNTIME_META=runtime_meta,
+    update_offer=update_offer, vuln_banner=vuln_banner, app_badges=app_badges, t=tm, LANG=lang, LANGUAGES=catalog.names, JS_I18N=js_i18n, RUNTIMES=runtimes, RUNTIME_META=runtime_meta,
     icon_v=icon_v, asset=asset,
 )
 

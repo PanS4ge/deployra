@@ -22,7 +22,7 @@ from ..context import Panel, get_panel
 from ..deps import current_user, require
 from ..i18n import t
 from ..permissions import Permission, has
-from ..services import charts, deploy, env_groups, migrate, relay, resources, scheduled_tasks
+from ..services import app_updates, charts, deploy, env_groups, migrate, relay, resources, scheduled_tasks
 from ..web import redirect, render, templates, toast
 
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -380,7 +380,7 @@ def app_page(request: Request, job: str = "", app: dict = Depends(_app), panel: 
     if spec.source.kind == "git":
         domain = panel.db.setting("panel_domain") or request.url.hostname
         hook_url = f"https://{domain}/hooks/git/{app['id']}"
-    from ..services import uptime
+    from ..services import uptime, vulns
     from deployra_common.container_profiles import detect_profile
 
     monitor = uptime.monitor_for(panel, "app", app["id"])
@@ -394,7 +394,17 @@ def app_page(request: Request, job: str = "", app: dict = Depends(_app), panel: 
         settings=panel.db.settings(), other_nodes=others, auto_capable=migrate.auto_capable(spec),
         acls=panel.db.fetchall("SELECT id, name FROM access_lists ORDER BY name"),
         app_profile=app_profile, mc_server=panel.db.fetchone("SELECT id FROM minecraft_servers WHERE app_id = ?", [app["id"]]),
+        app_vulns=vulns.listing(panel, "open", app["id"]), app_update=_update_info(panel, app),
     )  # fmt: skip
+
+
+def _update_info(panel: Panel, app: dict) -> dict | None:
+    """Dostępna aktualizacja obrazu dla strony aplikacji (bez trybu „off”)."""
+    items = app_updates.available(panel, app["id"])
+    mode = app_updates.policy(panel, app)
+    if not items or mode == "off":
+        return None
+    return {"lines": [app_updates.describe(i) for i in items], "auto": mode == "auto"}
 
 
 @router.get("/apps/{app_id}/icon")
@@ -743,7 +753,8 @@ def edit_page(request: Request, app: dict = Depends(_app), panel: Panel = Depend
     attached = env_groups.attached_ids(panel, app["id"])
     return render(request, "apps/edit.html", title=t("msg.title_app_settings", name=app["name"]), app=app, spec=spec, options=options,
                   node=panel.node(app["node_id"]), has_cf=bool(settings.get("cloudflare_token")),
-                  enved=editor_state("env", spec.env, spec.env_scopes), groups=group_picker(panel, attached), attached=attached)  # fmt: skip
+                  enved=editor_state("env", spec.env, spec.env_scopes), groups=group_picker(panel, attached), attached=attached,
+                  update_mode=app_updates.settings(panel)["mode"])  # fmt: skip
 
 
 @router.post("/apps/{app_id}/edit")

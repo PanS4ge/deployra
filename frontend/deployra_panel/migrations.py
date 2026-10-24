@@ -309,7 +309,33 @@ def v23(dialect: str) -> list[str]:
     return [f"ALTER TABLE nodes ADD COLUMN external_wg {_types(dialect)['text']}"]
 
 
+def v24(dialect: str) -> list[str]:
+    """Podatności: paczka w kontenerze/aplikacji z listą podatności z OSV.dev i pamięć podręczna wpisów OSV."""
+    t = _types(dialect)
+    i, s, x, n, r, tail = t["id"], t["str"], t["text"], t["int"], t["real"], t["tail"]
+    return [
+        f"""CREATE TABLE vuln_findings (
+            id {i}, node_id {n} NOT NULL, endpoint {s} NOT NULL, container {s} NOT NULL, app_id {n}, label {s} NOT NULL,
+            ecosystem {s} NOT NULL, package {x} NOT NULL, version {s} NOT NULL, source {x}, severity {s} NOT NULL, score {r},
+            vulns {x} NOT NULL, fixed {s}, kev {n} NOT NULL DEFAULT 0, status {s} NOT NULL, ignored_ids {x},
+            first_seen {r} NOT NULL, last_seen {r} NOT NULL, resolved_at {r}
+        ){tail}""",
+        "CREATE INDEX idx_vuln_findings_status ON vuln_findings (status)",
+        f"CREATE TABLE vuln_cache (id {s} PRIMARY KEY, modified {s}, data {x} NOT NULL, fetched_at {r} NOT NULL){tail}",
+    ]
+
+
+def v25(dialect: str) -> list[str]:
+    """Aktualizacje obrazów aplikacji: tryb per aplikacja (pusty — jak w ustawieniach) i znalezione aktualizacje."""
+    t = _types(dialect)
+    s, x, n, r, tail = t["str"], t["text"], t["int"], t["real"], t["tail"]
+    return [
+        f"ALTER TABLE apps ADD COLUMN update_policy {s}",
+        f"CREATE TABLE app_updates (app_id {n} PRIMARY KEY, items {x} NOT NULL, notified {s}, checked_at {r} NOT NULL){tail}",
+    ]
+
+
 MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [
     (1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8), (9, v9), (10, v10), (11, v11), (12, v12), (13, v13),
-    (14, v14), (15, v15), (16, v16), (17, v17), (18, v18), (19, v19), (20, v20), (21, v21), (22, v22), (23, v23),
+    (14, v14), (15, v15), (16, v16), (17, v17), (18, v18), (19, v19), (20, v20), (21, v21), (22, v22), (23, v23), (24, v24), (25, v25),
 ]

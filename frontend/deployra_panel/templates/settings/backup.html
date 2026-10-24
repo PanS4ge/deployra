@@ -1,6 +1,5 @@
-{% extends "base.html" %}
-{% block content %}
-{% include "settings/_tabs.html" %}
+{% extends "settings/_layout.html" %}
+{% block settings %}
 
 <div class="stack" style="gap: 20px">
   <div class="card" x-data="{ target: '{{ config.target or 'local' }}' }">

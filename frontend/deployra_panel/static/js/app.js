@@ -217,7 +217,21 @@
     while (box.childElementCount > MAX_LINES) box.firstElementChild.remove();
     if (follow.get(box) !== false) box.scrollTop = box.scrollHeight;
   });
+  // Menu ustawień na telefonie to poziomy pasek — aktywna pozycja ma być widoczna
+  const centerSettingsNav = () => {
+    const nav = document.querySelector(".settings-nav");
+    const active = nav && nav.querySelector("a.active");
+    if (active && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2;
+  };
+  document.addEventListener("DOMContentLoaded", centerSettingsNav);
+  document.addEventListener("htmx:load", centerSettingsNav);
+
   document.addEventListener("htmx:sseMessage", (e) => {
+    const reload = e.detail.elt.closest("[data-reload]");  // koniec zadania → strona z wynikami (np. skan podatności)
+    if (reload) {
+      setTimeout(() => { window.location.href = reload.dataset.reload; }, 800);
+      return;
+    }
     const box = e.detail.elt.closest(".log") || e.detail.elt;
     if (!box.classList.contains("log")) return;
     while (box.childElementCount > MAX_LINES) box.firstElementChild.remove();

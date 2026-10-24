@@ -7,7 +7,8 @@ PAGES = [
     "/settings/users", "/settings/backup", "/settings/risky", "/settings/env-groups", "/notifications", "/analytics/spark?domains=a.example.com",
     "/analytics/chart?all=1", "/analytics/chart?domains=a.example.com&days=1", "/dashboard/tunnel",
     "/settings/updates", "/settings/updates/components", "/traffic", "/traffic/top", "/traffic/suspicious", "/traffic/bans",
-    "/settings/alerts", "/settings/plugins", "/servers", "/settings/users/1/servers", "/logs", "/jobs/table",
+    "/settings/alerts", "/settings/plugins", "/servers", "/settings/users/1/servers", "/logs", "/jobs/table", "/security",
+    "/security?show=ignored", "/security?show=resolved", "/settings/app-updates", "/settings/security",
 ]  # fmt: skip
 
 
@@ -44,7 +45,7 @@ def test_npm_import_lives_in_settings(admin):
     settings = admin.get("/settings", headers={"HX-Request": ""}).text
     assert 'href="/import/npm"' in settings
     page = admin.get("/import/npm", headers={"HX-Request": ""}).text
-    assert 'class="tabs"' in page and 'class="active"' in page
+    assert 'settings-nav' in page and '<a href="/import/npm" class="active">' in page
 
 
 def test_favicon_accessible_without_login(client):

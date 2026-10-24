@@ -33,6 +33,8 @@ Public traffic takes **a single hop**: `nginx on the gateway → wg0 → node �
 | **Tunnel** | WireGuard hub, join nodes with a token, LAN subnet routing (NAS, Home Assistant…), nodes can reach each other · several gateways, including plain nginx without WireGuard · nodes behind an **external WireGuard** (wg-easy) |
 | **Cloudflare** | per-host A/AAAA records (no wildcard needed), wildcard certificates (DNS-01), **Cloudflare Tunnel** (cloudflared — no public IP, no open ports) |
 | **Visits** | unique and returning visitors per domain, Cloudflare-style charts — no cookies, no bots, counted on the gateway from nginx logs |
+| **Vulnerabilities (CVE)** | scans the software in containers (PHP, Node, Python, nginx, databases… from image metadata) and app dependencies (composer.lock, package-lock.json, poetry.lock…) against OSV.dev, flags ones exploited in the wild (CISA KEV), alerts and a one-click fix (redeploy with a fresh image) — no API key |
+| **App updates** | new builds of the same tag (`php:8.3-apache`, `ghost:5-alpine`) and newer versions of pinned tags (`grafana:11.2.0` → `11.3.0`) — an arrow on the app icon or automatic updates, chosen in settings and per app |
 | **Traffic & security** | top IP addresses with country and ISP (DB-IP Lite), suspicious addresses (floods, scanners, vulnerability probes), bans in nginx and the firewall (ipset), optional auto-ban with an allowlist |
 | **Uptime** (à la Uptime Kuma) | monitors for apps, containers, nodes and URLs, 24 h / 7 d / 30 d uptime, notifications (panel, Discord, ntfy, Slack) |
 | **Panel** | FastAPI + Jinja2 + htmx + Alpine (no build step), dark cosmic theme, users and permissions, SQLite or MySQL/MariaDB |
@@ -156,6 +158,55 @@ The gateway counts requests per IP from the same nginx logs as the visit statist
 - **auto-ban** (off by default) for addresses above the threshold, with an allowlist of addresses that are never banned.
 
 Raw IPs are kept for 7 days (`DEPLOYRA_IP_RETENTION_DAYS`) — an IP address is personal data.
+
+## App updates
+
+**Settings → App updates** decides what Deployra does with newer images (every 3–24 h or on **Check now**):
+
+- **Off** — no checks;
+- **Show an arrow** (default) — a green arrow in the corner of the app icon, a warning on the app page, an **Update** button and a
+  notification from the **App updates** alert rule;
+- **Update automatically** — new builds of the same tag are deployed automatically, one by one, in a single job; with “also patch
+  versions” pinned tags move within X.Y too (`11.2.0` → `11.2.3`). Deployra never makes bigger version jumps on its own.
+
+Every app can have its own mode (app settings or the table in settings) — e.g. automatic for websites, arrow only for databases.
+
+How it works: the node reports the digests of container images (apps from files report the language image their base image was built
+from), and the panel asks the registry with a HEAD request for the tag's manifest — like Watchtower, so Docker Hub doesn't count it
+against the pull limit. For a tag with an exact version it also reads the tag list and looks for newer versions of the same shape
+(`29.0.7-apache` → `29.0.9-apache`, no pre-releases). Private registries use the credentials from **Settings → Registries**. An update is a
+redeploy with a fresh image (in compose the exact `image:` line is replaced); apps from Git are built from a Dockerfile, so they are not
+checked. `DEPLOYRA_IMAGE_CHECKS=off` turns checks off.
+
+## Vulnerabilities (CVE)
+
+The **Vulnerabilities** page lists known holes in what runs on your nodes — e.g. PHP2Shell (CVE-2026-109618, CVE-2026-109619) in PHP 5.4–8.5.
+Every 6 hours (or on **Scan now**) the panel:
+
+1. asks every node for a software inventory. The node runs nothing inside containers (stopped ones work too) — versions come from image
+   metadata: the variables of official images (`PHP_VERSION`, `NODE_VERSION`, `PG_VERSION`, `MARIADB_VERSION`…, inherited ones too —
+   WordPress and Nextcloud are built on the PHP image), the `org.opencontainers.image.version` label or an exact tag (`grafana/grafana:11.2.0`).
+   For apps from files and from Git it also reads lock files: `composer.lock`, `package-lock.json`, `yarn.lock`, `requirements.txt` (`==`),
+   `poetry.lock`, `uv.lock`, `Pipfile.lock`, `go.mod`, `Cargo.lock`, `Gemfile.lock`, plus what the install step actually put on disk
+   (`vendor/composer/installed.json`, `node_modules/.package-lock.json`, the venv);
+2. checks the versions in [OSV.dev](https://osv.dev) (software from images is the “Bitnami” ecosystem, dependencies are Packagist, npm, PyPI,
+   Go, crates.io, RubyGems). No API key or account needed;
+3. marks vulnerabilities from the [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog (exploited in the wild),
+   shows the severity (from the source database or the CVSS 3 vector) and the version where everything is patched.
+
+Critical and exploited vulnerabilities show a bar at the top of the panel, the app gets a warning on its page, and the
+**Known vulnerabilities (CVE)** alert rule notifies the channels you pick (severity threshold — in the settings on the Vulnerabilities page).
+
+**Fix** redeploys the app with a freshly pulled image: image and compose apps `pull`, Git apps build with `--pull`, and apps from files
+rebuild their runtime image (e.g. `php:8.3-apache` with extensions) — otherwise that base image stays at the version from the first deploy.
+Then the panel scans again. If the image has a pinned tag (e.g. `nextcloud:29.0.7`) or the branch no longer gets fixes (PHP 8.1 and older),
+change the image/version in the app settings. Containers outside Deployra apps are yours to update (container page or stack).
+
+**Ignore** hides a package until a new vulnerability shows up for it. A node that doesn't answer keeps its results unchanged (no inventory
+is not a fix). `DEPLOYRA_VULN_CHECKS=off` turns off automatic scans (e.g. a panel without internet access).
+
+Limits: the image's system packages (apt/apk, e.g. OpenSSL) are not scanned, and software without a version variable or a known tag
+is not recognised.
 
 ## Deployra login in front of an app
 

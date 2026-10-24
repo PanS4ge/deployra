@@ -73,13 +73,14 @@ def inside(repo: Path, relative: str) -> Path:
 
 
 def build(
-    job: Job, repo: Path, dockerfile: str, context: str, tag: str, env: dict[str, str] | None = None, build_args: dict[str, str] | None = None
+    job: Job, repo: Path, dockerfile: str, context: str, tag: str, env: dict[str, str] | None = None, build_args: dict[str, str] | None = None,
+    pull: bool = False,
 ) -> None:
     dockerfile_path = inside(repo, dockerfile)
     context_path = inside(repo, context)
     if not dockerfile_path.is_file():
         raise JobFailed(tr("node.git.no_dockerfile", file=dockerfile))
-    cmd = ["docker", "build", "--progress=plain", "-t", tag, "-f", str(dockerfile_path), str(context_path)]
+    cmd = ["docker", "build", "--progress=plain", *(["--pull"] if pull else []), "-t", tag, "-f", str(dockerfile_path), str(context_path)]
     shown = list(cmd)
     for key, value in (build_args or {}).items():  # wartości trafiają do polecenia, ale nie do logu zadania
         cmd += ["--build-arg", f"{key}={value}"]

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge, copy_pill, uptime_badge, heartbeat, app_icon, meter %}
+{% from "_macros.html" import status_badge, copy_pill, uptime_badge, heartbeat, app_icon, meter with context %}
 {% block crumbs %}<div class="crumbs"><a href="/apps">{{ t("nav.apps") }}</a> /</div>{% endblock %}
 {% block heading %}
 <span class="row" style="gap: 10px; display: inline-flex">
@@ -50,6 +50,35 @@
 {% if app.domains %}
 <div class="card" hx-get="/analytics/chart?domains={{ app.domains | join(',') }}" hx-trigger="load" hx-swap="innerHTML" hx-disinherit="*">
   <div class="card-body muted small">{{ t("dashboard.loading_visits") }}</div>
+</div>
+{% endif %}
+
+{% if app_update %}
+<div class="callout ok">
+  <i class="bi bi-arrow-up-circle"></i>
+  <div class="row between" style="flex: 1; gap: 10px; flex-wrap: wrap">
+    <div><b>{{ t("appupd.available") }}</b> {{ app_update.lines | join("; ") }}{% if app_update.auto %} <span class="small muted">· {{ t("appupd.will_auto") }}</span>{% endif %}</div>
+    {% if has(user, P.ALLOW_DEPLOYMENT) %}
+    <button class="btn sm primary" hx-post="/apps/{{ app.id }}/update" hx-swap="none" hx-confirm="{{ t('appupd.one_confirm', name=app.name) }}"><span class="spin"></span><i class="bi bi-arrow-up"></i> {{ t("appupd.update") }}</button>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if app_vulns %}{% set worst = app_vulns[0] %}
+<div class="callout {{ 'err' if worst.kev or worst.severity in ('critical', 'high') else 'warn' }}">
+  <i class="bi bi-bug"></i>
+  <div class="row between" style="flex: 1; gap: 10px; flex-wrap: wrap">
+    <div><b>{{ t("vuln.app_callout", count=app_vulns | length) }}</b>
+      {% for r in app_vulns[:3] %}<span class="mono">{{ r.package }} {{ r.version }}</span>{% if r.fixed %} → <span class="mono">{{ r.fixed }}</span>{% endif %}{{ ", " if not loop.last }}{% endfor %}{% if app_vulns | length > 3 %} …{% endif %}
+    </div>
+    <div class="row" style="gap: 6px">
+      {% if app.kind in ("image", "compose", "git", "runtime") and has(user, P.ALLOW_DEPLOYMENT) %}
+      <button class="btn sm primary" hx-post="/security/{{ worst.id }}/fix" hx-swap="none" hx-confirm="{{ t('vuln.fix_confirm', name=app.name) }}"><span class="spin"></span><i class="bi bi-bandaid"></i> {{ t("vuln.fix") }}</button>
+      {% endif %}
+      <a class="btn sm ghost" href="/security">{{ t("vuln.show") }}</a>
+    </div>
+  </div>
 </div>
 {% endif %}
 

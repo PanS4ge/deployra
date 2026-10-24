@@ -51,24 +51,35 @@ def check_required(runtime: Runtime, path: Path) -> None:
         raise JobFailed(tr("node.runtime.need_files", pattern=runtime.requires))
 
 
-def ensure_image(client: Any, job: Job, image: str) -> None:
-    """Pobiera obraz tylko wtedy, gdy go nie ma — kolejne wdrożenia nie czekają na rejestr."""
-    try:
-        client.api.inspect_image(image)
-    except Exception:  # noqa: BLE001 — brak obrazu lokalnie
-        docker_svc.pull_image(client, job, image)
+def ensure_image(client: Any, job: Job, image: str, refresh: bool = False) -> None:
+    """Pobiera obraz tylko wtedy, gdy go nie ma — kolejne wdrożenia nie czekają na rejestr. `refresh` — zawsze od nowa
+    (naprawa podatności: ten sam tag, np. php:8.3-apache, w rejestrze ma już poprawioną wersję)."""
+    if not refresh:
+        try:
+            client.api.inspect_image(image)
+            return
+        except Exception:  # noqa: BLE001 — brak obrazu lokalnie
+            pass
+    docker_svc.pull_image(client, job, image)
 
 
-def ensure_base(client: Any, job: Job, runtime: Runtime) -> str:
-    """Obraz bazowy budowany raz na węźle (np. PHP z rozszerzeniami mysqli i mod_rewrite)."""
+def ensure_base(client: Any, job: Job, runtime: Runtime, refresh: bool = False) -> str:
+    """Obraz bazowy budowany raz na węźle (np. PHP z rozszerzeniami mysqli i mod_rewrite); `refresh` buduje go od nowa
+    na świeżo pobranym obrazie języka."""
     tag = runtime.run_image()
-    try:
-        client.api.inspect_image(tag)
-        return tag
-    except Exception:  # noqa: BLE001
-        pass
+    if not refresh:
+        try:
+            client.api.inspect_image(tag)
+            return tag
+        except Exception:  # noqa: BLE001
+            pass
     job.log(tr("node.runtime.building_base", image=tag))
-    for event in client.api.build(fileobj=io.BytesIO(runtime.base.encode()), tag=tag, rm=True, pull=True, decode=True):
+    docker_svc.pull_image(client, job, runtime.image)  # świeży obraz języka; jego digest w etykiecie — panel sprawdzi, czy jest nowszy
+    pulled = client.api.inspect_image(runtime.image).get("RepoDigests") or []
+    labels = {"deployra.base": runtime.image}
+    if pulled and "@" in pulled[0]:
+        labels["deployra.base-digest"] = pulled[0].split("@", 1)[1]
+    for event in client.api.build(fileobj=io.BytesIO(runtime.base.encode()), tag=tag, rm=True, pull=False, labels=labels, decode=True):
         if "error" in event:
             raise JobFailed(str(event["error"]).strip())
         line = str(event.get("stream") or "").rstrip()
@@ -89,7 +100,7 @@ def install(ctx: Any, job: Job, spec: AppSpec, client: Any) -> None:
         return
     image = runtime.build_image or runtime.run_image()
     if runtime.build_image:
-        ensure_image(client, job, runtime.build_image)
+        ensure_image(client, job, runtime.build_image, refresh=spec.refresh_image)
     name = f"app-{spec.slug}-install"
     leftover = docker_svc.find_container(client, name)
     if leftover:
@@ -132,10 +143,10 @@ def prepare(ctx: Any, job: Job, spec: AppSpec, client: Any) -> str:
     path = ensure_files(ctx.config, job, spec)
     check_required(runtime, path)
     if runtime.base:
-        image = ensure_base(client, job, runtime)
+        image = ensure_base(client, job, runtime, refresh=spec.refresh_image)
     else:
         image = runtime.image
-        ensure_image(client, job, image)
+        ensure_image(client, job, image, refresh=spec.refresh_image)
     install(ctx, job, spec, client)
     return image
 

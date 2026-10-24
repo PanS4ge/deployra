@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "settings/_layout.html" %}
 {% from "_macros.html" import empty %}
 {% macro channel_fields(kind, values={}, secrets=[]) -%}
   {% for f in kinds[kind].fields %}
@@ -14,8 +14,7 @@
   </div>
   {% endfor %}
 {%- endmacro %}
-{% block content %}
-{% include "settings/_tabs.html" %}
+{% block settings %}
 
 <div class="card">
   <div class="card-head"><h3><i class="bi bi-broadcast"></i> {{ t("alerts.channels") }}</h3></div>

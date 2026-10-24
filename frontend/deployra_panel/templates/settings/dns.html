@@ -1,7 +1,6 @@
-{% extends "base.html" %}
+{% extends "settings/_layout.html" %}
 {% from "_macros.html" import copy_pill %}
-{% block content %}
-{% include "settings/_tabs.html" %}
+{% block settings %}
 <div class="grid grid-2">
   <form class="card" hx-post="/settings/dns" hx-swap="none">
     <div class="card-head"><h3><i class="bi bi-cloud"></i> Cloudflare</h3>{% if has_token %}<span class="badge ok">{{ t("dns.token_saved") }}</span>{% endif %}</div>

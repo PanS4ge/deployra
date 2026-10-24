@@ -98,6 +98,9 @@
 {%- endmacro %}
 
 {% macro app_icon(app, size=24) -%}
-  <span class="app-icon" style="--s: {{ size }}px"><i class="bi bi-box"></i><img src="/apps/{{ app.id }}/icon?v={{ icon_v(app) }}" alt="" loading="lazy" onerror="this.remove()"></span>
+  {%- set up = app_badges(panel).get(app.id) if panel is defined and app.id else none -%}
+  <span class="app-icon" style="--s: {{ size }}px"><i class="bi bi-box"></i><img src="/apps/{{ app.id }}/icon?v={{ icon_v(app) }}" alt="" loading="lazy" onerror="this.remove()">
+  {%- if up %}<span class="app-up {{ 'auto' if up.auto }}" title="{{ t('appupd.badge_' ~ up.kind, version=up.label) }}"><i class="bi bi-arrow-up"></i></span>{% endif -%}
+  </span>
 {%- endmacro %}
 

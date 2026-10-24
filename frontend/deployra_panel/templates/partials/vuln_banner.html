@@ -1,0 +1,9 @@
+<div class="update-banner vuln-banner" id="vuln-banner">
+  <i class="bi bi-bug-fill"></i>
+  <div class="text">{{ t("vuln.banner", count=vulns.count, targets=vulns.targets) }}{% if vulns.kev %} <span class="badge crit"><i class="bi bi-fire"></i> {{ t("vuln.banner_kev", count=vulns.kev) }}</span>{% endif %}</div>
+  <div class="actions">
+    <a class="btn sm primary" href="/security"><i class="bi bi-shield-exclamation"></i> {{ t("vuln.show") }}</a>
+    <button class="btn sm ghost icon" title="{{ t('updates.later') }}" aria-label="{{ t('updates.later') }}" hx-post="/security/snooze" hx-swap="none"
+            hx-on::after-request="if (event.detail.successful) document.getElementById('vuln-banner').remove()"><i class="bi bi-x-lg"></i></button>
+  </div>
+</div>

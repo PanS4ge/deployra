@@ -1,0 +1,31 @@
+{% extends "settings/_layout.html" %}
+{% block settings %}
+<form class="card set-section" hx-post="/security/settings" hx-swap="none">
+  <div class="card-head"><h3><i class="bi bi-bug"></i> {{ t("vuln.settings") }}</h3><span class="spacer"></span><a class="btn sm ghost" href="/security"><i class="bi bi-box-arrow-up-right"></i> {{ t("vuln.title") }}</a></div>
+  <div class="set-row">
+    <div class="set-label"><b>{{ t("vuln.auto_scan") }}</b></div>
+    <div class="set-control"><label class="check"><input type="checkbox" name="enabled" value="1" {{ "checked" if config.enabled }}><span class="sw"></span></label></div>
+  </div>
+  <div class="set-row">
+    <div class="set-label"><b>{{ t("vuln.interval") }}</b></div>
+    <div class="set-control">
+      <select class="select" name="interval_hours">{% for h in intervals %}<option value="{{ h }}" {{ "selected" if h == config.interval_hours }}>{{ t("vuln.every_hours", count=h) }}</option>{% endfor %}</select>
+    </div>
+  </div>
+  <div class="set-row">
+    <div class="set-label"><b>{{ t("vuln.alert_from") }}</b><div class="hint">{{ t("vuln.alert_kev_always") }}</div></div>
+    <div class="set-control">
+      <select class="select" name="alert_severity">{% for s in severities %}<option value="{{ s }}" {{ "selected" if s == config.alert_severity }}>{{ t("vuln.sev." ~ s) }}</option>{% endfor %}</select>
+      <a class="small" href="/settings/alerts"><i class="bi bi-bell"></i> {{ t("vuln.channels") }}</a>
+    </div>
+  </div>
+  <div class="set-row">
+    <div class="set-label"><b>{{ t("vuln.sources") }}</b></div>
+    <div class="set-control small">
+      <span><a href="https://osv.dev" target="_blank" rel="noopener">OSV.dev</a> · <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noopener">CISA KEV</a></span>
+      <span class="muted">{% if status.scanned_at %}{{ t("vuln.last_scan", ago=status.scanned_at | ago, packages=status.packages or 0) }}{% else %}{{ t("vuln.never") }}{% endif %}</span>
+    </div>
+  </div>
+  <div class="set-actions"><button class="btn primary"><i class="bi bi-check2"></i> {{ t("common.save") }}</button></div>
+</form>
+{% endblock %}
