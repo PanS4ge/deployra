@@ -102,7 +102,7 @@ def test_check_finds_new_build_and_new_version(setup):
     result = run(panel, hub)
     assert result["error"] is None and result["images"] == 3 and result["updates"] == 2
     sklep, grafana = app_updates.available(panel, ids["sklep"]), app_updates.available(panel, ids["grafana"])
-    assert sklep == [{"container": "app-sklep", "image": "php:8.3-apache", "base": True, "build": True, "versions": None}]
+    assert sklep == [{"container": "app-sklep", "image": "php:8.3-apache", "base": True, "build": True, "remote": NEW, "versions": None}]
     assert grafana[0]["build"] is False and grafana[0]["versions"] == {"patch": "11.2.2", "minor": "11.3.0", "latest": "12.0.0"}
     assert app_updates.available(panel, ids["cache"]) == []  # ten sam digest
     assert app_updates.badges(panel) == {ids["sklep"]: {"kind": "build", "label": "", "auto": False},
@@ -230,3 +230,45 @@ def test_old_node_is_reported(setup):
     node.get = old
     result = run(panel, hub)
     assert "zaktualizuj" in next(iter(result["nodes"].values()))["error"]
+
+
+def wait(panel, response):
+    job = panel.jobs.get(response.headers["HX-Redirect"].split("job=")[1])
+    for _ in range(200):
+        if job.done:
+            break
+        asyncio.run(asyncio.sleep(0.02))
+    return job
+
+
+def test_ignore_hides_until_newer_build(setup, admin):
+    panel, _, hub, ids = setup
+    run(panel, hub)
+    assert admin.post("/settings/app-updates/ignore", data={"app_ids": [str(ids["sklep"]), str(ids["grafana"])]}).status_code == 204
+    assert app_updates.badges(panel) == {} and app_updates.available(panel, ids["sklep"]) == []
+    page = admin.get("/settings/app-updates", headers={"HX-Request": ""}).text
+    assert page.count("bi-eye-slash\"></i> zignorowana") == 2 and f"/settings/app-updates/{ids['sklep']}/unignore" in page
+    run(panel, hub)  # ta sama aktualizacja — dalej zignorowana
+    assert app_updates.available(panel, ids["sklep"]) == []
+    hub.digests[("library/php", "8.3-apache")] = "sha256:" + "3" * 64  # kolejny build — pokazuje się znowu
+    run(panel, hub)
+    assert app_updates.available(panel, ids["sklep"])[0]["remote"].endswith("3" * 64)
+    assert ids["grafana"] not in app_updates.badges(panel)
+    assert admin.post(f"/settings/app-updates/{ids['grafana']}/unignore").status_code == 204
+    assert ids["grafana"] in app_updates.badges(panel)
+
+
+def test_update_selected_apps_in_order(setup, admin, monkeypatch):
+    panel, _, hub, ids = setup
+    run(panel, hub)
+    seen = []
+
+    async def fake_update(panel_, job, app_id, changes=None):
+        seen.append(app_id)
+
+    monkeypatch.setattr(app_updates, "update_app", fake_update)
+    wait(panel, admin.post("/settings/app-updates/all", data={"app_ids": [str(ids["grafana"])]}))
+    assert seen == [ids["grafana"]]
+    seen.clear()
+    wait(panel, admin.post("/settings/app-updates/all"))
+    assert seen == sorted([ids["sklep"], ids["grafana"]])

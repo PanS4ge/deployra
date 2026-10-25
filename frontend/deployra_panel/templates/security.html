@@ -35,8 +35,10 @@
 {% if status.error %}<div class="callout err"><i class="bi bi-wifi-off"></i><div>{{ status.error }}</div></div>{% endif %}
 {% for n in node_errors %}<div class="callout warn"><i class="bi bi-hdd-network"></i><div><b>{{ n.name }}</b> — {{ n.error }}</div></div>{% endfor %}
 
-<div class="card">
-  <div class="card-head">
+{% set bulk = show == "open" and groups %}
+{% set all_ids = groups | map(attribute="rows") | map("map", attribute="id") | map("join", ",") | list %}
+<div class="card" x-data="{ picked: [] }">
+  <div class="card-head" style="flex-wrap: wrap; row-gap: 8px">
     <nav class="tabs" style="border: 0">
       <a href="/security" class="{{ 'active' if show == 'open' }}"><i class="bi bi-bug"></i> {{ t("vuln.tab_open") }}</a>
       <a href="/security?show=ignored" class="{{ 'active' if show == 'ignored' }}"><i class="bi bi-eye-slash"></i> {{ t("vuln.tab_ignored") }}{% if tabs.ignored %} <span class="muted">{{ tabs.ignored }}</span>{% endif %}</a>
@@ -44,18 +46,28 @@
     </nav>
     <span class="spacer"></span>
     <span class="small muted nowrap">{% if status.scanned_at %}{{ t("vuln.last_scan", ago=status.scanned_at | ago, packages=status.packages or 0) }}{% else %}{{ t("vuln.never") }}{% endif %}</span>
+    {% if bulk %}
+    {% if has(user, P.ALLOW_DEPLOYMENT) %}<button class="btn sm primary" x-show="picked.length" x-cloak hx-post="/security/fix-many" hx-include="[name=ids]:checked" hx-swap="none"
+            hx-confirm="{{ t('vuln.fix_many_confirm') }}"><span class="spin"></span><i class="bi bi-bandaid"></i> <span x-text="{{ t('vuln.fix_picked') | tojson | forceescape }} + ' (' + picked.length + ')'"></span></button>{% endif %}
+    {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}<button class="btn sm ghost" x-show="picked.length" x-cloak hx-post="/security/ignore-many" hx-include="[name=ids]:checked" hx-swap="none"><i class="bi bi-eye-slash"></i> {{ t("vuln.ignore_picked") }}</button>{% endif %}
+    {% endif %}
   </div>
   {% if not groups %}
   {{ empty("shield-check", t("vuln.empty_" ~ show)) }}
   {% else %}
   <div class="table-wrap">
     <table class="table">
-      <thead><tr><th>{{ t("vuln.software") }}</th><th>{{ t("vuln.severity") }}</th><th>{{ t("vuln.vulns") }}</th><th>{{ t("vuln.fixed_in") }}</th><th></th></tr></thead>
+      <thead><tr>
+        <th>{% if bulk %}<label class="pick" style="margin-right: 10px"><input type="checkbox" aria-label="{{ t('appupd.pick_all') }}" :checked="picked.length === {{ all_ids | length }}"
+            @change="picked = $event.target.checked ? {{ all_ids | tojson | forceescape }} : []"></label>{% endif %}{{ t("vuln.software") }}</th>
+        <th>{{ t("vuln.severity") }}</th><th>{{ t("vuln.vulns") }}</th><th>{{ t("vuln.fixed_in") }}</th><th></th>
+      </tr></thead>
       {% for g in groups %}{% set app = apps.get(g.app_id) %}
       <tbody>
         <tr class="group-row">
           <td colspan="5">
             <div class="row" style="gap: 8px; flex-wrap: wrap">
+              {% if bulk %}<label class="pick"><input type="checkbox" name="ids" value="{{ g.rows | map(attribute='id') | join(',') }}" x-model="picked" aria-label="{{ g.label }}"></label>{% endif %}
               {% if app %}{{ app_icon(app, 20) }}<a class="name" href="/apps/{{ app.id }}">{{ app.name }}</a>
               {% else %}<i class="bi bi-box"></i><a class="name" href="/nodes/{{ g.node_id }}/containers/{{ g.container }}{{ '?ep=' ~ g.endpoint if g.endpoint != 'local' }}">{{ g.label }}</a>{% endif %}
               <span class="small muted"><i class="bi bi-hdd-network"></i> {{ (nodes.get(g.node_id) or {}).name or "?" }}{% if g.endpoint != "local" %} · {{ g.endpoint }}{% endif %}</span>

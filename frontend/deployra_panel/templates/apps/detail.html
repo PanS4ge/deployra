@@ -59,7 +59,10 @@
   <div class="row between" style="flex: 1; gap: 10px; flex-wrap: wrap">
     <div><b>{{ t("appupd.available") }}</b> {{ app_update.lines | join("; ") }}{% if app_update.auto %} <span class="small muted">· {{ t("appupd.will_auto") }}</span>{% endif %}</div>
     {% if has(user, P.ALLOW_DEPLOYMENT) %}
-    <button class="btn sm primary" hx-post="/apps/{{ app.id }}/update" hx-swap="none" hx-confirm="{{ t('appupd.one_confirm', name=app.name) }}"><span class="spin"></span><i class="bi bi-arrow-up"></i> {{ t("appupd.update") }}</button>
+    <div class="row" style="gap: 6px">
+      <button class="btn sm primary" hx-post="/apps/{{ app.id }}/update" hx-swap="none" hx-confirm="{{ t('appupd.one_confirm', name=app.name) }}"><span class="spin"></span><i class="bi bi-arrow-up"></i> {{ t("appupd.update") }}</button>
+      {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}<button class="btn sm ghost" hx-post="/settings/app-updates/ignore" hx-vals='{"app_id": "{{ app.id }}"}' hx-swap="none" title="{{ t('appupd.ignore_hint') }}"><i class="bi bi-eye-slash"></i> {{ t("vuln.ignore") }}</button>{% endif %}
+    </div>
     {% endif %}
   </div>
 </div>

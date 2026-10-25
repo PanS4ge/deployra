@@ -46,7 +46,11 @@ ACCEPT = ", ".join((
     "application/vnd.docker.distribution.manifest.v2+json", "application/vnd.oci.image.manifest.v1+json",
 ))  # fmt: skip
 RUNNING: set[int] = set()
-_badges: dict[int, tuple[float, dict[int, dict]]] = {}  # id(panel) → (czas, app_id → skrót) — ikony w wielu miejscach strony
+
+
+def _drop_badges(panel: Any) -> None:
+    """Strzałki na ikonach liczymy raz na kilka sekund (ikon na stronie jest wiele) — po zmianie trzeba je przeliczyć."""
+    panel.__dict__.pop("_app_badges", None)
 
 
 # --- ustawienia ----------------------------------------------------------------------------------
@@ -60,7 +64,7 @@ def save_settings(panel: Any, mode: str, interval_hours: int, auto_patch: bool) 
     if mode not in MODES or interval_hours not in INTERVALS:
         raise ValueError(t("appupd.bad_settings"))
     panel.db.set_setting("app_updates", {"mode": mode, "interval_hours": interval_hours, "auto_patch": auto_patch})
-    _badges.pop(id(panel), None)
+    _drop_badges(panel)
 
 
 def policy(panel: Any, app: dict, config: dict | None = None) -> str:
@@ -73,7 +77,7 @@ def set_policy(panel: Any, app_id: int, value: str) -> None:
     if value not in POLICIES:
         raise ValueError(t("appupd.bad_settings"))
     panel.db.update("apps", app_id, update_policy=value or None)
-    _badges.pop(id(panel), None)
+    _drop_badges(panel)
 
 
 def status(panel: Any) -> dict[str, Any]:
@@ -316,7 +320,7 @@ async def check(panel: Any, job: Any = None, transport: httpx.AsyncBaseTransport
                 build = bool(info.get("digest")) and info["digest"] not in c["digests"]
                 if build or info.get("versions"):
                     items.append({"container": c["name"], "image": c["image"], "base": c.get("base", False), "build": build,
-                                  "versions": info.get("versions")})  # fmt: skip
+                                  "remote": info.get("digest") if build else None, "versions": info.get("versions")})  # fmt: skip
             if items:
                 updates[app_id] = items
         result["updates"] = len(updates)
@@ -331,7 +335,7 @@ async def check(panel: Any, job: Any = None, transport: httpx.AsyncBaseTransport
         RUNNING.discard(id(panel))
         result["duration"] = round(time.time() - started, 1)
         panel.db.set_setting("app_updates_status", result)
-        _badges.pop(id(panel), None)
+        _drop_badges(panel)
     if not result["error"]:
         await auto_update(panel, config, job)
     return result
@@ -343,16 +347,16 @@ def store(panel: Any, updates: dict[int, list[dict]], checked: set[int]) -> list
     existing = {row["app_id"]: row for row in panel.db.fetchall("SELECT * FROM app_updates")}
     events = []
     for app_id, items in updates.items():
-        signature = hashlib.sha1(repr(sorted((i["image"], i["build"], str(i["versions"])) for i in items)).encode()).hexdigest()[:16]
+        sig = signature(items)
         row = existing.pop(app_id, None)
         if row:
             panel.db.update("app_updates", app_id, key="app_id", items=items, checked_at=now)
         else:
             panel.db.insert("app_updates", app_id=app_id, items=items, checked_at=now, notified="")
-        if (row or {}).get("notified") != signature:
-            panel.db.update("app_updates", app_id, key="app_id", notified=signature)
+        if (row or {}).get("notified") != sig:
+            panel.db.update("app_updates", app_id, key="app_id", notified=sig)
             app = panel.db.get("apps", app_id)
-            if app:
+            if app and (row or {}).get("ignored") != sig:
                 events.append((app, items))
     for app_id in existing:
         if app_id in checked or not panel.db.get("apps", app_id):  # węzeł odpowiedział, a aktualizacji już nie ma
@@ -390,23 +394,52 @@ async def notify(panel: Any, events: list[tuple[dict, list[dict]]]) -> None:
 # --- aktualizacja ---------------------------------------------------------------------------------
 
 
-def available(panel: Any, app_id: int) -> list[dict]:
+def signature(items: list[dict]) -> str:
+    """Odcisk konkretnej aktualizacji (obraz, digest nowego buildu, wersje) — „ignoruj” dotyczy tylko jej."""
+    key = sorted((i["image"], bool(i.get("build")), i.get("remote") or "", str(i.get("versions"))) for i in items)
+    return hashlib.sha1(repr(key).encode()).hexdigest()[:16]
+
+
+def is_ignored(row: dict | None) -> bool:
+    return bool(row and row.get("ignored") and row["ignored"] == signature(row.get("items") or []))
+
+
+def available(panel: Any, app_id: int, with_ignored: bool = False) -> list[dict]:
     row = panel.db.get("app_updates", app_id, key="app_id")
-    return (row or {}).get("items") or []
+    if not row or (is_ignored(row) and not with_ignored):
+        return []
+    return row.get("items") or []
+
+
+def ignore(panel: Any, app_ids: list[int]) -> int:
+    """Ignoruje obecne aktualizacje aplikacji — wrócą, gdy pojawi się nowszy build albo wersja."""
+    count = 0
+    for app_id in app_ids:
+        row = panel.db.get("app_updates", app_id, key="app_id")
+        if row and row.get("items"):
+            panel.db.update("app_updates", app_id, key="app_id", ignored=signature(row["items"]))
+            count += 1
+    _drop_badges(panel)
+    return count
+
+
+def unignore(panel: Any, app_id: int) -> None:
+    panel.db.update("app_updates", app_id, key="app_id", ignored=None)
+    _drop_badges(panel)
 
 
 def badges(panel: Any) -> dict[int, dict]:
     """app_id → skrót dla ikon (bez aplikacji z trybem „off”); odświeżane co kilka sekund, nie przy każdej ikonie."""
-    cached = _badges.get(id(panel))
+    cached = panel.__dict__.get("_app_badges")
     if cached and time.time() - cached[0] < 10:
         return cached[1]
     config, out = settings(panel), {}
-    rows = panel.db.fetchall("SELECT u.app_id, u.items, a.update_policy FROM app_updates u JOIN apps a ON a.id = u.app_id")
+    rows = panel.db.fetchall("SELECT u.app_id, u.items, u.ignored, a.update_policy FROM app_updates u JOIN apps a ON a.id = u.app_id")
     for row in rows:
         mode = policy(panel, row, config)
-        if mode != "off" and row.get("items"):
+        if mode != "off" and row.get("items") and not is_ignored(row):
             out[row["app_id"]] = {**_summary(row["items"]), "auto": mode == "auto"}
-    _badges[id(panel)] = (time.time(), out)
+    panel.__dict__["_app_badges"] = (time.time(), out)
     return out
 
 
@@ -470,7 +503,7 @@ def _keep(panel: Any, app_id: int, items: list[dict]) -> None:
         panel.db.update("app_updates", app_id, key="app_id", items=items)
     else:
         panel.db.delete("app_updates", app_id, key="app_id")
-    _badges.pop(id(panel), None)
+    _drop_badges(panel)
 
 
 def after_deploy(panel: Any, app: dict, refreshed: bool) -> None:
@@ -489,7 +522,7 @@ async def auto_update(panel: Any, config: dict, job: Any = None) -> list[str]:
     todo = []
     for row in panel.db.fetchall("SELECT * FROM app_updates"):
         app = panel.db.get("apps", row["app_id"])
-        if app and app["status"] != "deploying" and policy(panel, app, config) == "auto":
+        if app and app["status"] != "deploying" and policy(panel, app, config) == "auto" and not is_ignored(row):
             changes = plan(panel, app, row.get("items") or [], config, auto=True)
             if changes is not None:
                 todo.append((app, changes))

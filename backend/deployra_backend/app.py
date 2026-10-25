@@ -10,6 +10,7 @@ from loguru import logger
 
 from deployra_common import i18n
 from deployra_common.i18n import tr
+from deployra_common.server import BufferBody
 
 from .context import Context
 from .routes import apps_routes, docker_routes, system
@@ -59,6 +60,7 @@ def create_app(ctx: Context, *, start_services: bool = True, bind_host: str = ""
     app = FastAPI(title="Deployra Backend", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.ctx = ctx
     i18n.language_middleware(app)
+    app.add_middleware(BufferBody)  # podpis formularzy z plikami (FastAPI czyta je przed zależnościami)
 
     not_found, api_error = _docker_errors()
 

@@ -287,7 +287,12 @@
       "protected": "Cannot delete system directory {path}",
       "stopped_only_mounts": "The container is stopped — only mounted folders are available",
       "read_only": "Folder {path} is mounted read-only"
-    }
+    },
+    "port_taken_by": "host port {port} is taken ({holder}) — change “Host port” in the app settings or leave it empty and Deployra picks a free one",
+    "port_by_container": "container {name}",
+    "port_by_app": "app {name}",
+    "port_by_host": "a program outside Docker on this server",
+    "port_moved": "port {old} is already taken — the app gets free port {port}"
   },
   "srv": {
     "auth": {

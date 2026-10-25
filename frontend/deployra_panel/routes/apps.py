@@ -125,6 +125,14 @@ def _volumes(text: str) -> list[VolumeMount]:
     return out
 
 
+def _host_port(form: Any, existing: AppSpec | None) -> int | None:
+    """Stały port hosta (np. przejęty kontener); puste pole w edycji — wolny port z puli. Kreator pola nie ma."""
+    if "host_port" not in form:
+        return existing.host_port if existing else None
+    value = str(form.get("host_port") or "").strip()
+    return int(value) if value else None
+
+
 def spec_from_form(form: Any, slug: str, existing: AppSpec | None = None) -> tuple[AppSpec, dict]:
     kind = str(form.get("kind") or (existing.source.kind if existing else "image"))
     get = lambda key, default="": str(form.get(key) or default).strip()  # noqa: E731
@@ -166,7 +174,7 @@ def spec_from_form(form: Any, slug: str, existing: AppSpec | None = None) -> tup
         memory_mb=int(get("memory_mb")) if get("memory_mb") else None,
         cpus=float(get("cpus")) if get("cpus") else None,
         domains=domains,
-        host_port=existing.host_port if existing else None,  # stały port hosta (np. przejęty kontener) — nie ma go w formularzu
+        host_port=_host_port(form, existing),
         zero_downtime=zero_downtime,
         health_path=get("health_path") if with_container else None,
     )

@@ -14,7 +14,7 @@ from ..deps import current_user, require
 from ..i18n import t
 from ..permissions import Permission
 from ..services import app_updates, deploy
-from ..web import redirect, render, toast
+from ..web import redirect, refresh, render, toast
 
 router = APIRouter(dependencies=[Depends(current_user)])
 SETTINGS = Depends(require(Permission.ALLOW_SETTINGS))
@@ -44,9 +44,12 @@ def page(request: Request, job: str = "", panel: Panel = Depends(get_panel), use
     apps = [a for a in panel.db.fetchall("SELECT * FROM apps ORDER BY name") if a["kind"] in app_updates.UPDATABLE]
     rows = []
     for app in apps:
-        items = app_updates.available(panel, app["id"])
+        row = panel.db.get("app_updates", app["id"], key="app_id")
+        ignored = app_updates.is_ignored(row)
+        items = app_updates.available(panel, app["id"], with_ignored=True)
         image = _image(panel, app)
-        rows.append({"app": app, "image": image, "found": items, "policy": app.get("update_policy") or "",
+        rows.append({"app": app, "image": image, "found": [] if ignored else items, "ignored": items if ignored else [],
+                     "policy": app.get("update_policy") or "",
                      "lines": [(app_updates.short(i), "" if i["image"] == image else i["image"]) for i in items]})  # fmt: skip
     actionable = sum(1 for r in rows if r["found"])
     return render(
@@ -70,17 +73,32 @@ async def check(request: Request, panel: Panel = Depends(get_panel), user: dict 
     return redirect(request, f"/settings/app-updates?job={job.id}")
 
 
-@router.post("/settings/app-updates/all")
-async def update_all(request: Request, panel: Panel = Depends(get_panel), user: dict = DEPLOY):
-    """Wszystkie aplikacje z aktualizacją, po kolei (nowe wersje — do wersji z tej samej linii, jak przycisk przy aplikacji)."""
+def _picked(form: Any) -> list[int]:
+    return [int(v) for v in form.getlist("app_ids") if str(v).isdigit()]
+
+
+def _todo(panel: Panel, only: list[int] | None = None) -> list[tuple[dict, dict[str, str]]]:
+    """Aplikacje do aktualizacji (bez zignorowanych, trybu „off” i trwających wdrożeń) z planem zmian tagów."""
     config = app_updates.settings(panel)
     todo = []
-    for row in panel.db.fetchall("SELECT * FROM app_updates"):
+    for row in panel.db.fetchall("SELECT * FROM app_updates ORDER BY app_id"):
         app = panel.db.get("apps", row["app_id"])
-        if app and not _busy(panel, app) and app_updates.policy(panel, app, config) != "off":
-            changes = app_updates.plan(panel, app, row.get("items") or [], config, auto=False)
-            if changes is not None:
-                todo.append((app, changes))
+        if not app or (only is not None and app["id"] not in only) or _busy(panel, app) or app_updates.is_ignored(row):
+            continue
+        if only is None and app_updates.policy(panel, app, config) == "off":
+            continue
+        changes = app_updates.plan(panel, app, row.get("items") or [], config, auto=False)
+        if changes is not None:
+            todo.append((app, changes))
+    return todo
+
+
+@router.post("/settings/app-updates/all")
+async def update_all(request: Request, panel: Panel = Depends(get_panel), user: dict = DEPLOY):
+    """Wszystkie (albo zaznaczone) aplikacje z aktualizacją, po kolei w jednym zadaniu (nowe wersje — z tej samej linii)."""
+    form = await request.form()
+    picked = _picked(form)
+    todo = _todo(panel, picked if "app_ids" in form else None)
     if not todo:
         return toast(t("appupd.nothing"), "warn")
 
@@ -97,6 +115,20 @@ async def update_all(request: Request, panel: Panel = Depends(get_panel), user: 
 
     job = panel.jobs.start("deploy", t("appupd.all_job", count=len(todo)), work)
     return redirect(request, f"/settings/app-updates?job={job.id}")
+
+
+@router.post("/settings/app-updates/ignore")
+async def ignore(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):
+    form = await request.form()
+    picked = _picked(form) or [int(form.get("app_id") or 0)]
+    count = app_updates.ignore(panel, picked)
+    return refresh(t("appupd.ignored_msg", count=count))
+
+
+@router.post("/settings/app-updates/{app_id}/unignore")
+def unignore(app_id: int, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):
+    app_updates.unignore(panel, app_id)
+    return refresh()
 
 
 @router.post("/apps/{app_id}/update")

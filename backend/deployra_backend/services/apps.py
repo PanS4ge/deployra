@@ -316,9 +316,11 @@ def _deploy(ctx: Any, job: Job, spec: AppSpec) -> dict:
     if spec.zero_downtime and kind in ("image", "git", "runtime"):  # z portem (bez portu — wyżej)
         return _handover_deploy(ctx, job, spec, base, previous)
 
-    host_port = ports.allocate(
-        ctx.state, client, spec.slug, cfg.port_pool, spec.host_port or previous.get("host_port"), check_host=endpoint.kind == "host"
-    )
+    wanted = spec.host_port or previous.get("host_port")
+    host_port = ports.allocate(ctx.state, client, spec.slug, cfg.port_pool, wanted, check_host=endpoint.kind == "host",
+                               fallback=not spec.host_port)  # fmt: skip
+    if wanted and host_port != wanted:  # zapamiętany port ktoś zajął — aplikacja dostaje inny, panel przepnie bramkę
+        job.log(tr("node.port_moved", old=wanted, port=host_port))
 
     if kind == "runtime":
         image = runtime.prepare(ctx, job, spec, client)

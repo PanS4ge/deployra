@@ -29,6 +29,7 @@
 {% endfor %}</textarea></div>
       <div class="field"><label>{{ t("containers.memory") }}</label><input class="input" name="memory_mb" type="number" min="16" x-model="mem"></div>
       <div class="field"><label>{{ t("apps.cpus_short") }}</label><input class="input" name="cpus" type="number" step="any" min="0.01" value="{{ spec.cpus or '' }}"></div>
+      <div class="field"><label>{{ t("apps.host_port") }}</label><input class="input" name="host_port" type="number" min="1" max="65535" value="{{ spec.host_port or '' }}" placeholder="{{ app.host_port or t('apps.host_port_auto') }}"><div class="hint">{{ t("apps.host_port_hint") }}</div></div>
       {% if spec.source.kind in ("image", "git", "runtime") %}
       <div class="field full"><label class="check"><input type="checkbox" name="zero_downtime" value="1" {{ "checked" if spec.zero_downtime }}><span class="sw"></span><span>{{ t("apps.zero_downtime") }}</span></label></div>
       <div class="field"><label>{{ t("apps.health_path") }}</label><input class="input mono" name="health_path" value="{{ spec.health_path or '' }}" placeholder="/up"></div>

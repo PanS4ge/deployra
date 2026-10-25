@@ -290,7 +290,10 @@
     "env_scope": "Zakres",
     "env_value": "Wartość",
     "health_path": "Ścieżka sprawdzania zdrowia",
-    "zero_downtime": "Bez przestojów"
+    "zero_downtime": "Bez przestojów",
+    "host_port": "Port hosta",
+    "host_port_auto": "automatycznie",
+    "host_port_hint": "Puste — wolny port z puli węzła"
   },
   "auth": {
     "login": "Zaloguj",
@@ -2286,7 +2289,14 @@
       "unknown": "Nieznana"
     },
     "alert_kev_always": "Wykorzystywane w atakach — zawsze",
-    "sources": "Źródła"
+    "sources": "Źródła",
+    "fix_step": "[{index}/{count}] {name}",
+    "fix_partial": "Nie udało się: {failed} (naprawione: {done})",
+    "fix_many_job": "Naprawa aplikacji ({count})",
+    "fix_many_confirm": "Naprawić zaznaczone aplikacje po kolei? Każda zostanie wdrożona ponownie ze świeżym obrazem.",
+    "fix_picked": "Napraw zaznaczone",
+    "ignore_picked": "Ignoruj zaznaczone",
+    "ignored_many": "Zignorowane: {count}"
   },
   "appupd": {
     "bad_settings": "Nieprawidłowe ustawienia aktualizacji",
@@ -2331,6 +2341,13 @@
     "available": "Dostępna aktualizacja:",
     "will_auto": "zaktualizuje się sama",
     "short_build": "nowy build",
-    "short_version": "nowa wersja {version}"
+    "short_version": "nowa wersja {version}",
+    "picked_confirm": "Zaktualizować zaznaczone aplikacje po kolei?",
+    "update_picked": "Aktualizuj zaznaczone",
+    "ignore_picked": "Ignoruj zaznaczone",
+    "pick_all": "Zaznacz wszystkie",
+    "ignored": "zignorowana",
+    "ignored_msg": "Zignorowane aktualizacje: {count}",
+    "ignore_hint": "Ukryj tę aktualizację — wróci, gdy pojawi się nowsza"
   }
 }

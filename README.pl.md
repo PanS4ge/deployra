@@ -168,7 +168,8 @@ Surowe adresy IP trzymamy 7 dni (`DEPLOYRA_IP_RETENTION_DAYS`) — adres IP to d
   poprawkowe” również przypięte tagi w obrębie X.Y (`11.2.0` → `11.2.3`). Większych skoków wersji Deployra sama nie robi.
 
 Każda aplikacja może mieć własny tryb (edycja aplikacji albo tabela w ustawieniach) — np. automatycznie dla stron, a bazy danych tylko
-ze strzałką.
+ze strzałką. W tabeli zaznaczone aplikacje aktualizujesz po kolei (**Aktualizuj zaznaczone**) albo ignorujesz — zignorowana aktualizacja
+wraca, gdy pojawi się nowszy build albo wersja.
 
 Jak to działa: węzeł podaje digesty obrazów kontenerów (aplikacje „z plików” — obraz języka, z którego zbudowano obraz bazowy), a panel
 pyta rejestr zapytaniem HEAD o manifest tagu — tak jak Watchtower, więc Docker Hub nie liczy tego do limitu pobrań. Dla tagu z dokładną
@@ -201,7 +202,8 @@ w wersji z pierwszego wdrożenia. Potem panel skanuje jeszcze raz. Gdy obraz ma 
 dostaje już poprawek (PHP 8.1 i starsze), trzeba zmienić obraz/wersję w ustawieniach aplikacji. Kontenery spoza aplikacji Deployry
 aktualizujesz sam (strona kontenera albo stack).
 
-**Ignoruj** chowa paczkę, dopóki nie pojawi się dla niej nowa podatność. Węzeł, który nie odpowiada, zostawia swoje wyniki bez zmian
+**Ignoruj** chowa paczkę, dopóki nie pojawi się dla niej nowa podatność. Kilka aplikacji naraz: zaznacz je i wybierz **Napraw zaznaczone**
+(po kolei w jednym zadaniu — nieudana nie zatrzymuje reszty, na końcu jeden ponowny skan) albo **Ignoruj zaznaczone**. Węzeł, który nie odpowiada, zostawia swoje wyniki bez zmian
 (brak spisu to nie naprawa). `DEPLOYRA_VULN_CHECKS=off` wyłącza automatyczne skanowanie (np. panel bez internetu).
 
 Ograniczenia: pakiety systemowe obrazu (apt/apk, np. OpenSSL) nie są skanowane, a oprogramowanie bez zmiennej z wersją i bez znanego

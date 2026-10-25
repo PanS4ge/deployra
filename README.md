@@ -170,6 +170,8 @@ Raw IPs are kept for 7 days (`DEPLOYRA_IP_RETENTION_DAYS`) — an IP address is 
   versions” pinned tags move within X.Y too (`11.2.0` → `11.2.3`). Deployra never makes bigger version jumps on its own.
 
 Every app can have its own mode (app settings or the table in settings) — e.g. automatic for websites, arrow only for databases.
+In the table, selected apps are updated one by one (**Update selected**) or ignored — an ignored update comes back when a newer build or
+version appears.
 
 How it works: the node reports the digests of container images (apps from files report the language image their base image was built
 from), and the panel asks the registry with a HEAD request for the tag's manifest — like Watchtower, so Docker Hub doesn't count it
@@ -202,7 +204,8 @@ rebuild their runtime image (e.g. `php:8.3-apache` with extensions) — otherwis
 Then the panel scans again. If the image has a pinned tag (e.g. `nextcloud:29.0.7`) or the branch no longer gets fixes (PHP 8.1 and older),
 change the image/version in the app settings. Containers outside Deployra apps are yours to update (container page or stack).
 
-**Ignore** hides a package until a new vulnerability shows up for it. A node that doesn't answer keeps its results unchanged (no inventory
+**Ignore** hides a package until a new vulnerability shows up for it. Several apps at once: select them and pick **Fix selected**
+(one by one in a single job — a failed one doesn't stop the rest, one rescan at the end) or **Ignore selected**. A node that doesn't answer keeps its results unchanged (no inventory
 is not a fix). `DEPLOYRA_VULN_CHECKS=off` turns off automatic scans (e.g. a panel without internet access).
 
 Limits: the image's system packages (apt/apk, e.g. OpenSSL) are not scanned, and software without a version variable or a known tag

@@ -44,14 +44,21 @@
   <div class="set-actions"><button class="btn primary"><i class="bi bi-check2"></i> {{ t("common.save") }}</button></div>
 </form>
 
-<div class="card">
+{% set pickable = rows | selectattr("found") | map(attribute="app.id") | list %}
+<div class="card" x-data="{ picked: [] }">
   <div class="card-head" style="flex-wrap: wrap; row-gap: 8px">
     <h3><i class="bi bi-rocket-takeoff"></i> {{ t("nav.apps") }}</h3>
     <span class="spacer"></span>
     <span class="small muted nowrap">{% if status.checked_at %}{{ t("appupd.last_check", ago=status.checked_at | ago) }}{% else %}{{ t("vuln.never") }}{% endif %}</span>
     {% if has(user, P.ALLOW_DEPLOYMENT) %}
     <button class="btn sm" hx-post="/settings/app-updates/check" hx-swap="none" {{ "disabled" if running }}><span class="spin"></span><i class="bi bi-arrow-repeat"></i> {{ t("updates.check_now") }}</button>
-    {% if actionable %}<button class="btn sm primary" hx-post="/settings/app-updates/all" hx-swap="none" hx-confirm="{{ t('appupd.all_confirm', count=actionable) }}"><span class="spin"></span><i class="bi bi-arrow-up-circle"></i> {{ t("appupd.update_all", count=actionable) }}</button>{% endif %}
+    {% if actionable %}
+    <button class="btn sm primary" x-show="!picked.length" hx-post="/settings/app-updates/all" hx-swap="none" hx-confirm="{{ t('appupd.all_confirm', count=actionable) }}"><span class="spin"></span><i class="bi bi-arrow-up-circle"></i> {{ t("appupd.update_all", count=actionable) }}</button>
+    <button class="btn sm primary" x-show="picked.length" x-cloak hx-post="/settings/app-updates/all" hx-include="[name=app_ids]:checked" hx-swap="none" hx-confirm="{{ t('appupd.picked_confirm') }}"><span class="spin"></span><i class="bi bi-arrow-up-circle"></i> <span x-text="{{ t('appupd.update_picked') | tojson | forceescape }} + ' (' + picked.length + ')'"></span></button>
+    {% endif %}
+    {% endif %}
+    {% if actionable and has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
+    <button class="btn sm ghost" x-show="picked.length" x-cloak hx-post="/settings/app-updates/ignore" hx-include="[name=app_ids]:checked" hx-swap="none"><i class="bi bi-eye-slash"></i> {{ t("appupd.ignore_picked") }}</button>
     {% endif %}
   </div>
   {% if status.error %}<div class="card-body"><div class="callout err"><i class="bi bi-wifi-off"></i><div class="small">{{ status.error }}</div></div></div>{% endif %}
@@ -59,14 +66,23 @@
   {% if rows %}
   <div class="table-wrap">
     <table class="table">
-      <thead><tr><th>{{ t("common.name") }}</th><th>{{ t("containers.image") }}</th><th>{{ t("common.state") }}</th><th>{{ t("appupd.policy") }}</th><th></th></tr></thead>
+      <thead><tr>
+        <th style="width: 36px">{% if pickable %}<label class="pick"><input type="checkbox" aria-label="{{ t('appupd.pick_all') }}" :checked="picked.length === {{ pickable | length }}"
+            @change="picked = $event.target.checked ? {{ pickable | map('string') | list | tojson | forceescape }} : []"></label>{% endif %}</th>
+        <th>{{ t("common.name") }}</th><th>{{ t("containers.image") }}</th><th>{{ t("common.state") }}</th><th>{{ t("appupd.policy") }}</th><th></th>
+      </tr></thead>
       <tbody>
       {% for r in rows %}{% set a = r.app %}
         <tr class="update-row">
+          <td>{% if r.found %}<label class="pick"><input type="checkbox" name="app_ids" value="{{ a.id }}" x-model="picked" aria-label="{{ a.name }}"></label>{% endif %}</td>
           <td><span class="row" style="gap: 9px">{{ app_icon(a, 22) }}<a class="name" href="/apps/{{ a.id }}">{{ a.name }}</a></span></td>
           <td class="mono small trunc" style="max-width: 260px">{{ r.image }}</td>
           <td class="small">
+            {% if r.ignored %}<span class="badge"><i class="bi bi-eye-slash"></i> {{ t("appupd.ignored") }}</span>
+              {% for text, image in r.lines %}<div class="muted nowrap">{{ text }}</div>{% endfor %}
+            {% else %}
             {% for text, image in r.lines %}<div class="nowrap"><i class="bi bi-arrow-up-circle" style="color: var(--ok)"></i> {{ text }}{% if image %} <span class="muted mono">· {{ image }}</span>{% endif %}</div>{% else %}<span class="muted">{{ t("appupd.current") if a.id in (status.apps or []) else "—" }}</span>{% endfor %}
+            {% endif %}
           </td>
           <td>
             {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
@@ -78,6 +94,8 @@
           <td class="actions">
             {% if r.found and has(user, P.ALLOW_DEPLOYMENT) %}
             <button class="btn sm primary" hx-post="/apps/{{ a.id }}/update" hx-swap="none" hx-confirm="{{ t('appupd.one_confirm', name=a.name) }}"><span class="spin"></span><i class="bi bi-arrow-up"></i> {{ t("appupd.update") }}</button>
+            {% elif r.ignored and has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
+            <button class="btn sm ghost" hx-post="/settings/app-updates/{{ a.id }}/unignore" hx-swap="none" title="{{ t('vuln.restore') }}"><i class="bi bi-eye"></i> {{ t("vuln.restore") }}</button>
             {% endif %}
           </td>
         </tr>

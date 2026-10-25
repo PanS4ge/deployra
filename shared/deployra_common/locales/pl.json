@@ -287,7 +287,12 @@
       "protected": "Nie można usunąć katalogu systemowego {path}",
       "stopped_only_mounts": "Kontener jest zatrzymany — dostępne są tylko podpięte foldery",
       "read_only": "Folder {path} jest podpięty tylko do odczytu"
-    }
+    },
+    "port_taken_by": "port hosta {port} jest zajęty ({holder}) — zmień „Port hosta” w ustawieniach aplikacji albo zostaw go pustym, a Deployra wybierze wolny",
+    "port_by_container": "kontener {name}",
+    "port_by_app": "aplikacja {name}",
+    "port_by_host": "program spoza Dockera na tym serwerze",
+    "port_moved": "port {old} jest już zajęty — aplikacja dostaje wolny port {port}"
   },
   "srv": {
     "auth": {

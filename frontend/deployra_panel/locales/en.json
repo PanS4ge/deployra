@@ -290,7 +290,10 @@
     "env_scope": "Scope",
     "env_value": "Value",
     "health_path": "Health check path",
-    "zero_downtime": "Zero downtime"
+    "zero_downtime": "Zero downtime",
+    "host_port": "Host port",
+    "host_port_auto": "automatic",
+    "host_port_hint": "Empty — a free port from the node's pool"
   },
   "auth": {
     "login": "Sign in",
@@ -2286,7 +2289,14 @@
       "unknown": "Unknown"
     },
     "alert_kev_always": "Exploited in the wild — always",
-    "sources": "Sources"
+    "sources": "Sources",
+    "fix_step": "[{index}/{count}] {name}",
+    "fix_partial": "Failed: {failed} (fixed: {done})",
+    "fix_many_job": "Fixing apps ({count})",
+    "fix_many_confirm": "Fix the selected apps one by one? Each one is redeployed with a fresh image.",
+    "fix_picked": "Fix selected",
+    "ignore_picked": "Ignore selected",
+    "ignored_many": "Ignored: {count}"
   },
   "appupd": {
     "bad_settings": "Invalid update settings",
@@ -2331,6 +2341,13 @@
     "available": "Update available:",
     "will_auto": "will update automatically",
     "short_build": "new build",
-    "short_version": "new version {version}"
+    "short_version": "new version {version}",
+    "picked_confirm": "Update the selected apps one by one?",
+    "update_picked": "Update selected",
+    "ignore_picked": "Ignore selected",
+    "pick_all": "Select all",
+    "ignored": "ignored",
+    "ignored_msg": "Ignored updates: {count}",
+    "ignore_hint": "Hide this update — it comes back when a newer one appears"
   }
 }

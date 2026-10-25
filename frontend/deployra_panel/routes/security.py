@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Request
 
@@ -68,11 +69,28 @@ def snooze(panel: Panel = Depends(get_panel)):
     return toast(t("vuln.snoozed"))
 
 
+def _ignore(panel: Panel, row: dict) -> None:
+    panel.db.update("vuln_findings", row["id"], status="ignored", ignored_ids=[e["id"] for e in row.get("vulns") or []])
+    vulns.silence(panel, row["id"])
+
+
+def _picked(form: Any) -> list[int]:
+    """Zaznaczone grupy (aplikacja albo kontener) — każda to lista ID pozycji, np. "3,7,9"."""
+    return [int(part) for value in form.getlist("ids") for part in str(value).split(",") if part.strip().isdigit()]
+
+
+@router.post("/security/ignore-many")
+async def ignore_many(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):
+    rows = [r for r in (panel.db.get("vuln_findings", i) for i in _picked(await request.form())) if r and r["status"] == "open"]
+    for row in rows:
+        _ignore(panel, row)
+    return refresh(t("vuln.ignored_many", count=len(rows)))
+
+
 @router.post("/security/{finding_id}/ignore")
 def ignore(finding_id: int, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):
     row = _finding(panel, finding_id)
-    panel.db.update("vuln_findings", row["id"], status="ignored", ignored_ids=[e["id"] for e in row.get("vulns") or []])
-    vulns.silence(panel, row["id"])
+    _ignore(panel, row)
     return refresh(t("vuln.ignored_msg", package=row["package"]))
 
 
@@ -84,6 +102,57 @@ def restore(finding_id: int, panel: Panel = Depends(get_panel), user: dict = Dep
     return refresh()
 
 
+def _busy(panel: Panel, app: dict) -> bool:
+    current = panel.jobs.get(app.get("last_job") or "")
+    return app["status"] == "deploying" and bool(current) and not current.done
+
+
+def _fix_job(panel: Panel, apps: list[dict]):
+    """Aplikacje po kolei: wdrożenie ze świeżo pobranym obrazem (środowisko „z plików” budowane od nowa), na końcu
+    jeden ponowny skan. Nieudane wdrożenie jednej aplikacji nie zatrzymuje reszty."""
+
+    async def work(job: Job) -> dict:
+        done, failed = [], []
+        for index, app in enumerate(apps, 1):
+            if len(apps) > 1:
+                job.log(t("vuln.fix_step", index=index, count=len(apps), name=app["name"]))
+            try:
+                await deploy.run(panel, job, app["id"], refresh=True)
+                done.append(app["name"])
+            except (JobFailed, LookupError) as exc:
+                failed.append(app["name"])
+                if len(apps) == 1:
+                    raise
+                job.log(f"✖ {app['name']}: {exc}")
+        job.log(t("vuln.rescan"))
+        try:
+            await vulns.scan(panel, job)  # błąd OSV skan zapisuje w logu sam
+        except LookupError as exc:  # skan już trwa — wdrożenia i tak się udały
+            job.log(str(exc))
+        except JobFailed:
+            pass
+        if failed:
+            raise JobFailed(t("vuln.fix_partial", failed=", ".join(failed), done=len(done)))
+        return {"fixed": done}
+
+    return work
+
+
+@router.post("/security/fix-many")
+async def fix_many(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):
+    """Zaznaczone aplikacje naprawiane po kolei w jednym zadaniu (kontenery spoza aplikacji pomijamy)."""
+    apps: dict[int, dict] = {}
+    for finding_id in _picked(await request.form()):
+        row = panel.db.get("vuln_findings", finding_id)
+        app = panel.db.get("apps", row["app_id"]) if row and row["app_id"] else None
+        if app and app["kind"] in FIXABLE and not _busy(panel, app):
+            apps.setdefault(app["id"], app)
+    if not apps:
+        return toast(t("vuln.cant_fix"), "warn", status=400)
+    job = panel.jobs.start("deploy", t("vuln.fix_many_job", count=len(apps)), _fix_job(panel, list(apps.values())))
+    return redirect(request, f"/security?job={job.id}")
+
+
 @router.post("/security/{finding_id}/fix")
 async def fix(request: Request, finding_id: int, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):
     """Wdrożenie aplikacji ze świeżo pobranym obrazem (środowisko „z plików” budowane od nowa), potem ponowny skan."""
@@ -91,20 +160,7 @@ async def fix(request: Request, finding_id: int, panel: Panel = Depends(get_pane
     app = panel.db.get("apps", row["app_id"]) if row["app_id"] else None
     if not app or app["kind"] not in FIXABLE:
         return toast(t("vuln.cant_fix"), "warn", status=400)
-    current = panel.jobs.get(app.get("last_job") or "")
-    if app["status"] == "deploying" and current and not current.done:
+    if _busy(panel, app):
         return toast(t("msg.deploy_running"), "warn", status=409)
-
-    async def work(job: Job) -> dict:
-        result = await deploy.run(panel, job, app["id"], refresh=True)
-        job.log(t("vuln.rescan"))
-        try:
-            await vulns.scan(panel, job)  # błąd OSV skan zapisuje w logu sam
-        except LookupError as exc:  # skan już trwa — wdrożenie i tak się udało
-            job.log(str(exc))
-        except JobFailed:
-            pass
-        return result
-
-    job = panel.jobs.start("deploy", t("vuln.fix_job", name=app["name"]), work)
+    job = panel.jobs.start("deploy", t("vuln.fix_job", name=app["name"]), _fix_job(panel, [app]))
     return redirect(request, f"/apps/{app['id']}?job={job.id}")

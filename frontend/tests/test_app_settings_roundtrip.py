@@ -108,3 +108,13 @@ def test_settings_form_roundtrip(admin, nodes, slug):
         assert job.status == "ok" and "/api/apps/deploy" not in nodes[1].jobs(), (job.error, job.lines[-5:])
         saved, _ = deploy.load(panel, panel.db.get("apps", app_id))
         assert saved.host_port == 8084 and saved.domains == ["nowa.example.com"]
+
+
+def test_host_port_field_in_edit_form():
+    from deployra_common.schemas import AppSpec
+    from deployra_panel.routes.apps import _host_port
+
+    existing = AppSpec.model_validate({"slug": "errpage", "source": {"kind": "image", "image": "nginx"}, "container_port": 80, "host_port": 8080})
+    assert _host_port({}, existing) == 8080  # kreator bez pola — zostaje jak było
+    assert _host_port({"host_port": ""}, existing) is None  # puste — wolny port z puli
+    assert _host_port({"host_port": "8090"}, existing) == 8090

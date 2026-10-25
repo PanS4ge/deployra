@@ -338,3 +338,51 @@ def test_deploy_run_passes_refresh_to_node(setup, monkeypatch):
             asyncio.run(deploy.run(panel, Job(), app_id, refresh=refresh))
     assert [b["refresh_image"] for b in sent] == [False, True]
     assert deploy.load(panel, panel.db.get("apps", app_id))[0].refresh_image is False  # nie zostaje w zapisanej specyfikacji
+
+
+def test_fix_many_runs_apps_one_by_one_and_rescans_once(setup, admin, monkeypatch):
+    panel, node, osv, app_id = setup
+    spec2 = AppSpec.model_validate({"slug": "blog", "source": {"kind": "runtime", "runtime": "php"}})
+    second = deploy.create_app_row(panel, "Blog", panel.db.all("nodes")[0]["id"], spec2, {})
+    run(panel, osv)
+    php = rows(panel)["php"]
+    panel.db.insert("vuln_findings", node_id=php["node_id"], endpoint="local", container="app-blog", app_id=second, label="Blog", ecosystem="Bitnami",
+                    package="php", version="8.3.12", source="PHP_VERSION", severity="critical", vulns=php["vulns"], status="open",
+                    ignored_ids=[], first_seen=1, last_seen=1)  # fmt: skip
+    calls = []
+
+    async def fake_run(panel_, job, app, adopt_container=None, refresh=False):
+        calls.append((app, refresh))
+        if app == second:
+            raise JobFailed("port zajęty")
+        return {}
+
+    async def fake_scan(panel_, job=None, transport=None):
+        calls.append("scan")
+        return {}
+
+    from deployra_panel.routes import security
+
+    monkeypatch.setattr(security.deploy, "run", fake_run)
+    monkeypatch.setattr(security.vulns, "scan", fake_scan)
+    groups = vulns.group(vulns.listing(panel))
+    picked = [",".join(str(r["id"]) for r in g["rows"]) for g in groups]
+    response = admin.post("/security/fix-many", data={"ids": picked})
+    assert response.status_code == 204 and response.headers["HX-Redirect"].startswith("/security?job=")
+    job = panel.jobs.get(response.headers["HX-Redirect"].split("job=")[1])
+    for _ in range(200):
+        if job.done:
+            break
+        asyncio.run(asyncio.sleep(0.02))
+    assert sorted(c for c in calls if c != "scan") == sorted([(app_id, True), (second, True)]) and calls[-1] == "scan"
+    assert job.status == "error" and "Blog" in job.error  # jedna nie wyszła, reszta zrobiona, skan na końcu
+
+
+def test_ignore_many(setup, admin):
+    panel, _, osv, _ = setup
+    run(panel, osv)
+    picked = [",".join(str(r["id"]) for r in g["rows"]) for g in vulns.group(vulns.listing(panel))]
+    assert admin.post("/security/ignore-many", data={"ids": picked}).status_code == 204
+    assert vulns.listing(panel) == [] and len(vulns.listing(panel, "ignored")) == 2
+    html = admin.get("/security", headers={"HX-Request": ""}).text
+    assert "/security/fix-many" not in html  # nic do zaznaczania

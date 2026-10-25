@@ -671,3 +671,5 @@ details > summary.small { cursor: pointer; color: var(--text-dim); }
 .update-row td { vertical-align: middle; }
 .save-bar { position: sticky; bottom: 14px; z-index: 5; display: flex; justify-content: flex-end; pointer-events: none; }
 .save-bar .btn { pointer-events: auto; box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.7), var(--glow); }
+.pick { display: inline-flex; align-items: center; cursor: pointer; }
+.pick input { width: 16px; height: 16px; margin: 0; accent-color: var(--violet); cursor: pointer; }
