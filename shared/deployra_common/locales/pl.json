@@ -114,7 +114,8 @@
       "restore_failed": "Nie udało się przywrócić starego kontenera: {error}",
       "restoring": "Nowy kontener nie wstał — przywracam {name}",
       "stopping": "Zatrzymuję {name} i odkładam go jako {backup}",
-      "system": "To kontener Deployry — nie ma czego przejmować"
+      "system": "To kontener Deployry — nie ma czego przejmować",
+      "backup_removed": "Usunięto stary kontener {backup}"
     },
     "already_paired": "węzeł jest już sparowany — zresetuj parowanie na węźle",
     "app": {
@@ -150,7 +151,9 @@
       "handover_grace": "Ruch już idzie do nowej wersji — czekam {seconds} s na zakończenie starych połączeń",
       "handover_done": "✔ Przełączono — aplikacja działa na porcie {host_port}",
       "handover_aborted": "Wdrożenie przerwane — usuwam nową wersję, stara działa dalej",
-      "no_handover": "brak wdrożenia czekającego na przełączenie"
+      "no_handover": "brak wdrożenia czekającego na przełączenie",
+      "verify_failed": "Nowa wersja nie odpowiada poprawnie (test HTTP) — wracam do poprzedniej",
+      "image_removed": "Usunięto stary obraz {image}"
     },
     "bad_code": "zły kod parowania",
     "bad_key": "zły klucz",

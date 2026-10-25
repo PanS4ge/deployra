@@ -257,6 +257,8 @@ class AppSpec(BaseModel):
     zero_downtime: bool = False  # nowy kontener startuje obok starego; przełączenie dopiero po teście zdrowia
     health_path: str | None = Field(default=None, max_length=200)  # np. /up — HTTP < 500 = zdrowy; brak = wystarczy „działa”
     refresh_image: bool = False  # jednorazowo (naprawa podatności): obraz środowiska i bazowy Dockerfile'a pobrane od nowa
+    verify: bool = False  # jednorazowo: po starcie test HTTP (kod < 500), inaczej powrót do poprzedniej wersji
+    cleanup: bool = False  # jednorazowo: po udanym wdrożeniu usuń stary obraz (gdy nieużywany) i kopię przejętego kontenera
 
     @field_validator("slug")
     @classmethod

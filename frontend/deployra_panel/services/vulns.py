@@ -504,6 +504,7 @@ async def scan(panel: Any, job: Any = None, transport: httpx.AsyncBaseTransport 
             records = await details(panel, http, wanted)
         findings = evaluate(items, results, records, exploited)
         events = store(panel, findings, covered, scanned)
+        await suggest(panel, transport)
         result["findings"] = len(findings)
         log(t("vuln.log_done", findings=len(findings), vulns=len(wanted)))
         await notify(panel, events)
@@ -567,6 +568,79 @@ def banner(panel: Any) -> dict[str, Any]:
             "kev": sum(1 for r in urgent if r["kev"])}  # fmt: skip
 
 
+# produkt z obrazu (pakiet Bitnami) → repozytoria obrazów, w których to on jest głównym oprogramowaniem
+PRODUCT_REPOS = {
+    "php": {"php"}, "node": {"node"}, "python": {"python"}, "nginx": {"nginx"}, "apache": {"httpd"}, "redis": {"redis"}, "valkey": {"valkey"},
+    "postgresql": {"postgres"}, "mariadb": {"mariadb"}, "mysql": {"mysql"}, "mongodb": {"mongo"}, "ruby": {"ruby"}, "golang": {"golang"},
+    "tomcat": {"tomcat"}, "wordpress": {"wordpress"}, "ghost": {"ghost"}, "nextcloud": {"nextcloud"}, "memcached": {"memcached"},
+    "rabbitmq": {"rabbitmq"}, "haproxy": {"haproxy"}, "grafana": {"grafana"}, "gitea": {"gitea"}, "keycloak": {"keycloak"},
+    "drupal": {"drupal"}, "joomla": {"joomla"}, "mediawiki": {"mediawiki"}, "redmine": {"redmine"},
+}  # fmt: skip
+_TAG = re.compile(r"^(v?)(\d+(?:\.\d+){0,3})((?:[-_][A-Za-z0-9.]+)*)$")
+
+
+def _nums(text: str) -> tuple[int, ...]:
+    match = re.match(r"^v?(\d+(?:\.\d+)*)", str(text or ""))
+    return tuple(int(p) for p in match.group(1).split(".")) if match else ()
+
+
+def suggest_tag(tag: str, fixed: str, tags: list[str]) -> str | None:
+    """Najmniejszy skok do wersji z poprawką, w tym samym kształcie tagu: `8.0-apache` + 8.2.35 → `8.2-apache`,
+    `8.0.30-apache` → `8.2.35-apache`. Bez wersji testowych (inny przyrostek) i bez zgadywania przy `latest`."""
+    current, target = _TAG.match(tag), _nums(fixed)
+    if not current or not target:
+        return None
+    prefix, nums, suffix = current.group(1), _nums(current.group(2)), current.group(3)
+    depth = len(nums)
+    need = target[:depth] if depth < len(target) else target
+    found = []
+    for candidate in tags:
+        parsed = _TAG.match(candidate)
+        if not parsed or parsed.group(1) != prefix or parsed.group(3) != suffix:
+            continue
+        version = _nums(parsed.group(2))
+        if len(version) == depth and version > nums and version >= need:
+            found.append((version, candidate))
+    return min(found)[1] if found else None
+
+
+async def suggest(panel: Any, transport: httpx.AsyncBaseTransport | None = None) -> None:
+    """Dla pozycji łatanych dopiero w nowszej gałęzi szuka w rejestrze obrazu aplikacji z poprawką (to zrobi „Napraw”)."""
+    from . import app_updates
+    from .deploy import load
+
+    rows = [r for r in panel.db.fetchall("SELECT * FROM vuln_findings WHERE status = 'open'")]
+    tag_cache: dict[tuple[str, str], list[str]] = {}
+    headers = {"User-Agent": f"Deployra/{__version__}"}
+    async with httpx.AsyncClient(timeout=20, headers=headers, transport=transport, follow_redirects=True) as http:
+        registry = app_updates.Registry(panel, http)
+        for row in rows:
+            image = None
+            app = panel.db.get("apps", row["app_id"]) if row["app_id"] else None
+            if app and app["kind"] == "image" and row["ecosystem"] == "Bitnami" and new_branch(row["version"], row["fixed"]):
+                try:
+                    current = load(panel, app)[0].source.image or ""
+                except Exception:  # noqa: BLE001
+                    current = ""
+                ref = app_updates.parse_ref(current)
+                if ref and ref.repo.rsplit("/", 1)[-1] in PRODUCT_REPOS.get(row["package"], set()):
+                    key = (ref.registry, ref.repo)
+                    if key not in tag_cache:
+                        try:
+                            tag_cache[key] = await registry.tags(ref)
+                        except (httpx.HTTPError, ValueError):
+                            tag_cache[key] = []
+                    tag = suggest_tag(ref.tag, row["fixed"], tag_cache[key])
+                    image = app_updates.with_tag(current, tag) if tag else None
+            if image != row.get("suggest"):
+                panel.db.update("vuln_findings", row["id"], suggest=image)
+
+
+def new_branch(version: str, fixed: str | None) -> bool:
+    """Poprawka jest dopiero w innej gałęzi (8.0.30 → 8.2.35): świeży obraz tego samego tagu nic nie da, trzeba zmienić wersję."""
+    return bool(fixed) and vkey(version)[0][:2] != vkey(fixed)[0][:2]
+
+
 def group(rows: list[dict]) -> list[dict]:
     """Wiersze pogrupowane po kontenerze/aplikacji (kolejność: najgroźniejsze najpierw)."""
     groups: dict[tuple, dict] = {}
@@ -574,7 +648,7 @@ def group(rows: list[dict]) -> list[dict]:
         key = ("app", row["app_id"]) if row["app_id"] else (row["node_id"], row["endpoint"], row["container"])
         entry = groups.setdefault(key, {"label": row["label"], "app_id": row["app_id"], "node_id": row["node_id"], "endpoint": row["endpoint"],
                                         "container": row["container"], "rows": []})  # fmt: skip
-        entry["rows"].append(row)
+        entry["rows"].append({**row, "new_branch": new_branch(row["version"], row["fixed"])})
         if row["container"] and not entry["container"]:
             entry["container"] = row["container"]
     return list(groups.values())

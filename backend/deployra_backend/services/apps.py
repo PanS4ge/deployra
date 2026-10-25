@@ -107,16 +107,38 @@ def replace_container(ctx: Any, job: Job, spec: AppSpec, image: str, host_port: 
         job.log(tr("node.app.starting_worker", name=name, image=image))
     cid = docker_svc.run_container(client, _container_spec(ctx, spec, image, host_port))
     if _wait_running(client, cid, ctx.wait_seconds):
-        job.log(tr("node.app.running"))
-        return cid
+        if _verified(ctx, job, spec, client, cid, host_port):
+            job.log(tr("node.app.running"))
+            if spec.cleanup and previous_image and previous_image != image:
+                _drop_image(client, job, previous_image)
+            return cid
+        job.log(tr("node.app.verify_failed"))
+    else:
+        job.log(tr("node.app.crashed"))
     logs = client.api.logs(cid, tail=40).decode(errors="replace")
-    job.log(tr("node.app.crashed"))
     job.log(logs.rstrip() or tr("node.app.no_logs"))
     client.api.remove_container(cid, force=True)
     if previous_image and previous_image != image:
         job.log(tr("node.app.restoring", image=previous_image))
         docker_svc.run_container(client, _container_spec(ctx, spec, previous_image, host_port))
     raise JobFailed(tr("node.app.failed"))
+
+
+def _verified(ctx: Any, job: Job, spec: AppSpec, client: Any, cid: str, host_port: int | None) -> bool:
+    """`spec.verify` (zmiana wersji przy naprawie/aktualizacji): aplikacja musi odpowiedzieć kodem < 500, nie tylko działać."""
+    if not spec.verify or not host_port or not spec.container_port:
+        return True
+    url = _health_url(ctx.endpoints.get(spec.endpoint), host_port, spec.health_path or "/")
+    return _wait_healthy(ctx, job, url, lambda: client.api.inspect_container(cid)["State"])
+
+
+def _drop_image(client: Any, job: Job, image: str) -> None:
+    """Stary obraz po zmianie wersji — tylko gdy nikt go już nie używa (Docker sam odmówi, jeśli używa)."""
+    try:
+        client.api.remove_image(image)
+        job.log(tr("node.app.image_removed", image=image))
+    except Exception:  # noqa: BLE001 — obraz używa inny kontener albo już go nie ma
+        pass
 
 
 def _health_url(endpoint: Any, host_port: int, path: str) -> str:

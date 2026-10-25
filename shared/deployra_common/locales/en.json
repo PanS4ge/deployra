@@ -114,7 +114,8 @@
       "restore_failed": "Could not restore the old container: {error}",
       "restoring": "The new container didn't start — restoring {name}",
       "stopping": "Stopping {name} and keeping it as {backup}",
-      "system": "This is a Deployra container — nothing to adopt"
+      "system": "This is a Deployra container — nothing to adopt",
+      "backup_removed": "Removed the old container {backup}"
     },
     "already_paired": "the node is already paired — reset pairing on the node",
     "app": {
@@ -150,7 +151,9 @@
       "handover_grace": "Traffic already goes to the new version — waiting {seconds} s for old connections to finish",
       "handover_done": "✔ Switched — the app runs on port {host_port}",
       "handover_aborted": "Deploy aborted — removing the new version, the old one keeps running",
-      "no_handover": "no deploy waiting for a switch"
+      "no_handover": "no deploy waiting for a switch",
+      "verify_failed": "The new version doesn't respond correctly (HTTP test) — going back to the previous one",
+      "image_removed": "Removed the old image {image}"
     },
     "bad_code": "wrong pairing code",
     "bad_key": "invalid key",

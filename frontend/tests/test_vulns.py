@@ -284,7 +284,7 @@ def test_fix_redeploys_with_fresh_image_and_rescans(setup, admin, monkeypatch):
     run(panel, osv)
     calls = []
 
-    async def fake_run(panel_, job, app, adopt_container=None, refresh=False):
+    async def fake_run(panel_, job, app, adopt_container=None, refresh=False, **_):
         calls.append((app, refresh))
         return {}
 
@@ -351,7 +351,7 @@ def test_fix_many_runs_apps_one_by_one_and_rescans_once(setup, admin, monkeypatc
                     ignored_ids=[], first_seen=1, last_seen=1)  # fmt: skip
     calls = []
 
-    async def fake_run(panel_, job, app, adopt_container=None, refresh=False):
+    async def fake_run(panel_, job, app, adopt_container=None, refresh=False, **_):
         calls.append((app, refresh))
         if app == second:
             raise JobFailed("port zajęty")
@@ -386,3 +386,85 @@ def test_ignore_many(setup, admin):
     assert vulns.listing(panel) == [] and len(vulns.listing(panel, "ignored")) == 2
     html = admin.get("/security", headers={"HX-Request": ""}).text
     assert "/security/fix-many" not in html  # nic do zaznaczania
+
+
+def test_suggest_tag_shapes():
+    tags = ["8.0-apache", "8.1-apache", "8.2-apache", "8.3-apache", "8.2-fpm", "8.5-rc-apache", "8-apache", "8.2.34-apache", "8.2.35-apache", "latest"]
+    assert vulns.suggest_tag("8.0-apache", "8.2.35", tags) == "8.2-apache"  # najmniejszy skok z poprawką, ten sam wariant
+    assert vulns.suggest_tag("8.0.30-apache", "8.2.35", tags) == "8.2.35-apache"
+    assert vulns.suggest_tag("latest", "8.2.35", tags) is None and vulns.suggest_tag("8.3-apache", "8.2.35", tags) is None
+
+
+@pytest.fixture
+def old_php(setup, monkeypatch):
+    """Aplikacja z obrazu php:8.0-apache (gałąź bez poprawek) i rejestr z nowszymi tagami."""
+    panel, node, osv, _ = setup
+    spec = AppSpec.model_validate({"slug": "noreto", "source": {"kind": "image", "image": "php:8.0-apache"}, "container_port": 80,
+                                   "domains": ["noreto.example.com"]})  # fmt: skip
+    app_id = deploy.create_app_row(panel, "Noreto", panel.db.all("nodes")[0]["id"], spec, {})
+    inventory = node.get
+
+    async def with_app(path, **kwargs):
+        data = await inventory(path, **kwargs)
+        data["endpoints"][0]["containers"].append({"id": "n1", "name": "app-noreto", "image": "php:8.0-apache", "state": "running",
+                                                   "app": "noreto", "stack": None,
+                                                   "software": [{"ecosystem": "Bitnami", "name": "php", "version": "8.0.30", "source": "PHP_VERSION"}]})  # fmt: skip
+        return data
+
+    node.get = with_app
+    osv.vulns[("Bitnami", "php", "8.0.30")] = [PHP2SHELL]
+    handler = osv.handler
+
+    def registry(request):
+        if request.url.host == "registry-1.docker.io":
+            return httpx.Response(200, json={"tags": ["8.0-apache", "8.1-apache", "8.2-apache", "8.3-apache", "8.2-fpm"]})
+        return handler(request)
+
+    osv.handler = registry
+    return panel, osv, app_id
+
+
+def test_scan_finds_image_with_the_fix(old_php):
+    panel, osv, app_id = old_php
+    run(panel, osv)
+    row = rows(panel, app_id=app_id)["php"]
+    assert row["fixed"] == "8.2.35" and row["suggest"] == "php:8.2-apache"
+
+
+def test_fix_switches_image_and_reverts_on_failure(old_php, admin, monkeypatch):
+    panel, osv, app_id = old_php
+    run(panel, osv)
+    calls = []
+
+    async def fake_run(panel_, job, app, adopt_container=None, refresh=False, verify=False, cleanup=False):
+        calls.append((deploy.load(panel, panel.db.get("apps", app))[0].source.image, refresh, verify, cleanup))
+        if fail["now"]:
+            raise JobFailed("test HTTP nie przeszedł")
+        return {}
+
+    async def fake_scan(panel_, job=None, transport=None):
+        return {}
+
+    from deployra_panel.routes import security
+
+    fail = {"now": True}
+    monkeypatch.setattr(security.deploy, "run", fake_run)
+    monkeypatch.setattr(security.vulns, "scan", fake_scan)
+    finding = rows(panel, app_id=app_id)["php"]
+
+    def fix():
+        response = admin.post(f"/security/{finding['id']}/fix")
+        job = panel.jobs.get(response.headers["HX-Redirect"].split("job=")[1])
+        for _ in range(200):
+            if job.done:
+                break
+            asyncio.run(asyncio.sleep(0.02))
+        return job
+
+    job = fix()
+    assert calls == [("php:8.2-apache", True, True, True)] and job.status == "error"
+    assert deploy.load(panel, panel.db.get("apps", app_id))[0].source.image == "php:8.0-apache"  # stary obraz wraca
+    assert any("php:8.0-apache → php:8.2-apache" in line for line in job.lines)
+    fail["now"] = False
+    job = fix()
+    assert job.status == "ok" and deploy.load(panel, panel.db.get("apps", app_id))[0].source.image == "php:8.2-apache"

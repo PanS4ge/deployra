@@ -68,9 +68,11 @@ async def _push(panel: Any, job: Job) -> None:
         raise JobFailed(t("msg.gateway_rejected"))
 
 
-async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = None, refresh: bool = False) -> dict:
+async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = None, refresh: bool = False, verify: bool = False,
+              cleanup: bool = False) -> dict:
     """Wdrożenie aplikacji; z `adopt_container` węzeł zamiast stawiać od zera przejmuje istniejący kontener,
-    z `refresh` pobiera od nowa obraz środowiska i bazowy obraz Dockerfile'a (naprawa podatności)."""
+    z `refresh` pobiera od nowa obraz środowiska i bazowy obraz Dockerfile'a (naprawa podatności), z `verify` po starcie
+    sprawdza HTTP (aplikacje z domeną; błąd → poprzednia wersja), z `cleanup` usuwa stary obraz i kopię przejętego kontenera."""
     app = panel.db.get("apps", app_id)
     if not app:
         raise JobFailed(t("msg.no_app"))
@@ -79,13 +81,24 @@ async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = N
     if not node:
         raise JobFailed(t("msg.app_node_missing"))
     spec = env_groups.effective(panel, app_id, spec)  # zmienne współdzielone wchodzą przy każdym wdrożeniu
-    if refresh:
-        spec = spec.model_copy(update={"refresh_image": True})
+    spec = spec.model_copy(update={"refresh_image": refresh, "verify": verify and bool(spec.domains), "cleanup": cleanup})
     first = app["status"] == "new"
     panel.db.update("apps", app_id, status="deploying", last_job=job.id, last_error=None)
     try:
         client = panel.node_client(node)
         job.log(t("deploy.start", slug=spec.slug, kind=spec.source.kind, node=node["name"]))
+        if not adopt_container and spec.source.kind == "image" and spec.endpoint == "local":
+            foreign = await foreign_container(client, app)
+            if foreign:  # aplikacja dopisana bez przejęcia — bez tego obok starego stanąłby drugi kontener bez jego wolumenów
+                name, cid = foreign
+                job.log(t("deploy.taking_over", name=name, backup=f"{name}-pre-deployra"))
+                base, _ = load(panel, app)
+                merged = await from_container(client, base, cid, name)
+                panel.db.update("apps", app_id, spec=store(panel, merged, options), host_port=merged.host_port)
+                spec = env_groups.effective(panel, app_id, merged)
+                # stary kontener znika dopiero, gdy nowy działa (i odpowiada, jeśli aplikacja ma domenę)
+                spec = spec.model_copy(update={"refresh_image": refresh, "verify": bool(merged.domains), "cleanup": True})
+                adopt_container = cid
         if first and not adopt_container:  # ochrona przed przepełnieniem — ponowne wdrożenie już nie pyta (świadoma decyzja)
             from . import resources
 
@@ -118,6 +131,47 @@ async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = N
         return {"host_port": host_port}
     except (JobFailed, RemoteError, httpx.HTTPError, LookupError) as exc:
         await _failed(panel, job, app, exc)
+
+
+async def foreign_container(client: Any, app: dict) -> tuple[str, str] | None:
+    """Kontener aplikacji dopisanej bez przejęcia (ręcznie, skryptem): nie ma `app-<slug>`, a port hosta aplikacji publikuje
+    albo jej dokładną nazwę ma jeden kontener spoza Deployry (bez etykiety aplikacji, nie z compose, nie systemowy).
+    Nowej aplikacji z kreatora nie dotyczy — nie przejmujemy cudzego kontenera tylko dlatego, że nazywa się tak samo."""
+    if app.get("status") == "new":
+        return None
+    try:
+        listed = await client.get("/api/containers")
+    except (RemoteError, httpx.HTTPError):
+        return None  # bez listy kontenerów zwykłe wdrożenie — sprawdzenie nie może go zablokować
+    items = [c for c in listed if isinstance(c, dict) and c.get("name")] if isinstance(listed, list) else []
+    slug, port = app["slug"], app.get("host_port")
+    if any(c["name"] in (f"app-{slug}", f"app-{slug}-next") or c.get("app") == slug for c in items):
+        return None
+    found = [c for c in items if not c.get("system") and not c.get("stack") and not c.get("app")
+             and (c["name"] == slug or (port and any(p.get("host") == port for p in c.get("ports") or [])))]  # fmt: skip
+    return (found[0]["name"], found[0].get("id") or found[0]["name"]) if len(found) == 1 else None
+
+
+async def from_container(client: Any, spec: AppSpec, cid: str, name: str) -> AppSpec:
+    """Specyfikacja uzupełniona tym, co naprawdę ma kontener (jak przy „Przejmij kontener”): obraz, polecenie, zmienne,
+    wolumeny, limity i port hosta. Zmienne ustawione w panelu wygrywają."""
+    from urllib.parse import quote
+
+    from deployra_common.schemas import VolumeMount
+
+    plan = await client.get(f"/api/containers/{quote(cid, safe='')}/adopt-plan")
+    if plan.get("problems"):
+        raise JobFailed(t("deploy.takeover_blocked", name=name, problem=plan["problems"][0]))
+    ports = plan.get("ports") or []
+    port = next((p for p in ports if p["container"] == spec.container_port), None) or (ports[0] if ports else {})
+    source = spec.source.model_copy(update={"image": plan.get("image") or spec.source.image,
+                                            "command": plan.get("command") if plan.get("command") is not None else spec.source.command})  # fmt: skip
+    return spec.model_copy(update={
+        "source": source, "env": {**(plan.get("env") or {}), **spec.env},
+        "volumes": spec.volumes or [VolumeMount(**v) for v in plan.get("volumes") or []],
+        "memory_mb": spec.memory_mb or plan.get("memory_mb"), "cpus": spec.cpus or plan.get("cpus"),
+        "host_port": spec.host_port or port.get("host"), "container_port": spec.container_port or port.get("container"),
+    })  # fmt: skip
 
 
 async def _failed(panel: Any, job: Job, app: dict, exc: Exception) -> None:

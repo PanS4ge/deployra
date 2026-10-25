@@ -148,7 +148,7 @@ def test_auto_mode_updates_builds_and_patch_versions(setup, monkeypatch):
     app_updates.save_settings(panel, "auto", 12, auto_patch=True)
     calls = []
 
-    async def fake_run(panel_, job, app_id, adopt_container=None, refresh=False):
+    async def fake_run(panel_, job, app_id, adopt_container=None, refresh=False, **_):
         calls.append((app_id, refresh, deploy.load(panel, panel.db.get("apps", app_id))[0].source.image))
         app_updates.after_deploy(panel, panel.db.get("apps", app_id), refresh)
         return {}

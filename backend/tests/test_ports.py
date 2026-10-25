@@ -48,3 +48,14 @@ def test_explicit_port_taken_is_a_clear_error(api, ctx):
 def test_holder_names_other_app(ctx):
     ctx.state.mutate("ports", lambda p: {"blog": 45993})
     assert "blog" in ports.holder(ctx.state, ctx.docker, "errpage", 45993)
+
+
+def test_takeover_frees_the_port_of_the_old_container(api, ctx):
+    """Aplikacja dopisana bez przejęcia: stary kontener `errpage` trzyma port — przejęcie go zatrzymuje i nowy dostaje ten sam port."""
+    busy(ctx, "errpage", 45995)
+    body = {"container": "errpage", "spec": {**spec(host_port=45995), "refresh_image": True}}
+    job = api.request("POST", "/api/apps/errpage/adopt", json=body).json()["job"]
+    result = api.wait_job(job["id"])
+    assert result["job"]["status"] == "ok", " | ".join(result["lines"])[-1500:]
+    names = {c["name"]: c for c in ctx.docker.api.containers_.values()}
+    assert names["app-errpage"]["ports"] == {"80/tcp": 45995} and names["errpage-pre-deployra"]["state"] == "exited"

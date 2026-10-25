@@ -198,9 +198,11 @@ Krytyczne i wykorzystywane w atakach podatności pokazują pasek u góry panelu,
 
 **Napraw** wdraża aplikację ponownie ze świeżo pobranym obrazem: aplikacje z obrazu i compose robią `pull`, aplikacje z Gita budują się
 z `--pull`, a aplikacje „z plików” przebudowują obraz środowiska (np. `php:8.3-apache` z rozszerzeniami) — bez tego obraz bazowy zostaje
-w wersji z pierwszego wdrożenia. Potem panel skanuje jeszcze raz. Gdy obraz ma przypięty tag (np. `nextcloud:29.0.7`) albo gałąź nie
-dostaje już poprawek (PHP 8.1 i starsze), trzeba zmienić obraz/wersję w ustawieniach aplikacji. Kontenery spoza aplikacji Deployry
-aktualizujesz sam (strona kontenera albo stack).
+w wersji z pierwszego wdrożenia. Potem panel skanuje jeszcze raz. Gdy poprawka jest dopiero w nowszej gałęzi (np. PHP 8.0 → 8.2), skan
+szuka w rejestrze tagu z poprawką w tym samym wariancie (`php:8.0-apache` → `php:8.2-apache`, `8.0.30-apache` → `8.2.35-apache`) i pokazuje
+go przy pozycji — **Napraw** zmienia wtedy obraz aplikacji, po starcie sprawdza HTTP (aplikacje z domeną: kod < 500), a przy błędzie wraca
+do starego obrazu. Po udanej zmianie stary obraz jest usuwany (o ile nikt go nie używa), a przejęty kontener spoza Deployry — też (po teście).
+Kontenery spoza aplikacji Deployry aktualizujesz sam (strona kontenera albo stack).
 
 **Ignoruj** chowa paczkę, dopóki nie pojawi się dla niej nowa podatność. Kilka aplikacji naraz: zaznacz je i wybierz **Napraw zaznaczone**
 (po kolei w jednym zadaniu — nieudana nie zatrzymuje reszty, na końcu jeden ponowny skan) albo **Ignoruj zaznaczone**. Węzeł, który nie odpowiada, zostawia swoje wyniki bez zmian
@@ -330,6 +332,10 @@ ponad progiem, największa taka aplikacja jedzie na węzeł z największym zapas
 port, zmienne (bez domyślnych z obrazu), wolumeny i limity. Stary kontener staje i zostaje jako kopia `<nazwa>-pre-deployra`, a na jego
 miejscu powstaje aplikacja z tym samym obrazem, danymi i portem hosta — od teraz z wdrożeniami, domeną, alertami i przenoszeniem.
 Jeśli nowy kontener nie wstanie, stary wraca sam. Kontenery stacków compose przejmuje się jako stack (Węzeł → Stacki).
+
+Aplikacja dopisana bez przejęcia (np. skryptem, z samym obrazem i portem), której kontenerem jest dokładnie jeden kontener spoza
+Deployry, zostaje przejęta automatycznie przy pierwszym wdrożeniu (także **Napraw** i **Aktualizuj**) — z konfiguracją z tego kontenera.
+Port przechodzi na nowy kontener, a stary jest usuwany, gdy nowy działa (i odpowiada przez HTTP, jeśli aplikacja ma domenę); inaczej stary wraca.
 
 ## Konta z przypisanymi serwerami (jak w Pterodactylu)
 

@@ -585,7 +585,9 @@
     "unexposing": "🌐 Aplikacja bez domeny — usuwam host proxy",
     "handover_abort_failed": "Nie udało się usunąć nowej wersji na węźle: {error}",
     "handover_kept": "Przełączenie nieudane — poprzednia wersja (port {port}) dalej obsługuje ruch",
-    "handover_switch": "Przełączam bramkę na nową wersję (port {port})"
+    "handover_switch": "Przełączam bramkę na nową wersję (port {port})",
+    "taking_over": "Kontener {name} nie jest jeszcze zarządzany przez Deployrę — przejmuję go (stary zostaje jako {backup})",
+    "takeover_blocked": "Nie da się przejąć kontenera {name}: {problem}"
   },
   "dns": {
     "api_token": "Token API",
@@ -2244,7 +2246,7 @@
     "vulns": "Podatności",
     "fixed_in": "Poprawione w",
     "fix": "Napraw",
-    "fix_confirm": "Wdrożyć {name} ponownie ze świeżo pobranym obrazem?",
+    "fix_confirm": "Wdrożyć {name} ponownie ze świeżym obrazem? Gdy poprawka jest dopiero w nowszej wersji, Deployra zmieni obraz (z testem i powrotem przy błędzie).",
     "from_image": "z obrazu",
     "kev": "atakowana",
     "count": "podatności: {count}",
@@ -2293,10 +2295,16 @@
     "fix_step": "[{index}/{count}] {name}",
     "fix_partial": "Nie udało się: {failed} (naprawione: {done})",
     "fix_many_job": "Naprawa aplikacji ({count})",
-    "fix_many_confirm": "Naprawić zaznaczone aplikacje po kolei? Każda zostanie wdrożona ponownie ze świeżym obrazem.",
+    "fix_many_confirm": "Naprawić zaznaczone aplikacje po kolei? Każda zostanie wdrożona ponownie ze świeżym obrazem, a gdy trzeba — z nowszą wersją (z testem i powrotem przy błędzie).",
     "fix_picked": "Napraw zaznaczone",
     "ignore_picked": "Ignoruj zaznaczone",
-    "ignored_many": "Zignorowane: {count}"
+    "ignored_many": "Zignorowane: {count}",
+    "needs_branch": "{name}: {package} {version} — w tej gałęzi nie ma już poprawek; zmień obraz na nowszą wersję (poprawka w {fixed})",
+    "new_branch": "nowsza gałąź",
+    "new_branch_hint": "Świeży obraz tego samego tagu nie pomoże — zmień obraz albo wersję w ustawieniach aplikacji",
+    "switching_image": "Poprawka jest dopiero w nowszej wersji — zmieniam obraz: {old} → {new}",
+    "switch_reverted": "W ustawieniach aplikacji wraca poprzedni obraz ({image})",
+    "suggest_hint": "„Napraw” przejdzie na ten obraz — z testem HTTP i powrotem do starego przy błędzie"
   },
   "appupd": {
     "bad_settings": "Nieprawidłowe ustawienia aktualizacji",

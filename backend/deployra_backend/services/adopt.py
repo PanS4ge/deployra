@@ -84,6 +84,7 @@ def adopt(ctx: Any, job: Job, cid: str, spec: AppSpec) -> dict[str, Any]:
     if current["problems"]:
         raise ValueError(current["problems"][0])
     info = client.api.inspect_container(cid)
+    cid = info["Id"]  # dalej po ID — po zmianie nazwy stara nazwa już nic nie znaczy
     old_name = info["Name"].lstrip("/")
     backup = f"{old_name}{BACKUP_SUFFIX}"[:120]
     restart = (info.get("HostConfig") or {}).get("RestartPolicy") or {"Name": "no"}
@@ -105,5 +106,12 @@ def adopt(ctx: Any, job: Job, cid: str, spec: AppSpec) -> dict[str, Any]:
         except Exception as exc:  # noqa: BLE001 — zgłaszamy pierwotny błąd, ale zostawiamy ślad
             job.log(tr("node.adopt.restore_failed", error=exc))
         raise
+    if spec.cleanup:  # nowa wersja działa (i przeszła test, jeśli był) — stara kopia nie jest potrzebna
+        try:
+            client.api.remove_container(cid, force=True)
+            job.log(tr("node.adopt.backup_removed", backup=backup))
+            return {**result, "backup": None}
+        except Exception as exc:  # noqa: BLE001 — zostaje jako kopia
+            job.log(tr("node.adopt.restore_failed", error=exc))
     job.log(tr("node.adopt.done", backup=backup))
     return {**result, "backup": backup}

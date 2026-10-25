@@ -101,7 +101,7 @@
               </ul>
             </details>
           </td>
-          <td class="mono nowrap">{% if r.fixed %}<span class="badge ok">{{ r.fixed }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="mono nowrap">{% if r.fixed %}<span class="badge ok">{{ r.fixed }}</span>{% if r.suggest %}<div class="small" title="{{ t('vuln.suggest_hint') }}"><i class="bi bi-arrow-repeat" style="color: var(--ok)"></i> {{ r.suggest }}</div>{% elif r.new_branch %}<div class="small muted" style="font-family: var(--font)" title="{{ t('vuln.new_branch_hint') }}"><i class="bi bi-signpost-split"></i> {{ t("vuln.new_branch") }}</div>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
           <td class="actions">
             {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
             {% if show == "open" %}<button class="btn sm ghost" hx-post="/security/{{ r.id }}/ignore" hx-swap="none" title="{{ t('vuln.ignore') }}"><i class="bi bi-eye-slash"></i></button>

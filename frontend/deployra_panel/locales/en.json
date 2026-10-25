@@ -585,7 +585,9 @@
     "unexposing": "🌐 The app has no domain — removing its proxy host",
     "handover_abort_failed": "Could not remove the new version on the node: {error}",
     "handover_kept": "Switch failed — the previous version (port {port}) keeps serving traffic",
-    "handover_switch": "Switching the gateway to the new version (port {port})"
+    "handover_switch": "Switching the gateway to the new version (port {port})",
+    "taking_over": "Container {name} isn't managed by Deployra yet — taking it over (the old one stays as {backup})",
+    "takeover_blocked": "Can't take over container {name}: {problem}"
   },
   "dns": {
     "api_token": "API token",
@@ -2244,7 +2246,7 @@
     "vulns": "Vulnerabilities",
     "fixed_in": "Fixed in",
     "fix": "Fix",
-    "fix_confirm": "Redeploy {name} with a freshly pulled image?",
+    "fix_confirm": "Redeploy {name} with a fresh image? If the fix is only in a newer version, Deployra switches the image (with a test and a rollback on failure).",
     "from_image": "from the image",
     "kev": "exploited",
     "count": "vulnerabilities: {count}",
@@ -2293,10 +2295,16 @@
     "fix_step": "[{index}/{count}] {name}",
     "fix_partial": "Failed: {failed} (fixed: {done})",
     "fix_many_job": "Fixing apps ({count})",
-    "fix_many_confirm": "Fix the selected apps one by one? Each one is redeployed with a fresh image.",
+    "fix_many_confirm": "Fix the selected apps one by one? Each one is redeployed with a fresh image and, where needed, a newer version (with a test and a rollback on failure).",
     "fix_picked": "Fix selected",
     "ignore_picked": "Ignore selected",
-    "ignored_many": "Ignored: {count}"
+    "ignored_many": "Ignored: {count}",
+    "needs_branch": "{name}: {package} {version} — this branch gets no more fixes; change the image to a newer version (fixed in {fixed})",
+    "new_branch": "newer branch",
+    "new_branch_hint": "A fresh image of the same tag won't help — change the image or version in the app settings",
+    "switching_image": "The fix is only in a newer version — switching the image: {old} → {new}",
+    "switch_reverted": "The app settings go back to the previous image ({image})",
+    "suggest_hint": "“Fix” switches to this image — with an HTTP test and a rollback to the old one on failure"
   },
   "appupd": {
     "bad_settings": "Invalid update settings",

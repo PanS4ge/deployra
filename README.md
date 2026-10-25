@@ -201,8 +201,11 @@ Critical and exploited vulnerabilities show a bar at the top of the panel, the a
 
 **Fix** redeploys the app with a freshly pulled image: image and compose apps `pull`, Git apps build with `--pull`, and apps from files
 rebuild their runtime image (e.g. `php:8.3-apache` with extensions) — otherwise that base image stays at the version from the first deploy.
-Then the panel scans again. If the image has a pinned tag (e.g. `nextcloud:29.0.7`) or the branch no longer gets fixes (PHP 8.1 and older),
-change the image/version in the app settings. Containers outside Deployra apps are yours to update (container page or stack).
+Then the panel scans again. If the fix is only in a newer branch (e.g. PHP 8.0 → 8.2), the scan looks in the registry for a tag with the
+fix in the same variant (`php:8.0-apache` → `php:8.2-apache`, `8.0.30-apache` → `8.2.35-apache`) and shows it next to the finding — **Fix**
+then switches the app's image, checks HTTP after the start (apps with a domain: status < 500) and goes back to the old image on failure.
+After a successful switch the old image is removed (unless something else uses it), and so is an adopted container from outside Deployra
+(after the test). Containers outside Deployra apps are yours to update (container page or stack).
 
 **Ignore** hides a package until a new vulnerability shows up for it. Several apps at once: select them and pick **Fix selected**
 (one by one in a single job — a failed one doesn't stop the rest, one rescan at the end) or **Ignore selected**. A node that doesn't answer keeps its results unchanged (no inventory
@@ -329,6 +332,11 @@ above the threshold, the biggest such app moves to the node with the most free m
 variables (without the image defaults), volumes and limits. The old container stops and stays as a copy `<name>-pre-deployra`, and an app
 with the same image, data and host port takes its place — now with deployments, a domain, alerts and moving. If the new container
 doesn't start, the old one comes back by itself. Containers of compose stacks are adopted as a stack (Node → Stacks).
+
+An app registered without adopting (e.g. by a script, with just the image and port) whose container is exactly one container outside
+Deployra is adopted automatically on its first deployment (**Fix** and **Update** too) — with the configuration taken from that container.
+The port moves to the new container, and the old one is removed once the new one runs (and answers over HTTP if the app has a domain);
+otherwise the old one comes back.
 
 ## Accounts with assigned servers (Pterodactyl-style)
 

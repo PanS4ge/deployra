@@ -13,7 +13,7 @@ from ..context import Panel, get_panel
 from ..deps import current_user, require
 from ..i18n import t
 from ..permissions import Permission
-from ..services import deploy, vulns
+from ..services import app_updates, deploy, vulns
 from ..web import redirect, refresh, render, toast
 
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -107,6 +107,15 @@ def _busy(panel: Panel, app: dict) -> bool:
     return app["status"] == "deploying" and bool(current) and not current.done
 
 
+def _image_changes(panel: Panel, app: dict) -> dict[str, str]:
+    """Obraz z poprawką znaleziony przy skanie (poprawka dopiero w nowszej gałęzi): {obecny obraz: nowy}."""
+    if app["kind"] != "image":
+        return {}
+    current = deploy.load(panel, app)[0].source.image or ""
+    targets = {r["suggest"] for r in vulns.listing(panel, "open", app["id"]) if r.get("suggest")}
+    return {current: sorted(targets, key=lambda image: vulns.vkey(image.rsplit(":", 1)[-1]))[-1]} if targets and current else {}
+
+
 def _fix_job(panel: Panel, apps: list[dict]):
     """Aplikacje po kolei: wdrożenie ze świeżo pobranym obrazem (środowisko „z plików” budowane od nowa), na końcu
     jeden ponowny skan. Nieudane wdrożenie jednej aplikacji nie zatrzymuje reszty."""
@@ -116,10 +125,17 @@ def _fix_job(panel: Panel, apps: list[dict]):
         for index, app in enumerate(apps, 1):
             if len(apps) > 1:
                 job.log(t("vuln.fix_step", index=index, count=len(apps), name=app["name"]))
+            changes = _image_changes(panel, app)
+            for old, new in changes.items():
+                job.log(t("vuln.switching_image", old=old, new=new))
+            app_updates.apply_versions(panel, panel.db.get("apps", app["id"]), changes)
             try:
-                await deploy.run(panel, job, app["id"], refresh=True)
+                await deploy.run(panel, job, app["id"], refresh=True, verify=bool(changes), cleanup=True)
                 done.append(app["name"])
             except (JobFailed, LookupError) as exc:
+                if changes:  # nowa wersja nie wstała albo nie odpowiada — w ustawieniach aplikacji wraca stary obraz
+                    app_updates.apply_versions(panel, panel.db.get("apps", app["id"]), {new: old for old, new in changes.items()})
+                    job.log(t("vuln.switch_reverted", image=", ".join(changes)))
                 failed.append(app["name"])
                 if len(apps) == 1:
                     raise
@@ -131,6 +147,10 @@ def _fix_job(panel: Panel, apps: list[dict]):
             job.log(str(exc))
         except JobFailed:
             pass
+        for app in apps:  # świeży obraz nie pomógł — poprawka jest dopiero w nowszej gałęzi (np. PHP 8.0 → 8.2)
+            for row in vulns.listing(panel, "open", app["id"]):
+                if vulns.new_branch(row["version"], row["fixed"]):
+                    job.log("⚠ " + t("vuln.needs_branch", name=app["name"], package=row["package"], version=row["version"], fixed=row["fixed"]))
         if failed:
             raise JobFailed(t("vuln.fix_partial", failed=", ".join(failed), done=len(done)))
         return {"fixed": done}

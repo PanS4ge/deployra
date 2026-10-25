@@ -494,7 +494,12 @@ async def update_app(panel: Any, job: Any, app_id: int, changes: dict[str, str] 
     for old, new in (changes or {}).items():
         job.log(t("appupd.log_tag", old=old, new=new))
     apply_versions(panel, app, changes or {})
-    await deploy.run(panel, job, app_id, refresh=True)  # after_deploy zdejmuje nowe buildy
+    try:  # nowy tag: test HTTP po starcie (aplikacje z domeną) i sprzątanie starego obrazu; nieudany — stary tag wraca
+        await deploy.run(panel, job, app_id, refresh=True, verify=bool(changes), cleanup=bool(changes))  # after_deploy zdejmuje nowe buildy
+    except Exception:
+        if changes:
+            apply_versions(panel, panel.db.get("apps", app_id), {new: old for old, new in changes.items()})
+        raise
     _keep(panel, app_id, [i for i in available(panel, app_id) if i["image"] not in (changes or {})])
 
 
