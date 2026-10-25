@@ -107,7 +107,10 @@ version appears it shows a banner: **Update / Later / Skip this version**. “Up
 then the gateway, the panel last — each step waits until the component is back on the new version. If anything fails, the panel stays put.
 
 A node replaces itself: the backend briefly starts a copy of itself that pulls the new image, swaps the container, restores the old
-one if the new version doesn't come up, and then disappears. The panel and the gateway get no `docker.sock`, so since 1.3.0 **the
+one if the new version doesn't come up, and then disappears. A node that can't do this itself (it doesn't see its own container,
+an old image) gets the **updater from the panel** mode in the components table: the panel starts the same updater container with
+the new image on it through the container API (with `docker.sock` and the node's data volume) — it works on very old nodes too.
+The panel and the gateway get no `docker.sock`, so since 1.3.0 **the
 Deployra node on the same machine** swaps their container (the panel sends the request, the node recreates the container on the new
 version, checks the healthcheck and rolls back on failure). A node older than 1.3.0 is updated first. A gateway on a machine without
 a node and older installs still use the `*-updater` container; with neither, use “Pull and redeploy”. The components table shows how

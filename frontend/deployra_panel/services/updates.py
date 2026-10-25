@@ -39,6 +39,8 @@ DONE_GRACE = 120  # tyle czekamy po „zaktualizowano”, aż komponent zgłosi 
 SNOOZE = 24 * 3600
 PEER_SINCE = "1.3.0"  # od tej wersji węzeł umie podmienić panel i bramkę z tego samego hosta
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+# węzeł bez własnego aktualizatora, który może podmienić panel kontenerem aktualizatora (nie: wyłączony, bez Dockera, ze źródeł)
+HELPER_REASONS = ("no_container", "not_backend", "no_updater")
 REPO = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
 GITHUB = "https://api.github.com/repos/"
 
@@ -269,7 +271,11 @@ async def components(panel: Any, log_lines: int = 0) -> list[dict[str, Any]]:
         return item
 
     items += await asyncio.gather(*(fetch(*args) for args in remote))
-    _link_peers(items)
+    _link_peers(items)  # przed pomocnikiem — panel i bramkę podmienia tylko węzeł z własnym aktualizatorem
+    for item in items:
+        update = item.get("update") or {}
+        if item["key"].startswith("node-") and item["online"] and not update.get("available") and update.get("reason", "no_updater") in HELPER_REASONS:
+            item["update"] = {**update, "available": True, "mode": "helper"}
     target = target_version(panel)
     for item in items:
         item["behind"] = bool(item["version"] and is_newer(target, item["version"]))
@@ -343,7 +349,7 @@ async def run(panel: Any, job: Job, target: str, only: set[str] | None = None) -
     nodes = [c for c in todo if c["key"].startswith("node-")]
     results: dict[str, bool] = {}
     if nodes:
-        done = await asyncio.gather(*(_remote(job, c, target) for c in nodes))
+        done = await asyncio.gather(*((_helper if (c["update"] or {}).get("mode") == "helper" else _remote)(job, c, target) for c in nodes))
         results.update({c["name"]: ok for c, ok in zip(nodes, done)})
     for item in (c for c in todo if c["key"] in ("edge", "gateway") or c["key"].startswith("gw-")):
         results[item["name"]] = await (_peer(panel, job, item, target) if item.get("via") else _remote(job, item, target))
@@ -370,6 +376,13 @@ async def _remote(job: Job, item: dict[str, Any], target: str) -> bool:
         job.log(f"✖ {name}: {t('upd.not_responding')}")
         return False
     job.log(f"{name}: {item['version']} → {target} ({t('updates.mode.' + str(info.get('mode')))})")
+    return await _await_version(job, item, target)
+
+
+async def _await_version(job: Job, item: dict[str, Any], target: str, stuck: Any = None) -> bool:
+    """Czeka, aż komponent zgłosi nową wersję (po drodze restart i postęp z pliku stanu aktualizatora). `stuck` —
+    dodatkowe sprawdzenie (np. czy aktualizator już się zakończył), które przerywa czekanie z powodem."""
+    name, client = item["name"], item["client"]
     deadline = time.monotonic() + REMOTE_TIMEOUT
     last, offline, done_at = None, False, None
     while time.monotonic() < deadline:
@@ -389,6 +402,10 @@ async def _remote(job: Job, item: dict[str, Any], target: str) -> bool:
         if message and message != last:
             job.log(f"{name}: {message}")
             last = message
+        reason = await stuck() if stuck else None
+        if reason:
+            job.log(f"✖ {name}: {reason}")
+            return False
         if not same_version(data.get("target"), target):
             continue
         if data.get("state") == "error":
@@ -401,6 +418,92 @@ async def _remote(job: Job, item: dict[str, Any], target: str) -> bool:
                 return False
     job.log(t("upd.wait_timeout", name=name, minutes=REMOTE_TIMEOUT // 60))
     return False
+
+
+def helper_spec(containers: list[dict], info: dict, target: str) -> dict[str, Any]:
+    """Kontener aktualizatora dla węzła bez własnego: nowy obraz backendu z `self_update` — pobiera wersję, podmienia
+    kontener węzła z tą samą konfiguracją i wraca do starego, gdy nowy nie wstanie. Nowy obraz, więc działa też na
+    starych węzłach (nie potrzebuje ich kodu); stare wolumeny i docker.sock — jak w kontenerze węzła."""
+    from deployra_common.updates import normalize as norm
+
+    image = (info.get("Config") or {}).get("Image") or ""
+    repo = image.split("@", 1)[0].rsplit(":", 1)[0] if ":" in image.rsplit("/", 1)[-1] else image.split("@", 1)[0]
+    if "/" not in repo:
+        raise LookupError(t("upd.helper_local_image", image=image))
+    env = dict(item.split("=", 1) for item in (info.get("Config") or {}).get("Env") or [] if "=" in item)
+    data_dir = env.get("DEPLOYRA_DATA", "/var/lib/deployra")
+    mounts = {m.get("Destination"): m for m in info.get("Mounts") or []}
+    data = mounts.get(data_dir)
+    sock = next((mounts[s] for s in ("/var/run/docker.sock", "/run/docker.sock") if s in mounts), None)
+    if not data or not sock:
+        raise LookupError(t("upd.helper_no_mounts", path=data_dir))
+    name = (info.get("Name") or "deployra-backend").lstrip("/")
+    version = norm(target)
+    return {
+        "name": f"{name}-update", "image": f"{repo}:{version}", "restart": "no", "network": "none", "pull": True,
+        "command": ["python", "-m", "deployra_backend.services.self_update", info["Id"], version],
+        "env": {"DEPLOYRA_DATA": data_dir, "DEPLOYRA_LANG": env.get("DEPLOYRA_LANG", "")},
+        "volumes": [{"source": data.get("Name") or data["Source"], "target": data_dir}, {"source": sock["Source"], "target": sock["Destination"]}],
+        "labels": {"deployra.updater": "panel"},
+    }
+
+
+def backend_container(containers: list[dict]) -> dict | None:
+    """Kontener węzła Deployry na hoście: etykieta deployra.system=backend albo obraz …/deployra-backend (dokładnie jeden)."""
+    found = [c for c in containers if c.get("system") == "backend"] or [
+        c for c in containers if str(c.get("image") or "").split("@")[0].rsplit(":", 1)[0].endswith("deployra-backend") and c.get("state") == "running"
+    ]
+    return found[0] if len(found) == 1 else None
+
+
+async def _helper(job: Job, item: dict[str, Any], target: str) -> bool:
+    """Węzeł bez własnego aktualizatora: panel stawia na nim kontener aktualizatora (przez API kontenerów węzła)."""
+    from . import relay
+
+    name, client = item["name"], item["client"]
+    try:
+        containers = await client.get("/api/containers")
+        backend = backend_container(containers)
+        if not backend:
+            raise LookupError(t("upd.helper_no_backend"))
+        spec = helper_spec(containers, await client.get(f"/api/containers/{backend['id']}"), target)
+        try:  # pozostałość po poprzedniej próbie
+            await client.delete(f"/api/containers/{spec['name']}", params={"force": "true"})
+        except RemoteError:
+            pass
+        job.log(t("upd.helper_start", name=name, image=spec["image"]))
+        await relay.start_and_follow(client, "/api/containers", spec, job, "  ")
+    except (RemoteError, httpx.HTTPError, LookupError, JobFailed) as exc:
+        job.log(f"✖ {name}: {getattr(exc, 'detail', None) or exc}")
+        return False
+    exited: dict[str, float] = {}
+
+    async def stuck() -> str | None:
+        """Aktualizator skończył, a węzeł dalej w starej wersji: błąd (log aktualizatora) albo wycofanie zmian."""
+        try:
+            state = ((await client.get(f"/api/containers/{spec['name']}")).get("State") or {})
+        except (RemoteError, httpx.HTTPError):
+            return None
+        if state.get("Status") != "exited":
+            return None
+        exited.setdefault("at", time.monotonic())
+        if state.get("ExitCode") == 0 and time.monotonic() - exited["at"] < DONE_GRACE:
+            return None  # skończył dobrze — nowy węzeł jeszcze wstaje
+        try:
+            lines = (await client.get(f"/api/containers/{spec['name']}/logs", params={"tail": 15})).get("lines") or []
+        except (RemoteError, httpx.HTTPError):
+            lines = []
+        for line in lines:
+            job.log(f"    {line}")
+        return t("upd.helper_failed", code=state.get("ExitCode"))
+
+    ok = await _await_version(job, item, target, stuck)
+    if ok:
+        try:  # aktualizator skończył — sprzątamy po nim
+            await client.delete(f"/api/containers/{spec['name']}", params={"force": "true"})
+        except (RemoteError, httpx.HTTPError):
+            pass
+    return ok
 
 
 async def _peer(panel: Any, job: Job, item: dict[str, Any], target: str) -> bool:

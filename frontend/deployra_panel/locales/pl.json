@@ -1705,7 +1705,12 @@
     "update_failed": "aktualizacja nie powiodła się",
     "wait_timeout": "✖ {name}: przekroczony czas oczekiwania ({minutes} min)",
     "via_node": "{name}: {current} → {version} (podmienia węzeł {node})",
-    "rolled_back_via": "nowa wersja nie wstała, węzeł {node} przywrócił poprzednią — log aktualizacji jest na węźle"
+    "rolled_back_via": "nowa wersja nie wstała, węzeł {node} przywrócił poprzednią — log aktualizacji jest na węźle",
+    "helper_start": "{name}: stawiam kontener aktualizatora ({image})",
+    "helper_failed": "aktualizator zakończył się bez nowej wersji (kod {code}) — stara wersja zostaje",
+    "helper_no_backend": "nie znalazłem kontenera węzła (deployra-backend) na tym serwerze",
+    "helper_no_mounts": "kontener węzła nie ma wolumenu danych ({path}) albo docker.sock — zaktualizuj go ręcznie (Pull and redeploy)",
+    "helper_local_image": "obraz węzła {image} jest zbudowany lokalnie — aktualizacja ze źródeł na serwerze"
   },
   "updater": {
     "bad_version": "nieprawidłowy numer wersji",
@@ -1759,7 +1764,8 @@
     "mode": {
       "image": "obrazy z rejestru",
       "native": "usługa systemd",
-      "source": "ze źródeł (git + build)"
+      "source": "ze źródeł (git + build)",
+      "helper": "aktualizator z panelu"
     },
     "no_source": "Wpisz źródło wydań obok, żeby panel mógł sprawdzać nowe wersje.",
     "no_updater_hint": "Zaktualizuj raz ręcznie; od 1.3.0 panel i bramkę podmienia węzeł Deployry z tej samej maszyny",
@@ -1790,7 +1796,8 @@
       "not_backend": "obraz bez etykiety deployra.component=backend (stara wersja obrazu)",
       "local_image": "obraz zbudowany lokalnie — aktualizacja ze źródeł",
       "no_updater": "brak aktualizatora"
-    }
+    },
+    "mode_helper_hint": "Węzeł nie ma własnego aktualizatora — panel postawi na nim kontener aktualizatora z nowym obrazem, który podmieni węzeł i wróci do starego przy błędzie"
   },
   "uptime": {
     "changed": "zmiana {ago}",

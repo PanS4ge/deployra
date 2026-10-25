@@ -225,3 +225,97 @@ def test_finish_pending_reports_rollback_by_node(admin):
     updates.finish_pending(panel)  # panel wstał w starej wersji → węzeł przywrócił poprzedni kontener
     assert panel.db.setting("update_pending") is None
     assert panel.db.scalar("SELECT COUNT(*) FROM notifications WHERE message LIKE ?", ["%oracle1%"]) == 1
+
+
+INSPECT = {
+    "Id": "b" * 64, "Name": "/deployra-backend",
+    "Config": {"Image": "ghcr.io/pans4ge/deployra-backend:latest", "Env": ["DEPLOYRA_NAME=oracle1", "DEPLOYRA_LANG=pl"]},
+    "Mounts": [{"Type": "bind", "Source": "/var/run/docker.sock", "Destination": "/var/run/docker.sock"},
+               {"Type": "bind", "Source": "/var/lib/deployra", "Destination": "/var/lib/deployra"}],
+}  # fmt: skip
+LISTED = [{"id": "b" * 64, "name": "deployra-backend", "image": "ghcr.io/pans4ge/deployra-backend:latest", "system": "backend", "state": "running"},
+          {"id": "c1", "name": "app-blog", "image": "ghost:5-alpine", "system": None, "state": "running"}]  # fmt: skip
+
+
+def test_helper_spec_copies_mounts_and_uses_new_image():
+    spec = updates.helper_spec(LISTED, INSPECT, "v1.7.3")
+    assert spec["image"] == "ghcr.io/pans4ge/deployra-backend:1.7.3" and spec["name"] == "deployra-backend-update"
+    assert spec["command"] == ["python", "-m", "deployra_backend.services.self_update", "b" * 64, "1.7.3"]
+    assert {"source": "/var/run/docker.sock", "target": "/var/run/docker.sock"} in spec["volumes"]
+    assert {"source": "/var/lib/deployra", "target": "/var/lib/deployra"} in spec["volumes"] and spec["restart"] == "no"
+    assert updates.backend_container(LISTED)["name"] == "deployra-backend"
+    with pytest.raises(LookupError):
+        updates.helper_spec(LISTED, {**INSPECT, "Config": {**INSPECT["Config"], "Image": "deployra-backend"}}, "1.7.3")  # lokalny build
+    with pytest.raises(LookupError):
+        updates.helper_spec(LISTED, {**INSPECT, "Mounts": INSPECT["Mounts"][1:]}, "1.7.3")  # bez docker.sock
+
+
+class HelperNode:
+    """Węzeł bez aktualizatora: listuje kontenery, po starcie aktualizatora restartuje się i wstaje w nowej wersji."""
+
+    def __init__(self, outcome="ok"):
+        self.outcome, self.deleted, self.version, self.polls = outcome, [], "1.0.0", 0
+
+    async def get(self, path, params=None):
+        if path == "/api/containers":
+            return LISTED
+        if path == f"/api/containers/{'b' * 64}":
+            return INSPECT
+        if path == "/api/containers/deployra-backend-update":
+            return {"State": {"Status": "exited", "ExitCode": 0 if self.outcome == "ok" else 1}}
+        if path == "/api/containers/deployra-backend-update/logs":
+            return {"lines": ["✖ pull failed: manifest unknown"]}
+        if path == "/api/update":
+            self.polls += 1
+            if self.outcome == "ok" and self.polls >= 2:
+                return {"version": NEWER, "state": "done", "target": NEWER}
+            return {"version": "1.0.0", "state": "idle", "available": False, "reason": "no_container"}
+        raise AssertionError(path)
+
+    async def delete(self, path, params=None):
+        self.deleted.append(path)
+
+
+@pytest.mark.anyio
+async def test_node_without_updater_gets_helper(admin, monkeypatch):
+    panel = admin.app.state.panel
+    monkeypatch.setattr(updates, "POLL", 0)  # DONE_GRACE zostaje: aktualizator z kodem 0 to jeszcze nie porażka — węzeł wstaje
+    started = []
+
+    async def follow(client, path, body, job, prefix=""):
+        started.append((path, body["image"]))
+        return {"result": {"id": "h1"}}
+
+    from deployra_panel.services import relay
+
+    monkeypatch.setattr(relay, "start_and_follow", follow)
+    node = HelperNode()
+    item = {**_item("node-1", "oracle1", node), "update": {"available": True, "mode": "helper"}}
+
+    async def fake_components(_panel, log_lines=0):
+        return [item]
+
+    monkeypatch.setattr(updates, "components", fake_components)
+    job = Job("update", "test")
+    await updates.run(panel, job, NEWER)
+    assert started == [("/api/containers", f"ghcr.io/pans4ge/deployra-backend:{NEWER}")]
+    assert node.deleted.count("/api/containers/deployra-backend-update") == 2  # pozostałość przed i po aktualizacji
+    assert any(NEWER in line and "oracle1" in line for line in job.lines)
+
+    failing = HelperNode(outcome="fail")
+    item["client"] = failing
+    job = Job("update", "test")
+    with pytest.raises(JobFailed, match="oracle1"):
+        await updates.run(panel, job, NEWER)
+    assert any("manifest unknown" in line for line in job.lines)
+
+
+def test_components_offer_helper_only_for_fixable_reasons():
+    items = [{"key": "node-1", "online": True, "update": {"available": False, "reason": "no_container"}},
+             {"key": "node-2", "online": True, "update": {"available": False, "reason": "disabled"}},
+             {"key": "node-3", "online": True, "update": {"available": False}}]  # fmt: skip
+    for item in items:
+        update = item["update"]
+        if update.get("reason", "no_updater") in updates.HELPER_REASONS:
+            item["update"] = {**update, "available": True, "mode": "helper"}
+    assert [i["update"].get("mode") for i in items] == ["helper", None, "helper"]

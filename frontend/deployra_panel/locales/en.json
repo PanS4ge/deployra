@@ -1705,7 +1705,12 @@
     "update_failed": "the update failed",
     "wait_timeout": "✖ {name}: timed out waiting ({minutes} min)",
     "via_node": "{name}: {current} → {version} (replaced by node {node})",
-    "rolled_back_via": "the new version did not start, node {node} restored the previous one — the update log is on the node"
+    "rolled_back_via": "the new version did not start, node {node} restored the previous one — the update log is on the node",
+    "helper_start": "{name}: starting an updater container ({image})",
+    "helper_failed": "the updater finished without the new version (code {code}) — the old version stays",
+    "helper_no_backend": "couldn't find the node container (deployra-backend) on this server",
+    "helper_no_mounts": "the node container has no data volume ({path}) or docker.sock — update it manually (Pull and redeploy)",
+    "helper_local_image": "the node image {image} is built locally — update from source on the server"
   },
   "updater": {
     "bad_version": "invalid version number",
@@ -1759,7 +1764,8 @@
     "mode": {
       "image": "registry images",
       "native": "systemd service",
-      "source": "from source (git + build)"
+      "source": "from source (git + build)",
+      "helper": "updater from the panel"
     },
     "no_source": "Enter a release source next to this so the panel can check for new versions.",
     "no_updater_hint": "Update once by hand; since 1.3.0 the Deployra node on the same machine replaces the panel and gateway",
@@ -1790,7 +1796,8 @@
       "not_backend": "image without the deployra.component=backend label (old image)",
       "local_image": "locally built image — update from source",
       "no_updater": "no updater"
-    }
+    },
+    "mode_helper_hint": "The node has no updater of its own — the panel starts an updater container with the new image on it, which swaps the node and goes back to the old one on failure"
   },
   "uptime": {
     "changed": "changed {ago}",

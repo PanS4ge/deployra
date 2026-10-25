@@ -57,7 +57,7 @@
         <td class="name mono">{{ u.username }}</td>
         <td class="mono small">{{ u.slug }}</td>
         <td>{{ "✔" if u.password else "—" }}</td>
-        <td>{{ u.keys }}</td>
+        <td>{{ u["keys"] }}</td>
         <td class="actions">{% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}<button class="btn icon sm ghost" hx-post="/nodes/{{ node.id }}/sftp/{{ u.username }}/delete" hx-swap="none" hx-confirm="{{ t('sftp.delete_confirm', name=u.username) }}" data-danger><i class="bi bi-trash"></i></button>{% endif %}</td>
       </tr>
     {% else %}<tr><td colspan="5" class="muted">{{ t("sftp.empty") }}</td></tr>{% endfor %}

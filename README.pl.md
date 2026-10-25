@@ -105,7 +105,9 @@ pokazuje baner z wyborem **Aktualizuj / Później / Pomiń tę wersję**. „Akt
 potem bramka, na końcu panel, a każdy krok czeka, aż komponent wstanie w nowej wersji. Jeśli coś się nie uda, panel zostaje w starej wersji.
 
 Węzeł podmienia się sam: backend uruchamia na chwilę swoją kopię, która pobiera nowy obraz, podmienia kontener, a gdy nowa wersja
-nie wstanie — przywraca starą, po czym znika. Panel i bramka nie mają `docker.sock`, więc od 1.3.0 ich kontener podmienia **węzeł
+nie wstanie — przywraca starą, po czym znika. Węzeł, który sam tego nie potrafi (nie widzi swojego kontenera, stary obraz),
+ma w tabeli komponentów tryb **aktualizator z panelu**: panel stawia na nim przez API kontenerów taki sam kontener aktualizatora
+z nowym obrazem (z `docker.sock` i wolumenem danych węzła) — działa też na bardzo starych węzłach. Panel i bramka nie mają `docker.sock`, więc od 1.3.0 ich kontener podmienia **węzeł
 Deployry z tej samej maszyny** (panel wysyła żądanie, węzeł stawia kontener na nowej wersji, sprawdza healthcheck i w razie problemu
 wraca do poprzedniej). Węzeł starszy niż 1.3.0 jest najpierw aktualizowany sam. Bramka na maszynie bez węzła i starsze instalacje
 korzystają jeszcze z kontenera `*-updater`; bez żadnego z nich zostaje „Pull and redeploy”. W tabeli komponentów widać, czym

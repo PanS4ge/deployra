@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deployra-common"
-version = "1.7.2"
+version = "1.7.3"
 description = "Wspólny kod komponentów Deployry (podpisy, parowanie, WireGuard, zadania, schematy)"
 requires-python = ">=3.12"
 dependencies = [
