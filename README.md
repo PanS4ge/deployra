@@ -285,6 +285,22 @@ running tasks needs the same permission as the container terminal.
 storage as the panel backup (S3/R2/MinIO, SFTP, FTP, disk), keeping the last N copies. Each schedule shows its last result and the
 stored files to download or **restore** into the container; a failed dump sends an alert.
 
+## Database browser (MySQL / MariaDB)
+
+**Tools → Databases** and the **Database** button on an app page — a phpMyAdmin-style view with nothing to install: databases and
+tables, data with sorting, search and paging, structure (columns, indexes, `CREATE TABLE`) and an SQL console (several statements at
+once, Ctrl+Enter).
+
+- **Local**: running MySQL/MariaDB containers on nodes show up on their own; a database service in an app's stack (e.g. `db` in
+  compose) is detected on the app page. The node connects to the container by its Docker network address (or a published port) and
+  takes the login from the container's variables (`MYSQL_ROOT_PASSWORD`, `MARIADB_USER`…, `*_FILE` too).
+- **Remote**: an external server (host, port, user, password, optional SSL) can be linked to an app or saved on the list. The chosen
+  node connects — usually the one running the app, so the database server must accept its IP. When the app's variables hold a
+  connection (`DB_HOST`, `WORDPRESS_DB_*`, `DATABASE_URL`…), the form is pre-filled and the panel reads the password from them.
+
+Connection passwords are encrypted with the panel key. Permissions: **Browsing databases** (read) and **SQL queries and database
+connections** (SQL console, adding and editing connections). Nodes need version 1.8.0 or newer.
+
 ## Resources and alerts
 
 Every minute the panel collects CPU, RAM and disk of each node and CPU/RAM of every app container: 48 hours at one-minute resolution,

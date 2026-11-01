@@ -33,6 +33,8 @@ class Permission(Enum):
     ALLOW_MCP = "O"
     ALLOW_CONTAINER_FILES = "P"
     ALLOW_CONTAINER_FILES_WRITE = "Q"
+    ALLOW_DATABASES = "R"
+    ALLOW_DATABASES_WRITE = "S"
 
 
 class _Labels:
@@ -101,6 +103,14 @@ GROUPS_SPEC = [
         ],
     },
     {
+        "id": "databases",
+        "icon": "bi-database",
+        "permissions": [
+            Permission.ALLOW_DATABASES,
+            Permission.ALLOW_DATABASES_WRITE,
+        ],
+    },
+    {
         "id": "storage_network",
         "icon": "bi-hdd-network",
         "permissions": [
@@ -151,6 +161,7 @@ RISKY = {
     Permission.ALLOW_PROXY_ADVANCED,
     Permission.ALLOW_CONTAINER_TERMINAL,
     Permission.ALLOW_CONTAINER_FILES_WRITE,
+    Permission.ALLOW_DATABASES_WRITE,
     Permission.ALLOW_MCP,
     Permission.ALLOW_TUNNEL,
 }

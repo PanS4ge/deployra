@@ -295,7 +295,14 @@
     "port_by_container": "container {name}",
     "port_by_app": "app {name}",
     "port_by_host": "a program outside Docker on this server",
-    "port_moved": "port {old} is already taken — the app gets free port {port}"
+    "port_moved": "port {old} is already taken — the app gets free port {port}",
+    "db": {
+      "no_target": "No connection target (container or host)",
+      "no_address": "Container {name} has no Docker network address or published database port",
+      "no_container": "Container {name} does not exist",
+      "not_running": "Container {name} is not running",
+      "no_table": "Table {name} does not exist"
+    }
   },
   "srv": {
     "auth": {

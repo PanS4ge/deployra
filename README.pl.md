@@ -283,6 +283,22 @@ Karta **Zadania** na stronie aplikacji: polecenie wykonywane w działającym kon
 do tego samego magazynu co kopia panelu (S3/R2/MinIO, SFTP, FTP, dysk), z liczbą trzymanych kopii. Przy każdym harmonogramie widać
 ostatni wynik i listę plików do pobrania albo **przywrócenia** do kontenera; nieudany zrzut wysyła alert.
 
+## Przeglądarka baz (MySQL / MariaDB)
+
+**Narzędzia → Bazy danych** i przycisk **Baza danych** na stronie aplikacji — podgląd baz jak w phpMyAdminie, bez instalowania
+czegokolwiek: lista baz i tabel, dane z sortowaniem, wyszukiwaniem i stronicowaniem, struktura (kolumny, indeksy, `CREATE TABLE`)
+oraz konsola SQL (kilka instrukcji naraz, Ctrl+Enter).
+
+- **Lokalne**: działające kontenery MySQL/MariaDB na węzłach pojawiają się same; usługa bazy w stacku aplikacji (np. `db` w compose)
+  jest wykrywana na stronie aplikacji. Węzeł łączy się z kontenerem po adresie w sieci Dockera (albo przez opublikowany port),
+  login bierze ze zmiennych kontenera (`MYSQL_ROOT_PASSWORD`, `MARIADB_USER`…, także `*_FILE`).
+- **Zdalne**: zewnętrzny serwer (host, port, użytkownik, hasło, opcjonalnie SSL) podpinasz do aplikacji albo zapisujesz na liście.
+  Łączy się wybrany węzeł — zwykle ten, na którym działa aplikacja, więc serwer bazy musi wpuszczać jego IP. Gdy w zmiennych aplikacji
+  jest połączenie (`DB_HOST`, `WORDPRESS_DB_*`, `DATABASE_URL`…), formularz jest wypełniony, a hasło panel czyta ze zmiennych.
+
+Hasła połączeń są zaszyfrowane kluczem panelu. Uprawnienia: **Przeglądanie baz danych** (podgląd) i **Zapytania SQL i połączenia
+z bazami** (konsola SQL, dodawanie i edycja połączeń). Węzeł musi mieć wersję 1.8.0 lub nowszą.
+
 ## Zasoby i alerty
 
 Panel co minutę zbiera CPU, RAM i dysk każdego węzła oraz CPU/RAM każdego kontenera aplikacji: 48 godzin co minutę,

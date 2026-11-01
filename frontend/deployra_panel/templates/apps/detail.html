@@ -13,6 +13,7 @@
 {% if has(user, P.ALLOW_SEEKING_CONTAINER) %}<a class="btn ghost" href="/apps/{{ app.id }}/logs"><i class="bi bi-journal-text"></i> {{ t("apps.logs") }}</a>{% endif %}
 {% if has(user, P.ALLOW_CONTAINER_FILES) %}<a class="btn ghost" href="/apps/{{ app.id }}/files"><i class="bi bi-folder2-open"></i> {{ t("containers.files") }}</a>{% endif %}
 {% endif %}
+{% if has(user, P.ALLOW_DATABASES) %}<a class="btn ghost" href="/apps/{{ app.id }}/database"><i class="bi bi-database"></i> {{ t("db.app_button") }}</a>{% endif %}
 {% if mc_server %}<a class="btn ghost" href="/minecraft/{{ mc_server.id }}"><i class="bi bi-controller"></i> Minecraft</a>{% endif %}
 {% if has(user, P.ALLOW_DEPLOYMENT) %}<button class="btn primary" hx-post="/apps/{{ app.id }}/deploy" hx-swap="none"><span class="spin"></span><i class="bi bi-rocket-takeoff"></i> {{ t("apps.redeploy") }}</button>{% endif %}
 {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}<a class="btn" href="/apps/{{ app.id }}/edit"><i class="bi bi-sliders"></i> {{ t("nav.settings") }}</a>{% endif %}

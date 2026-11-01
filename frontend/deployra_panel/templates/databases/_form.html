@@ -1,0 +1,80 @@
+{#- Formularz połączenia: conn (edycja) albo preset (nowe, np. podpowiedź ze zmiennych aplikacji); app — przypięcie na stałe -#}
+{% set v = conn or preset or {} %}
+{% set fid = "c" ~ (conn.id if conn else "new") %}
+{% set kind = "container" if (conn and conn.container) or (not conn and v.kind == "container") else "remote" %}
+<form class="stack" hx-post="/databases/connections{{ '/' ~ conn.id if conn else '' }}" hx-swap="none" x-data="{ kind: '{{ kind }}' }">
+  {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+  {% if conn %}<input type="hidden" name="conn_id" value="{{ conn.id }}">{% endif %}
+  {% if v.password_key %}<input type="hidden" name="env_password" value="{{ v.password_key }}">{% endif %}
+  <input type="hidden" name="kind" :value="kind" value="{{ kind }}">
+  <input type="hidden" name="endpoint" value="{{ v.endpoint or 'local' }}">
+  <div class="row" style="gap: 6px">
+    <button type="button" class="chip" :class="kind == 'remote' && 'active'" @click="kind = 'remote'"><i class="bi bi-globe2"></i> {{ t("db.kind_remote") }}</button>
+    <button type="button" class="chip" :class="kind == 'container' && 'active'" @click="kind = 'container'"><i class="bi bi-box"></i> {{ t("db.kind_container") }}</button>
+  </div>
+  <div class="form-grid">
+    <div class="field">
+      <label for="{{ fid }}-name">{{ t("common.name") }}</label>
+      <input class="input" id="{{ fid }}-name" name="name" value="{{ conn.name if conn else '' }}" placeholder="{{ t('db.name_placeholder') }}">
+    </div>
+    <div class="field">
+      <label for="{{ fid }}-node">{{ t("db.node") }}</label>
+      <select class="select" id="{{ fid }}-node" name="node_id">
+        {% for n in nodes %}<option value="{{ n.id }}" {{ "selected" if n.id == v.node_id }}>{{ n.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field" x-show="kind == 'remote'">
+      <label for="{{ fid }}-host">{{ t("db.host") }}</label>
+      <input class="input mono" id="{{ fid }}-host" name="host" value="{{ v.host or '' }}" placeholder="db.example.com" autocomplete="off">
+    </div>
+    <div class="field" x-show="kind == 'remote'">
+      <label for="{{ fid }}-port">Port</label>
+      <input class="input mono" id="{{ fid }}-port" name="port" type="number" min="1" max="65535" value="{{ v.port or 3306 }}">
+    </div>
+    <div class="field full" x-show="kind == 'container'" x-cloak>
+      <label for="{{ fid }}-container">{{ t("db.container") }}</label>
+      <input class="input mono" id="{{ fid }}-container" name="container" value="{{ v.container or '' }}" list="{{ fid }}-containers" autocomplete="off" placeholder="mariadb">
+      {% if containers %}<datalist id="{{ fid }}-containers">{% for c in containers %}<option value="{{ c }}">{% endfor %}</datalist>{% endif %}
+    </div>
+    <div class="field">
+      <label for="{{ fid }}-user">{{ t("db.user") }}</label>
+      <input class="input mono" id="{{ fid }}-user" name="username" value="{{ v.username or '' }}" autocomplete="off"
+             :placeholder="kind == 'container' ? {{ t('db.from_container_env') | jsonattr }} : ''">
+    </div>
+    <div class="field">
+      <label for="{{ fid }}-password">{{ t("common.password") }}</label>
+      <input class="input" id="{{ fid }}-password" name="password" type="password" autocomplete="new-password"
+             placeholder="{{ t('db.password_from_env', key=v.password_key) if v.password_key else (t('common.leave_empty_to_keep') if conn and conn.password else '') }}">
+    </div>
+    <div class="field">
+      <label for="{{ fid }}-db">{{ t("db.default_db") }}</label>
+      <input class="input mono" id="{{ fid }}-db" name="dbname" value="{{ v.dbname or '' }}" autocomplete="off">
+    </div>
+    <div class="field" x-show="kind == 'remote'">
+      <label for="{{ fid }}-ssl">SSL</label>
+      <select class="select" id="{{ fid }}-ssl" name="ssl">
+        {% for value, label in (("", t("db.ssl_off")), ("require", t("db.ssl_require")), ("verify", t("db.ssl_verify"))) %}
+        <option value="{{ value }}" {{ "selected" if (v.ssl or "") == value }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if app %}
+    <input type="hidden" name="app_id" value="{{ app.id }}">
+    {% else %}
+    <div class="field">
+      <label for="{{ fid }}-app">{{ t("db.app") }}</label>
+      <select class="select" id="{{ fid }}-app" name="app_id">
+        <option value="">—</option>
+        {% for a in apps %}<option value="{{ a.id }}" {{ "selected" if conn and conn.app_id == a.id }}>{{ a.name }}</option>{% endfor %}
+      </select>
+    </div>
+    {% endif %}
+  </div>
+  {% if conn and conn.password %}
+  <label class="check small"><input type="checkbox" name="clear_password" value="1"><span class="sw"></span><span>{{ t("db.clear_password") }}</span></label>
+  {% endif %}
+  <div class="row" style="justify-content: flex-end; gap: 8px">
+    <button type="button" class="btn ghost" hx-post="/databases/connections/test" hx-include="closest form" hx-swap="none"><span class="spin"></span><i class="bi bi-plug"></i> {{ t("db.test") }}</button>
+    <button class="btn primary"><span class="spin"></span><i class="bi bi-check2"></i> {{ t("common.save") }}</button>
+  </div>
+</form>

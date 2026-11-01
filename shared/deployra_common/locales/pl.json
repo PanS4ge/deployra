@@ -295,7 +295,14 @@
     "port_by_container": "kontener {name}",
     "port_by_app": "aplikacja {name}",
     "port_by_host": "program spoza Dockera na tym serwerze",
-    "port_moved": "port {old} jest już zajęty — aplikacja dostaje wolny port {port}"
+    "port_moved": "port {old} jest już zajęty — aplikacja dostaje wolny port {port}",
+    "db": {
+      "no_target": "Brak celu połączenia (kontener albo host)",
+      "no_address": "Kontener {name} nie ma adresu w sieci Dockera ani opublikowanego portu bazy",
+      "no_container": "Nie ma kontenera {name}",
+      "not_running": "Kontener {name} nie działa",
+      "no_table": "Nie ma tabeli {name}"
+    }
   },
   "srv": {
     "auth": {

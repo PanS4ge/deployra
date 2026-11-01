@@ -1,0 +1,20 @@
+{% macro dbcell(v) -%}
+{%- if v is none -%}<span class="db-null">NULL</span>
+{%- elif v is mapping and "bin" in v -%}<span class="db-bin mono">0x{{ v.hex }}{{ "…" if v.bin > 16 }}</span> <span class="db-meta">{{ v.bin | bytes }}</span>
+{%- elif v is mapping -%}{{ v.text }}<span class="db-meta">… {{ t("db.chars", count=v.len) }}</span>
+{%- else -%}{{ v }}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro grid(columns, rows) -%}
+<div class="table-wrap db-grid-wrap">
+  <table class="table keep db-grid">
+    <thead><tr>{% for c in columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>{% for v in row %}<td @click="$el.classList.toggle('open')">{{ dbcell(v) }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{%- endmacro %}

@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% from "databases/_cells.html" import dbcell, grid with context %}
+{% block crumbs %}<div class="crumbs">
+  {% if app %}<a href="/apps">{{ t("nav.apps") }}</a> / <a href="/apps/{{ app.id }}">{{ app.name }}</a> / <a href="/apps/{{ app.id }}/database?manage=1">{{ t("db.app_title") }}</a> /
+  {% else %}<a href="/databases">{{ t("db.title") }}</a> /{% endif %}
+  {% if state.db %}<a href="{{ link(db='', table='', tab='', page=1, order='', dir='', col='', q='') }}">{{ source.title }}</a> /{% endif %}
+  {% if state.table %}<a href="{{ link(table='', tab='', page=1, order='', dir='', col='', q='') }}">{{ state.db }}</a> /{% endif %}
+</div>{% endblock %}
+{% block heading %}<span class="row" style="gap: 10px; display: inline-flex"><i class="bi bi-{{ 'table' if state.table else 'database' }}"></i> <span class="trunc">{{ title }}</span></span>{% endblock %}
+{% block actions %}
+{% if has(user, P.ALLOW_DATABASES_WRITE) %}<a class="btn ghost {{ 'primary' if state.tab == 'sql' }}" href="{{ link(tab='sql') }}"><i class="bi bi-terminal"></i> SQL</a>{% endif %}
+{% if source.conn and has(user, P.ALLOW_DATABASES_WRITE) %}<a class="btn ghost" href="/databases?edit={{ source.conn.id }}#c{{ source.conn.id }}"><i class="bi bi-sliders"></i> {{ t("db.connection") }}</a>{% endif %}
+{% endblock %}
+{% block content %}
+{% set visible = databases | rejectattr("system") | list if not state.sys else databases %}
+{% set hidden_sys = databases | selectattr("system") | list | length %}
+<div class="settings-layout db-layout">
+  <nav class="card settings-nav db-nav" aria-label="{{ t('db.databases') }}" x-data="{ f: '' }">
+    <a href="{{ link(db='', table='', tab='', page=1, order='', dir='', col='', q='') }}" class="{{ 'active' if not state.db and state.tab != 'sql' }}">
+      <i class="bi bi-hdd-rack"></i><span class="trunc">{{ source.address }}</span>
+    </a>
+    <div class="settings-group">{{ t("db.databases") }}</div>
+    {% for d in visible %}
+    <a href="{{ link(db=d.name, table='', tab='', page=1, order='', dir='', col='', q='') }}" class="{{ 'active' if d.name == state.db and not state.table }}">
+      <i class="bi bi-database{{ '-gear' if d.system else '' }}"></i><span class="trunc">{{ d.name }}</span><span class="db-count">{{ d.tables }}</span>
+    </a>
+    {% if d.name == state.db and tables %}
+    <div class="db-tables">
+      {% if tables | length > 12 %}<input class="input db-find" x-model="f" placeholder="{{ t('db.filter_tables') }}" aria-label="{{ t('db.filter_tables') }}">{% endif %}
+      {% for tb in tables %}
+      <a href="{{ link(table=tb.name, tab='', page=1, order='', dir='', col='', q='') }}" class="{{ 'active' if tb.name == state.table }}"
+         x-show="!f || {{ tb.name | lower | jsonattr }}.includes(f.toLowerCase())">
+        <i class="bi bi-{{ 'eye' if tb.view else 'table' }}"></i><span class="trunc">{{ tb.name }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="small muted" style="padding: 6px 10px">{{ "—" if error else t("db.no_databases") }}</div>
+    {% endfor %}
+    {% if hidden_sys %}
+    <a class="db-sys" href="{{ link(sys='' if state.sys else '1') }}"><i class="bi bi-{{ 'eye-slash' if state.sys else 'eye' }}"></i><span>{{ t("db.hide_system") if state.sys else t("db.show_system", count=hidden_sys) }}</span></a>
+    {% endif %}
+  </nav>
+
+  <div class="settings-main stack">
+    {% if error %}
+    <div class="callout err"><i class="bi bi-x-octagon"></i><div><b>{{ t("db.error") }}</b> <span class="mono">{{ error }}</span>
+      {% if not overview %}<div class="small muted" style="margin-top: 6px">{{ t("db.error_hint_container") if source.kind == "container" else t("db.error_hint_remote", node=source.node.name) }}</div>{% endif %}
+    </div></div>
+    {% endif %}
+
+    {% if state.tab == "sql" %}
+    {# --- konsola SQL ------------------------------------------------------------------------------ #}
+    <form class="card" hx-post="{{ base }}/sql" hx-target="#sql-result" hx-swap="innerHTML">
+      <div class="card-body stack">
+        <div class="row" style="gap: 10px; flex-wrap: wrap">
+          <select class="select" name="db" aria-label="{{ t('db.database') }}" style="max-width: 260px">
+            <option value="">{{ t("db.no_default_db") }}</option>
+            {% for d in databases %}<option value="{{ d.name }}" {{ "selected" if d.name == (state.db or overview.default_db) }}>{{ d.name }}</option>{% endfor %}
+          </select>
+          <select class="select" name="max_rows" aria-label="{{ t('db.max_rows') }}" style="max-width: 200px">
+            {% for n in (100, 500, 1000) %}<option value="{{ n }}" {{ "selected" if n == 500 }}>{{ t("db.max_rows_n", count=n) }}</option>{% endfor %}
+          </select>
+        </div>
+        <textarea class="textarea mono code-editor db-sql" name="sql" spellcheck="false" placeholder="SELECT …"
+                  @keydown.ctrl.enter.prevent="$el.form.requestSubmit()" @keydown.meta.enter.prevent="$el.form.requestSubmit()">{{ default_sql }}</textarea>
+        <div class="row between">
+          <span class="small muted">Ctrl + Enter</span>
+          <button class="btn primary"><span class="spin"></span><i class="bi bi-play-fill"></i> {{ t("db.run") }}</button>
+        </div>
+      </div>
+    </form>
+    <div id="sql-result"></div>
+
+    {% elif not state.db %}
+    {# --- serwer: lista baz -------------------------------------------------------------------------- #}
+    {% if overview %}
+    <div class="card">
+      <div class="card-body">
+        <dl class="kv">
+          <dt>{{ t("db.server") }}</dt><dd class="mono">{{ overview.version }}</dd>
+          <dt>{{ t("db.user") }}</dt><dd class="mono">{{ overview.user }}</dd>
+          <dt>{{ t("db.address") }}</dt><dd><span class="mono">{{ source.address }}</span> <span class="small muted">· {{ t("db.via_node", node=source.node.name) }}</span></dd>
+        </dl>
+      </div>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>{{ t("db.database") }}</th><th>{{ t("db.tables") }}</th><th>{{ t("db.size") }}</th></tr></thead>
+          <tbody>
+            {% for d in visible %}
+            <tr>
+              <td><a class="name" href="{{ link(db=d.name) }}"><i class="bi bi-database{{ '-gear' if d.system else '' }}"></i> {{ d.name }}</a>{% if d.name == overview.default_db %} <span class="badge info">{{ t("db.default") }}</span>{% endif %}</td>
+              <td>{{ d.tables }}</td>
+              <td>{{ d.size | bytes if d.size else "—" }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="muted">{{ t("db.no_databases") }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {% elif not state.table %}
+    {# --- baza: lista tabel ---------------------------------------------------------------------------- #}
+    {% if tables is not none %}
+    <div class="card">
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>{{ t("db.table") }}</th><th>{{ t("db.rows") }}</th><th>{{ t("db.size") }}</th><th>{{ t("db.engine") }}</th><th>{{ t("db.collation") }}</th></tr></thead>
+          <tbody>
+            {% for tb in tables %}
+            <tr>
+              <td><a class="name" href="{{ link(table=tb.name) }}"><i class="bi bi-{{ 'eye' if tb.view else 'table' }}"></i> {{ tb.name }}</a>
+                {% if tb.view %} <span class="badge">{{ t("db.view") }}</span>{% endif %}
+                {% if tb.comment %}<div class="small muted trunc">{{ tb.comment }}</div>{% endif %}</td>
+              <td>{% if tb.rows is not none %}{{ "~" if tb.engine == "InnoDB" }}{{ "{:,}".format(tb.rows).replace(",", " ") }}{% else %}—{% endif %}</td>
+              <td>{{ tb.size | bytes if tb.size else "—" }}</td>
+              <td class="small">{{ tb.engine or "—" }}</td>
+              <td class="small muted">{{ tb.collation or "—" }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="muted">{{ t("db.no_tables") }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    {# --- tabela: dane / struktura ------------------------------------------------------------------- #}
+    <nav class="tabs">
+      <a href="{{ link(tab='') }}" class="{{ 'active' if state.tab == 'rows' }}"><i class="bi bi-grid-3x3"></i> {{ t("db.tab_rows") }}</a>
+      <a href="{{ link(tab='structure', page=1) }}" class="{{ 'active' if state.tab == 'structure' }}"><i class="bi bi-diagram-2"></i> {{ t("db.tab_structure") }}</a>
+      {% if has(user, P.ALLOW_DATABASES_WRITE) %}<a href="{{ link(tab='sql') }}"><i class="bi bi-terminal"></i> SQL</a>{% endif %}
+    </nav>
+
+    {% if state.tab == "rows" and rows %}
+    <form class="row db-filter" method="get" action="{{ base }}">
+      {% for k in ("db", "table", "per", "order", "dir", "sys", "app") if state[k] %}<input type="hidden" name="{{ k }}" value="{{ state[k] }}">{% endfor %}
+      <select class="select" name="col" aria-label="{{ t('db.column') }}">
+        <option value="">{{ t("db.all_columns") }}</option>
+        {% for c in rows.columns %}<option value="{{ c.name }}" {{ "selected" if c.name == state.col }}>{{ c.name }}</option>{% endfor %}
+      </select>
+      <input class="input" name="q" value="{{ state.q }}" placeholder="{{ t('db.search') }}" aria-label="{{ t('db.search') }}">
+      <button class="btn"><i class="bi bi-search"></i> {{ t("db.search_button") }}</button>
+      {% if state.q %}<a class="btn ghost" href="{{ link(q='', col='', page=1) }}"><i class="bi bi-x"></i></a>{% endif %}
+      <span class="spacer"></span>
+      {% set first = (rows.page - 1) * rows.per_page + 1 %}
+      <span class="small muted nowrap">{% if rows.total %}{{ t("db.range", first=first, last=first + rows.rows | length - 1, total=("~" if rows.approx else "") ~ "{:,}".format(rows.total).replace(",", " ")) }}{% else %}{{ t("db.rows_count", count=0) }}{% endif %}</span>
+    </form>
+
+    <div class="card">
+      {% if rows.rows %}
+      <div class="table-wrap db-grid-wrap">
+        <table class="table keep db-grid">
+          <thead><tr>
+            {% for c in rows.columns %}
+            {% set sorted_here = state.order == c.name %}
+            <th><a href="{{ link(order=c.name, dir='desc' if sorted_here and not state.dir else '', page=1) }}" title="{{ c.type }}{{ ' · ' ~ c.comment if c.comment }}">
+              {% if c.key == "PRI" %}<i class="bi bi-key-fill db-key"></i>{% elif c.key %}<i class="bi bi-key db-key"></i>{% endif %}{{ c.name }}
+              {% if sorted_here %}<i class="bi bi-caret-{{ 'down' if state.dir else 'up' }}-fill"></i>{% endif %}
+            </a><div class="db-type">{{ c.type }}</div></th>
+            {% endfor %}
+          </tr></thead>
+          <tbody>
+            {% for row in rows.rows %}
+            <tr>{% for v in row %}<td @click="$el.classList.toggle('open')">{{ dbcell(v) }}</td>{% endfor %}</tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="card-body small muted">{{ t("db.no_rows") }}</div>
+      {% endif %}
+    </div>
+
+    <div class="row between db-pager">
+      <span class="row" style="gap: 4px">
+        <a class="btn sm ghost {{ 'disabled' if rows.page <= 1 }}" href="{{ link(page=1) }}" aria-label="{{ t('db.first') }}"><i class="bi bi-chevron-double-left"></i></a>
+        <a class="btn sm ghost {{ 'disabled' if rows.page <= 1 }}" href="{{ link(page=[rows.page - 1, 1] | max) }}" aria-label="{{ t('db.prev') }}"><i class="bi bi-chevron-left"></i></a>
+        <span class="small" style="padding: 0 8px">{{ t("db.page_of", page=rows.page, pages=pages) }}</span>
+        <a class="btn sm ghost {{ 'disabled' if rows.page >= pages }}" href="{{ link(page=[rows.page + 1, pages] | min) }}" aria-label="{{ t('db.next') }}"><i class="bi bi-chevron-right"></i></a>
+        {% if not rows.approx %}<a class="btn sm ghost {{ 'disabled' if rows.page >= pages }}" href="{{ link(page=pages) }}" aria-label="{{ t('db.last') }}"><i class="bi bi-chevron-double-right"></i></a>{% endif %}
+      </span>
+      <span class="row" style="gap: 4px">
+        {% for n in per_options %}<a class="chip {{ 'active' if n == state.per }}" href="{{ link(per=n, page=1) }}">{{ n }}</a>{% endfor %}
+      </span>
+    </div>
+
+    {% elif state.tab == "structure" and structure %}
+    <div class="card">
+      <div class="card-head compact"><h3><i class="bi bi-layout-three-columns"></i> {{ t("db.columns") }}</h3></div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>{{ t("db.column") }}</th><th>{{ t("db.type") }}</th><th>NULL</th><th>{{ t("db.default_value") }}</th><th>{{ t("db.extra") }}</th></tr></thead>
+          <tbody>
+            {% for c in structure.columns %}
+            <tr>
+              <td><span class="name mono">{{ c.name }}</span>
+                {% if c.key == "PRI" %} <span class="badge warn">PRI</span>{% elif c.key == "UNI" %} <span class="badge info">UNI</span>{% elif c.key %} <span class="badge">{{ c.key }}</span>{% endif %}
+                {% if c.comment %}<div class="small muted">{{ c.comment }}</div>{% endif %}</td>
+              <td class="mono small">{{ c.type }}</td>
+              <td>{{ t("db.yes") if c.null else t("db.no") }}</td>
+              <td class="mono small">{{ dbcell(c.default) if c.default is not none else ("NULL" if c.null else "—") }}</td>
+              <td class="small muted">{{ c.extra or "" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head compact"><h3><i class="bi bi-lightning"></i> {{ t("db.indexes") }}</h3></div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>{{ t("db.index") }}</th><th>{{ t("db.columns") }}</th><th>{{ t("db.type") }}</th></tr></thead>
+          <tbody>
+            {% for i in structure.indexes %}
+            <tr>
+              <td><span class="mono">{{ i.name }}</span>{% if i.unique %} <span class="badge {{ 'warn' if i.name == 'PRIMARY' else 'info' }}">{{ "PRIMARY" if i.name == "PRIMARY" else "UNIQUE" }}</span>{% endif %}</td>
+              <td class="mono small">{{ i.columns | join(", ") }}</td>
+              <td class="small muted">{{ i.type }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="muted">{{ t("db.no_indexes") }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% if structure.create %}
+    <div class="card">
+      <div class="card-head compact"><h3><i class="bi bi-code-slash"></i> {{ t("db.create_sql") }}</h3>
+        <button class="btn sm ghost" type="button" data-copy="{{ structure.create }}"><i class="bi bi-clipboard"></i> {{ t("common.copy") }}</button></div>
+      <div class="card-body"><pre class="code-block">{{ structure.create }}</pre></div>
+    </div>
+    {% endif %}
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

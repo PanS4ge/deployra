@@ -1,0 +1,26 @@
+{% from "databases/_cells.html" import grid with context %}
+<div class="stack">
+  {% for r in result.results %}
+  <div class="card">
+    <div class="card-head compact">
+      <h3><i class="bi bi-{{ 'table' if r.columns else 'check2-circle' }}"></i> #{{ loop.index }}</h3>
+      <span class="small muted">
+        {% if r.columns %}
+          {% if r.truncated %}{{ t("db.rows_shown_of", shown=r.rows | length, total=r.total if r.total is not none else "200 000+") }}
+          {% else %}{{ t("db.rows_count", count=r.rows | length) }}{% endif %}
+        {% else %}{{ t("db.affected", count=r.affected) }}{% endif %}
+      </span>
+    </div>
+    {% if r.columns %}
+      {% if r.rows %}{{ grid(r.columns, r.rows) }}{% else %}<div class="card-body small muted">{{ t("db.no_rows") }}</div>{% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% if result.error %}
+  <div class="callout err"><i class="bi bi-x-octagon"></i><div>{% if result.results %}<b>{{ t("db.error_at", index=result.results | length + 1) }}</b> {% endif %}<span class="mono">{{ result.error }}</span></div></div>
+  {% endif %}
+  {% if result.aborted %}
+  <div class="callout warn"><i class="bi bi-exclamation-triangle"></i><div>{{ t("db.aborted") }}</div></div>
+  {% endif %}
+  {% if result.elapsed is not none %}<div class="small muted">{{ t("db.elapsed", seconds=result.elapsed) }}</div>{% endif %}
+</div>

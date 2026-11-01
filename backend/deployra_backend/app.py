@@ -13,7 +13,7 @@ from deployra_common.i18n import tr
 from deployra_common.server import BufferBody
 
 from .context import Context
-from .routes import apps_routes, docker_routes, system
+from .routes import apps_routes, db_routes, docker_routes, system
 
 
 def _docker_errors() -> tuple[type, type]:
@@ -95,4 +95,5 @@ def create_app(ctx: Context, *, start_services: bool = True, bind_host: str = ""
     app.include_router(docker_routes.ws_router)
     app.include_router(apps_routes.router)
     app.include_router(apps_routes.upload_router)
+    app.include_router(db_routes.router)
     return app

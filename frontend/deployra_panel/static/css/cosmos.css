@@ -673,3 +673,34 @@ details > summary.small { cursor: pointer; color: var(--text-dim); }
 .save-bar .btn { pointer-events: auto; box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.7), var(--glow); }
 .pick { display: inline-flex; align-items: center; cursor: pointer; }
 .pick input { width: 16px; height: 16px; margin: 0; accent-color: var(--violet); cursor: pointer; }
+
+/* ---------- 1.8: przeglądarka baz (MySQL / MariaDB) ---------- */
+.db-layout { grid-template-columns: 260px minmax(0, 1fr); }
+.db-nav { max-height: calc(100vh - 110px); overflow-y: auto; }
+.db-nav .db-count { margin-left: auto; font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.db-tables { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 6px 14px; padding-left: 8px; border-left: 1px solid var(--border); }
+.db-nav .db-tables a { padding: 5px 8px; font-size: 0.86rem; }
+.db-find { margin: 4px 0 6px; padding: 6px 10px; font-size: 0.82rem; }
+.db-nav a.db-sys { margin-top: 6px; font-size: 0.8rem; color: var(--muted); }
+.db-grid-wrap { max-height: 70vh; overflow: auto; }
+.db-grid th { position: sticky; top: 0; z-index: 1; background: var(--surface-solid); text-transform: none; letter-spacing: 0; font-size: 0.8rem; }
+.db-grid th a { color: var(--text-dim); display: inline-flex; gap: 5px; align-items: center; }
+.db-grid th a:hover { color: var(--text); }
+.db-grid .db-type { font-family: var(--mono); font-size: 0.68rem; font-weight: 400; color: var(--muted); }
+.db-grid .db-key { color: var(--warn); font-size: 0.75rem; }
+.db-grid td { padding: 7px 14px; font-family: var(--mono); font-size: 0.8rem; max-width: 360px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.db-grid td.open { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 640px; }
+.db-null { color: var(--muted); font-style: italic; }
+.db-bin { color: var(--cyan); }
+.db-meta { color: var(--muted); font-size: 0.72rem; margin-left: 4px; }
+.db-filter .select { max-width: 220px; }
+.db-filter .input { max-width: 320px; }
+.db-pager .btn.disabled { opacity: 0.4; pointer-events: none; }
+.db-sql { height: 220px; min-height: 140px; }
+.db-form .form-grid { max-width: 920px; }
+@media (max-width: 900px) {
+  .db-layout { grid-template-columns: 1fr; }
+  .db-nav { max-height: none; }
+  .db-tables { flex-direction: row; flex-wrap: nowrap; margin: 0; padding: 0; border: 0; }
+  .db-find, .db-nav a.db-sys { display: none; }
+}

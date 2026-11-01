@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty with context %}
+{% block heading %}{{ t("db.title") }}{% endblock %}
+{% block content %}
+{% set edit_id = request.query_params.get("edit") | int %}
+<div class="card" x-data="{ adding: false }">
+  <div class="card-head">
+    <h3><i class="bi bi-plug"></i> {{ t("db.connections") }}</h3>
+    {% if has(user, P.ALLOW_DATABASES_WRITE) %}<button class="btn sm primary" @click="adding = !adding"><i class="bi bi-plus-lg"></i> {{ t("db.add") }}</button>{% endif %}
+  </div>
+  {% if has(user, P.ALLOW_DATABASES_WRITE) %}
+  <div class="card-body db-form" x-show="adding" x-cloak>
+    {% with conn=None, preset={"kind": "remote", "node_id": (nodes[0].id if nodes else None)}, app=None, next=None, containers=[] %}{% include "databases/_form.html" %}{% endwith %}
+  </div>
+  {% endif %}
+  {% if connections %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>{{ t("common.name") }}</th><th>{{ t("db.address") }}</th><th>{{ t("db.node") }}</th><th>{{ t("db.app") }}</th><th></th></tr></thead>
+      {% for c in connections %}
+      <tbody x-data="{ editing: {{ 'true' if c.id == edit_id else 'false' }} }">
+        <tr id="c{{ c.id }}">
+          <td><a class="name" href="/databases/c{{ c.id }}"><i class="bi bi-{{ 'box' if c.container else 'globe2' }}"></i> {{ c.name }}</a></td>
+          <td class="mono small">{{ c.container if c.container else c.host ~ ":" ~ c.port }}{% if c.dbname %} <span class="muted">/ {{ c.dbname }}</span>{% endif %}
+            {% if c.ssl %} <span class="badge ok">SSL</span>{% endif %}</td>
+          <td>{{ c.node_name or "—" }}{% if c.node_status and c.node_status != "paired" %} <span class="badge warn">{{ c.node_status }}</span>{% endif %}</td>
+          <td>{% if c.app_id %}<a href="/apps/{{ c.app_id }}">{{ c.app_name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td><div class="actions">
+            <a class="btn sm" href="/databases/c{{ c.id }}"><i class="bi bi-table"></i> {{ t("db.open") }}</a>
+            {% if has(user, P.ALLOW_DATABASES_WRITE) %}
+            <button class="btn sm ghost icon" @click="editing = !editing" title="{{ t('common.edit') }}" aria-label="{{ t('common.edit') }}"><i class="bi bi-pencil"></i></button>
+            <button class="btn sm ghost icon danger" hx-post="/databases/connections/{{ c.id }}/delete" hx-swap="none" hx-confirm="{{ t('db.delete_confirm', name=c.name) }}"
+                    title="{{ t('common.delete') }}" aria-label="{{ t('common.delete') }}"><i class="bi bi-trash"></i></button>
+            {% endif %}
+          </div></td>
+        </tr>
+        {% if has(user, P.ALLOW_DATABASES_WRITE) %}
+        <tr x-show="editing" x-cloak>
+          <td colspan="5" class="db-form">{% with conn=c, preset=None, app=None, next="/databases", containers=[] %}{% include "databases/_form.html" %}{% endwith %}</td>
+        </tr>
+        {% endif %}
+      </tbody>
+      {% endfor %}
+    </table>
+  </div>
+  {% else %}
+  {{ empty("plug", t("db.no_connections")) }}
+  {% endif %}
+</div>
+
+<div class="card" hx-get="/databases/discovered" hx-trigger="load" hx-swap="outerHTML" hx-disinherit="*">
+  <div class="card-head"><h3><i class="bi bi-box"></i> {{ t("db.discovered") }}</h3></div>
+  <div class="card-body small muted">{{ t("common.loading") }}</div>
+</div>
+{% endblock %}

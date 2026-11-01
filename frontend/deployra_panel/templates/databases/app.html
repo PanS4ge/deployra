@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty, app_icon with context %}
+{% block crumbs %}<div class="crumbs"><a href="/apps">{{ t("nav.apps") }}</a> / <a href="/apps/{{ app.id }}">{{ app.name }}</a> /</div>{% endblock %}
+{% block heading %}<span class="row" style="gap: 10px; display: inline-flex">{{ app_icon(app, 28) }} <span>{{ t("db.app_title") }}</span></span>{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-head"><h3><i class="bi bi-database"></i> {{ t("db.app_sources") }}</h3></div>
+  {% if sources %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>{{ t("common.name") }}</th><th>{{ t("db.address") }}</th><th>{{ t("db.node") }}</th><th></th></tr></thead>
+      <tbody>
+        {% for s in sources %}
+        <tr>
+          <td><a class="name" href="/databases/{{ s.key }}?app={{ app.id }}"><i class="bi bi-{{ 'box' if s.kind == 'container' else 'globe2' }}"></i> {{ s.title }}</a>
+            {% if s.extra.detected %} <span class="badge info">{{ t("db.detected") }}</span>{% endif %}</td>
+          <td class="mono small">{{ s.address }}{% if s.target.database %} <span class="muted">/ {{ s.target.database }}</span>{% endif %}</td>
+          <td>{{ s.node.name }}</td>
+          <td><div class="actions">
+            <a class="btn sm" href="/databases/{{ s.key }}?app={{ app.id }}"><i class="bi bi-table"></i> {{ t("db.open") }}</a>
+            {% if s.conn and has(user, P.ALLOW_DATABASES_WRITE) %}
+            <button class="btn sm ghost icon danger" hx-post="/databases/connections/{{ s.conn.id }}/delete" hx-vals='{"next": "/apps/{{ app.id }}/database?manage=1"}' hx-swap="none"
+                    hx-confirm="{{ t('db.unlink_confirm', name=s.title) }}" title="{{ t('db.unlink') }}" aria-label="{{ t('db.unlink') }}"><i class="bi bi-link-45deg"></i></button>
+            {% endif %}
+          </div></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  {{ empty("database", t("db.app_none")) }}
+  {% endif %}
+</div>
+
+{% if has(user, P.ALLOW_DATABASES_WRITE) %}
+<div class="card" x-data="{ open: {{ 'false' if sources else 'true' }} }">
+  <div class="card-head">
+    <h3><i class="bi bi-link-45deg"></i> {{ t("db.link_title") }}</h3>
+    {% if sources %}<button class="btn sm ghost" @click="open = !open"><i class="bi bi-plus-lg"></i> {{ t("db.add") }}</button>{% endif %}
+  </div>
+  <div class="card-body stack db-form" x-show="open" {{ "x-cloak" if sources }}>
+    {% if suggestion %}
+    <div class="callout info"><i class="bi bi-magic"></i><div>{{ t("db.suggestion", target=(suggestion.container or (suggestion.host ~ ":" ~ suggestion.port)), user=suggestion.username or "—", db=suggestion.dbname or "—") }}</div></div>
+    {% endif %}
+    {% with conn=None, next=None, containers=context.containers %}{% include "databases/_form.html" %}{% endwith %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}
