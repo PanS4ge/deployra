@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Request
 
+from deployra_common.errors import diag_line
 from deployra_common.jobs import Job, JobFailed
 
 from ..context import Panel, get_panel
@@ -140,6 +141,7 @@ def _fix_job(panel: Panel, apps: list[dict]):
                 if len(apps) == 1:
                     raise
                 job.log(f"✖ {app['name']}: {exc}")
+                job.log(diag_line(exc, panel.jobs.origin, job.kind))
         job.log(t("vuln.rescan"))
         try:
             await vulns.scan(panel, job)  # błąd OSV skan zapisuje w logu sam
@@ -164,7 +166,7 @@ async def fix_many(request: Request, panel: Panel = Depends(get_panel), user: di
     apps: dict[int, dict] = {}
     for finding_id in _picked(await request.form()):
         row = panel.db.get("vuln_findings", finding_id)
-        app = panel.db.get("apps", row["app_id"]) if row and row["app_id"] else None
+        app = panel.db.get("apps", row["app_id"]) if row and row["app_id"] and row.get("owner") != "deployra" else None
         if app and app["kind"] in FIXABLE and not _busy(panel, app):
             apps.setdefault(app["id"], app)
     if not apps:
@@ -177,6 +179,8 @@ async def fix_many(request: Request, panel: Panel = Depends(get_panel), user: di
 async def fix(request: Request, finding_id: int, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):
     """Wdrożenie aplikacji ze świeżo pobranym obrazem (środowisko „z plików” budowane od nowa), potem ponowny skan."""
     row = _finding(panel, finding_id)
+    if row.get("owner") == "deployra":  # obraz Deployry łata nowe wydanie, nie zmiana obrazu aplikacji
+        return toast(t("vuln.deployra_own"), "warn", status=400)
     app = panel.db.get("apps", row["app_id"]) if row["app_id"] else None
     if not app or app["kind"] not in FIXABLE:
         return toast(t("vuln.cant_fix"), "warn", status=400)

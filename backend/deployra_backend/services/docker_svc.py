@@ -893,6 +893,31 @@ def delete_container_file(client: Any, cid: str, path: str) -> dict:
     return {"ok": True, "path": clean_path}
 
 
+# $1 → $2 bez nadpisywania istniejącego (kod 17 = już jest); ścieżki jako argumenty, nie w treści skryptu
+RENAME_SCRIPT = 'if [ -e "$2" ] || [ -L "$2" ]; then echo DEPLOYRA_EXISTS; exit 17; fi; mv -- "$1" "$2"'
+
+
+def rename_container_path(client: Any, cid: str, path: str, name: str) -> dict:
+    """Nowa nazwa pliku albo folderu w tym samym katalogu (bez przenoszenia gdzie indziej)."""
+    import posixpath
+
+    source, name = _clean(path), (name or "").strip()
+    if not name or name in (".", "..") or len(name) > 255 or any(ch in name for ch in "/\\\x00\n\r"):
+        raise ValueError(tr("node.files.bad_name"))
+    target = posixpath.join(posixpath.dirname(source), name)
+    if source in PROTECTED or target in PROTECTED:
+        raise ValueError(tr("node.files.protected_rename", path=source))
+    if target == source:
+        return {"ok": True, "path": target}
+    try:
+        _run_anywhere(client, cid, ["sh", "-c", RENAME_SCRIPT, "sh", source, target], source)
+    except RuntimeError as exc:
+        if "DEPLOYRA_EXISTS" in str(exc):
+            raise ValueError(tr("node.files.exists", name=name)) from None
+        raise
+    return {"ok": True, "path": target}
+
+
 def mkdir_container(client: Any, cid: str, path: str) -> dict:
     clean_path = _clean(path)
     _run_anywhere(client, cid, ["mkdir", "-p", "--", clean_path], clean_path)

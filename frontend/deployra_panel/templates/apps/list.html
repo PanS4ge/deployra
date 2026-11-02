@@ -16,6 +16,7 @@
       <option value="{{ value }}">{{ t("apps.sort") }}: {{ label }}</option>
       {% endfor %}
     </select>
+    <button type="button" class="btn sm" :class="others && 'primary'" @click="toggleOthers()" title="{{ t('apps.other_containers') }}"><i class="bi bi-box"></i> {{ t("apps.other_containers_toggle") }}</button>
   </div>
   <div class="grid grid-auto">
     {% for a in apps %}{% set s = stats.get(("app", a.id)) %}
@@ -38,8 +39,10 @@
     {% endfor %}
   </div>
   <div class="card" x-show="!shown" x-cloak>{{ empty("search", t("apps.no_match")) }}</div>
+  <div x-show="others" x-cloak id="other-containers-slot"><div class="muted" style="text-align: center; padding: 24px"><span class="spin" style="display: inline-block"></span></div></div>
 </div>
 {% else %}
 <div class="card">{{ empty("rocket-takeoff", t("apps.empty_title"), t("apps.empty_text")) }}</div>
+<div x-data="{ otherVisible() { return true } }" hx-get="/apps/containers" hx-trigger="load" hx-swap="innerHTML" style="margin-top: 16px"></div>
 {% endif %}
 {% endblock %}

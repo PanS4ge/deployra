@@ -188,6 +188,7 @@ class Target:
     package: str
     version: str
     source: str
+    owner: str = ""  # "deployra" — kontener samej Deployry (aktualizuje go aktualizator, nie „Napraw”)
 
     @property
     def key(self) -> tuple:
@@ -221,6 +222,15 @@ def _endpoint(panel: Any, app: dict) -> str:
         return "local"
 
 
+DEPLOYRA_IMAGES = ("ghcr.io/pans4ge/deployra-", "deployra-panel", "deployra-backend", "deployra-wg", "deployra-updater")
+
+
+def deployra_container(container: dict) -> bool:
+    """Kontener samej Deployry: etykieta systemowa albo obraz z wydania Deployry."""
+    image = str(container.get("image") or "").lower()
+    return bool(container.get("system")) or image.startswith(DEPLOYRA_IMAGES)
+
+
 def targets(panel: Any, node: dict, inventory: dict) -> list[Target]:
     """Oprogramowanie z kontenerów (przypisane do aplikacji panelu, gdy da się ją rozpoznać) i zależności aplikacji."""
     from .uptime import app_containers
@@ -237,9 +247,10 @@ def targets(panel: Any, node: dict, inventory: dict) -> list[Target]:
                     owner.setdefault(container["name"], app)
         for container in items:
             app = owner.get(container["name"])
+            mine = "deployra" if deployra_container(container) else ""
             for sw in container.get("software") or []:
                 out.append(Target(node["id"], ep["id"], container["name"], app["id"] if app else None, app["name"] if app else container["name"],
-                                  sw["ecosystem"], sw["name"], str(sw["version"]), sw.get("source") or ""))  # fmt: skip
+                                  sw["ecosystem"], sw["name"], str(sw["version"]), sw.get("source") or "", mine))  # fmt: skip
     by_slug = {app["slug"]: app for app in apps}
     for slug, packages in (inventory.get("apps") or {}).items():
         app = by_slug.get(slug)
@@ -390,7 +401,8 @@ def store(panel: Any, findings: dict[tuple, dict], covered: set[tuple[int, str]]
     for key, found in findings.items():
         target: Target = found["target"]
         values = {"label": target.label[:190], "app_id": target.app_id, "version": target.version[:190], "severity": found["severity"],
-                  "score": found["score"], "vulns": found["vulns"], "fixed": found["fixed"], "kev": int(found["kev"]), "last_seen": now}  # fmt: skip
+                  "score": found["score"], "vulns": found["vulns"], "fixed": found["fixed"], "kev": int(found["kev"]), "last_seen": now,
+                  "owner": target.owner or None}  # fmt: skip
         row = existing.pop(key, None)
         if row is None:
             row_id = panel.db.insert("vuln_findings", node_id=target.node_id, endpoint=target.endpoint, container=target.container,
@@ -641,14 +653,23 @@ def new_branch(version: str, fixed: str | None) -> bool:
     return bool(fixed) and vkey(version)[0][:2] != vkey(fixed)[0][:2]
 
 
+def branch_fix(row: dict) -> str | None:
+    """Gdy część dziur łata dopiero nowsza gałąź: najwyższa poprawka w obecnej gałęzi (3.13.17 → 3.13.18, reszta w 3.15.0)."""
+    if not new_branch(row["version"], row["fixed"]):
+        return None
+    same = [e["fixed"] for e in row.get("vulns") or [] if e.get("fixed") and not new_branch(row["version"], e["fixed"])]
+    return max(same, key=vkey) if same else None
+
+
 def group(rows: list[dict]) -> list[dict]:
     """Wiersze pogrupowane po kontenerze/aplikacji (kolejność: najgroźniejsze najpierw)."""
     groups: dict[tuple, dict] = {}
     for row in rows:  # aplikacja (jej kontenery i pliki lock) albo pojedynczy kontener spoza aplikacji
         key = ("app", row["app_id"]) if row["app_id"] else (row["node_id"], row["endpoint"], row["container"])
         entry = groups.setdefault(key, {"label": row["label"], "app_id": row["app_id"], "node_id": row["node_id"], "endpoint": row["endpoint"],
-                                        "container": row["container"], "rows": []})  # fmt: skip
-        entry["rows"].append({**row, "new_branch": new_branch(row["version"], row["fixed"])})
+                                        "container": row["container"], "owner": row.get("owner"), "rows": []})  # fmt: skip
+        entry["rows"].append({**row, "new_branch": new_branch(row["version"], row["fixed"]), "branch_fix": branch_fix(row)})
+        entry["owner"] = entry["owner"] or row.get("owner")
         if row["container"] and not entry["container"]:
             entry["container"] = row["container"]
     return list(groups.values())

@@ -309,6 +309,11 @@ def manages_plugins(row: dict) -> bool:
     return "plugins.manage" in (info(row).get("features") or [])
 
 
+def renames(row: dict) -> bool:
+    """Plugin 1.3+ umie zmieniać nazwy plików i folderów."""
+    return "files.rename" in (info(row).get("features") or [])
+
+
 def chunked(row: dict) -> bool:
     """Plugin umie pliki kawałkami (zapis, odczyt) — bez limitu 8 MB."""
     return "files.chunks" in (info(row).get("features") or [])
@@ -449,6 +454,10 @@ class Ftp:
     def mkdir(self, path: str) -> None:
         with self._connect() as ftp:
             ftp.mkd(path)
+
+    def rename(self, path: str, target: str) -> None:
+        with self._connect() as ftp:
+            ftp.rename(path, target)
 
 
 async def ftp_call(cfg: dict, method: str, *args: Any) -> Any:

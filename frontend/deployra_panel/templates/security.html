@@ -71,8 +71,11 @@
               {% if app %}{{ app_icon(app, 20) }}<a class="name" href="/apps/{{ app.id }}">{{ app.name }}</a>
               {% else %}<i class="bi bi-box"></i><a class="name" href="/nodes/{{ g.node_id }}/containers/{{ g.container }}{{ '?ep=' ~ g.endpoint if g.endpoint != 'local' }}">{{ g.label }}</a>{% endif %}
               <span class="small muted"><i class="bi bi-hdd-network"></i> {{ (nodes.get(g.node_id) or {}).name or "?" }}{% if g.endpoint != "local" %} · {{ g.endpoint }}{% endif %}</span>
+              {% if g.owner == "deployra" %}<span class="badge">Deployra</span>{% endif %}
               <span class="spacer"></span>
-              {% if show == "open" and app and app.kind in fixable and has(user, P.ALLOW_DEPLOYMENT) %}
+              {% if g.owner == "deployra" %}
+              {% if show == "open" and has(user, P.ALLOW_SETTINGS) %}<a class="btn sm" href="/settings/updates" title="{{ t('vuln.deployra_own') }}"><i class="bi bi-cloud-arrow-down"></i> {{ t("vuln.update_deployra") }}</a>{% endif %}
+              {% elif show == "open" and app and app.kind in fixable and has(user, P.ALLOW_DEPLOYMENT) %}
               <button class="btn sm primary" hx-post="/security/{{ g.rows[0].id }}/fix" hx-swap="none"
                       hx-confirm="{{ t('vuln.fix_confirm', name=app.name) }}"><span class="spin"></span><i class="bi bi-bandaid"></i> {{ t("vuln.fix") }}</button>
               {% endif %}
@@ -101,7 +104,9 @@
               </ul>
             </details>
           </td>
-          <td class="mono nowrap">{% if r.fixed %}<span class="badge ok">{{ r.fixed }}</span>{% if r.suggest %}<div class="small" title="{{ t('vuln.suggest_hint') }}"><i class="bi bi-arrow-repeat" style="color: var(--ok)"></i> {{ r.suggest }}</div>{% elif r.new_branch %}<div class="small muted" style="font-family: var(--font)" title="{{ t('vuln.new_branch_hint') }}"><i class="bi bi-signpost-split"></i> {{ t("vuln.new_branch") }}</div>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="mono nowrap">{% if r.branch_fix and not r.suggest %}<span class="badge ok">{{ r.branch_fix }}</span>
+            <div class="small muted" style="font-family: var(--font)" title="{{ t('vuln.rest_in_branch_hint', fixed=r.fixed) }}"><i class="bi bi-signpost-split"></i> {{ t("vuln.rest_in_branch", fixed=r.fixed) }}</div>
+            {% elif r.fixed %}<span class="badge ok">{{ r.fixed }}</span>{% if r.suggest %}<div class="small" title="{{ t('vuln.suggest_hint') }}"><i class="bi bi-arrow-repeat" style="color: var(--ok)"></i> {{ r.suggest }}</div>{% elif r.new_branch %}<div class="small muted" style="font-family: var(--font)" title="{{ t('vuln.new_branch_hint') }}"><i class="bi bi-signpost-split"></i> {{ t("vuln.new_branch") }}</div>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
           <td class="actions">
             {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
             {% if show == "open" %}<button class="btn sm ghost" hx-post="/security/{{ r.id }}/ignore" hx-swap="none" title="{{ t('vuln.ignore') }}"><i class="bi bi-eye-slash"></i></button>

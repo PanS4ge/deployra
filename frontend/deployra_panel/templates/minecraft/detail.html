@@ -83,7 +83,9 @@
 </div>
 
 {% elif tab == "files" %}
-<div class="stack" x-data="containerFiles({{ {'read': '/minecraft/' ~ s.id ~ '/files/read', 'write': '/minecraft/' ~ s.id ~ '/files/write', 'download': '/minecraft/' ~ s.id ~ '/files/download', 'ep': 'local'} | jsonattr }})"
+<div class="stack" x-data="containerFiles({{ {'read': '/minecraft/' ~ s.id ~ '/files/read', 'write': '/minecraft/' ~ s.id ~ '/files/write', 'download': '/minecraft/' ~ s.id ~ '/files/download', 'ep': 'local',
+                                     'upload': ('/minecraft/' ~ s.id ~ '/files/upload') if has(user, P.ALLOW_CONTAINER_FILES_WRITE) else ''} | jsonattr }})"
+     class="drop-zone" @dragover="dragOver($event)" @dragleave="dragLeave($event)" @drop="drop($event)"
      @files-upload.window="showUpload = true" @files-mkdir.window="showMkdir = true">
   {% if app and has(user, P.ALLOW_CONTAINER_FILES) %}<div><a class="btn sm ghost" href="/apps/{{ app.id }}/files"><i class="bi bi-box"></i> {{ t("mc.container_files") }}</a></div>{% endif %}
   {% if outdated and manager %}
@@ -97,6 +99,9 @@
     <div class="card"><div class="card-body small muted">{{ t("common.loading") }}</div></div>
   </div>
   {% include "minecraft/_files_modals.html" %}
+  <div class="drop-overlay" x-show="dragging || uploading" x-cloak>
+    <div><i class="bi bi-cloud-arrow-up"></i> <span x-show="!uploading">{{ t("containers.drop_here") }}</span><span x-show="uploading" x-text="'{{ t('containers.uploading') }} ' + progress + '%'"></span></div>
+  </div>
 </div>
 
 {% elif tab == "papi" %}

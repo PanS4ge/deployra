@@ -11,6 +11,7 @@ from fastapi import Request
 from deployra_common.client import SignedClient
 from deployra_common.updates import UpdateAgent
 
+from . import __version__
 from .config import Config
 from .db import Database, now
 from .i18n import t
@@ -30,7 +31,7 @@ class Panel:
         self.sealer = Sealer(config.data_dir / "secret.key")
         self.sessions = Sessions(self.db, config.session_hours)
         self.limiter = LoginLimiter()
-        self.jobs = PersistentJobRegistry(self.db)
+        self.jobs = PersistentJobRegistry(self.db, origin=f"panel {__version__}")
         self.updates = UpdateAgent(config.update_dir)
         self.default_language: str | None = self.db.setting("language") or config.language or None  # odświeżane przy zapisie ustawień
         from .plugins import PluginManager

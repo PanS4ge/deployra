@@ -12,6 +12,7 @@ from deployra_common.hmac_auth import NonceCache
 from deployra_common.jobs import JobRegistry
 from deployra_common.server import SignatureGuard
 
+from . import __version__
 from .config import Config
 from .services.native_update import update_agent
 from .services.endpoints import EndpointRegistry
@@ -42,7 +43,7 @@ class Context:
         self.config = config
         config.ensure_dirs()
         self.state = State(config.data_dir / "state.json")
-        self.jobs = JobRegistry()
+        self.jobs = JobRegistry(origin=f"node {__version__}")
         self.guard = SignatureGuard(self._lookup, NonceCache())
         self.vitals = VitalsSampler(lite_mode=config.lite)
         self.usage = UsageSampler()

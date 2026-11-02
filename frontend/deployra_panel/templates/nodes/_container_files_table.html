@@ -57,6 +57,8 @@
               <a class="btn icon sm ghost" href="{{ item.download }}" hx-boost="false" download title="{{ t('containers.download_zip' if item.is_dir else 'containers.download') }}"><i class="bi {{ 'bi-file-earmark-zip' if item.is_dir else 'bi-download' }}"></i></a>
               {% endif %}
               {% if has(user, P.ALLOW_CONTAINER_FILES_WRITE) and item.type != "mount" %}
+              <button class="btn icon sm ghost" data-path="{{ item.path }}" data-name="{{ item.name }}" @click="askRename($el.dataset.path, $el.dataset.name)"
+                      title="{{ t('containers.rename') }}"><i class="bi bi-input-cursor-text"></i></button>
               <button class="btn icon sm ghost danger" hx-post="/nodes/{{ node.id }}/containers/{{ cid }}/files/delete{{ epa }}" hx-swap="none"
                       hx-vals="{{ {'path': item.path, 'dir_path': cur_path} | jsonattr }}" hx-confirm="{{ t('containers.delete_file_confirm', path=item.name) }}" title="{{ t('common.delete') }}"><i class="bi bi-trash"></i></button>
               {% endif %}

@@ -34,14 +34,89 @@
     });
   });
 
-  // ---------- Menedżer plików kontenera (edytor w modalu) ----------
+  // Upuszczone pliki razem z zawartością folderów → [[File, ścieżka względna]] (serwer odtwarza podfoldery z nazwy).
+  // Wpisy trzeba wziąć od razu w zdarzeniu `drop` — po pierwszym `await` przeglądarka czyści DataTransfer.
+  function droppedFiles(dt) {
+    const entries = [...(dt.items || [])].filter((i) => i.kind === "file").map((i) => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    const plain = [...(dt.files || [])];
+    return (async () => {
+      if (!entries.length) return plain.map((f) => [f, f.name]);
+      const out = [];
+      const walk = async (entry, prefix) => {
+        if (entry.isFile) {
+          out.push([await new Promise((ok, fail) => entry.file(ok, fail)), prefix + entry.name]);
+        } else if (entry.isDirectory) {
+          const reader = entry.createReader();
+          for (;;) {  // readEntries oddaje katalog porcjami (po ~100 wpisów)
+            const batch = await new Promise((ok, fail) => reader.readEntries(ok, fail));
+            if (!batch.length) break;
+            for (const child of batch) await walk(child, prefix + entry.name + "/");
+          }
+        }
+      };
+      for (const entry of entries) await walk(entry, "");
+      return out;
+    })();
+  }
+
+  // Odpowiedź akcji panelu wysłanej poza HTMX: toast z HX-Trigger, przejście z HX-Redirect, przeładowanie z HX-Refresh
+  function followHtmx(xhr) {
+    const trigger = xhr.getResponseHeader("HX-Trigger");
+    if (trigger) {
+      try { const ev = JSON.parse(trigger).toast; if (ev) window.toast(ev.message, ev.level); } catch (_) { /* inny format */ }
+    }
+    const target = xhr.getResponseHeader("HX-Redirect");
+    if (target) { location.href = target; return; }
+    if (xhr.getResponseHeader("HX-Refresh")) { location.reload(); return; }
+    if (xhr.status >= 400 && !trigger) window.toast((I18N.error_status || "Error {status}").replace("{status}", xhr.status), "err");
+  }
+
+  // ---------- Menedżer plików kontenera (edytor w modalu, drag&drop) ----------
   document.addEventListener("alpine:init", () => {
     Alpine.data("containerFiles", (urls) => {
       const q = (path) => new URLSearchParams(urls.ep === "local" ? {path} : {path, ep: urls.ep}).toString();
       return {
         showEditor: false, showUpload: false, uploadFolder: false, showMkdir: false, loading: false, saving: false,
         filePath: "", fileContent: "", isBinary: false, isTruncated: false, fileSize: 0,
+        dragging: false, uploading: false, progress: 0, showRename: false, renamePath: "", renameName: "",
         browser() { return document.getElementById("files-browser"); },
+        askRename(path, name) {
+          Object.assign(this, {renamePath: path, renameName: name, showRename: true});
+          setTimeout(() => {  // po pokazaniu okna; zaznaczona sama nazwa, bez rozszerzenia (jak w menedżerach plików)
+            const input = document.getElementById("rename-input");  // $refs nie sięga z tabeli podmienianej przez HTMX
+            if (!input) return;
+            const dot = name.lastIndexOf(".");
+            input.focus();
+            input.setSelectionRange(0, dot > 0 ? dot : name.length);
+          }, 50);
+        },
+        // drag&drop: tylko z prawem zapisu (bez niego szablon nie podaje adresu `upload`)
+        dragOver(e) {
+          if (!urls.upload || this.uploading || ![...(e.dataTransfer?.types || [])].includes("Files")) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          this.dragging = true;
+        },
+        dragLeave(e) { if (!this.$root.contains(e.relatedTarget)) this.dragging = false; },
+        async drop(e) {
+          if (!urls.upload || this.uploading || !this.dragging) return;
+          e.preventDefault();
+          this.dragging = false;
+          const files = await droppedFiles(e.dataTransfer);
+          if (!files.length) return;
+          const form = new FormData();
+          form.append("dir_path", this.currentPath());
+          for (const [file, path] of files) form.append("files", file, path);
+          Object.assign(this, {uploading: true, progress: 0});
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", urls.upload);
+          xhr.setRequestHeader("X-CSRF-Token", document.querySelector("meta[name=csrf-token]").content);
+          xhr.setRequestHeader("HX-Request", "true");
+          xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) this.progress = Math.round((ev.loaded / ev.total) * 100); };
+          xhr.onload = () => { this.uploading = false; followHtmx(xhr); };
+          xhr.onerror = () => { this.uploading = false; window.toast(I18N.offline, "err"); };
+          xhr.send(form);
+        },
         currentPath() { return new URL(this.browser().dataset.url, location.origin).searchParams.get("path") || "/"; },
         downloadUrl() { return `${urls.download}?${q(this.filePath)}`; },
         sizeText() { const s = this.fileSize; return s > 1048576 ? (s / 1048576).toFixed(2) + " MB" : s > 1024 ? (s / 1024).toFixed(1) + " KB" : s + " B"; },
@@ -118,13 +193,32 @@
         mem: desc("mem"),
         uptime: (a, b) => ((a.uptime < 0) - (b.uptime < 0)) || (a.uptime - b.uptime) || byName(a, b),  // najsłabsze najpierw
       };
+      // kontenery spoza aplikacji (wszystkie węzły): ładowane przy pierwszym włączeniu przełącznika
+      const OTHER_STATE = { running: ["running"], stopped: STOPPED, error: ["dead", "restarting"] };
       return {
         q: "", status: load("apps.status", ""), sort: load("apps.sort", "name"), ranks: {}, matches: {},
+        others: load("apps.others", "") === "1", othersLoaded: false,
         init() {
           this.$watch("sort", (v) => { save("apps.sort", v); this.recompute(); });
           this.$watch("status", (v) => { save("apps.status", v); this.recompute(); });
           this.$watch("q", () => this.recompute());
           this.recompute();
+          if (this.others) this.$nextTick(() => this.loadOthers());
+        },
+        toggleOthers() {
+          this.others = !this.others;
+          save("apps.others", this.others ? "1" : "");
+          if (this.others) this.loadOthers();
+        },
+        loadOthers() {
+          if (this.othersLoaded) return;
+          this.othersLoaded = true;
+          htmx.ajax("GET", "/apps/containers", { target: "#other-containers-slot", swap: "innerHTML" });
+        },
+        otherVisible(el) {
+          const words = this.q.toLowerCase().split(/\s+/).filter(Boolean);
+          const okStatus = !this.status || (OTHER_STATE[this.status] || []).includes(el.dataset.state);
+          return okStatus && words.every((w) => (el.dataset.text || "").includes(w));
         },
         recompute() {
           const words = this.q.toLowerCase().split(/\s+/).filter(Boolean);

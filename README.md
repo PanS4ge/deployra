@@ -208,7 +208,9 @@ Then the panel scans again. If the fix is only in a newer branch (e.g. PHP 8.0 �
 fix in the same variant (`php:8.0-apache` → `php:8.2-apache`, `8.0.30-apache` → `8.2.35-apache`) and shows it next to the finding — **Fix**
 then switches the app's image, checks HTTP after the start (apps with a domain: status < 500) and goes back to the old image on failure.
 After a successful switch the old image is removed (unless something else uses it), and so is an adopted container from outside Deployra
-(after the test). Containers outside Deployra apps are yours to update (container page or stack).
+(after the test). Containers outside Deployra apps are yours to update (container page or stack). Deployra's own containers (panel,
+node, gateway) show **Update Deployra** instead of **Fix** — a new release patches them. When part of the holes is only fixed in a newer
+branch, the "Fixed in" column shows the current branch's fix first (e.g. Python 3.13.17 → 3.13.18, the rest in 3.15.0).
 
 **Ignore** hides a package until a new vulnerability shows up for it. Several apps at once: select them and pick **Fix selected**
 (one by one in a single job — a failed one doesn't stop the rest, one rescan at the end) or **Ignore selected**. A node that doesn't answer keeps its results unchanged (no inventory
@@ -333,7 +335,9 @@ with HMAC and replay protection. Details: `minecraft-plugin/README.md`.
 Files without FTP and without an extra port: since DeployraBridge 1.2, files over 8 MB and whole folders go through the plugin in
 4 MB chunks, in the background (progress in the job, SHA-256 check and file swap at the end); downloading large files works the same
 way. An older plugin can be updated from the panel (**Files** or **Settings → Update plugin**): the new jar goes to `plugins/update/`
-and loads on the next server restart.
+and loads on the next server restart. Renaming files needs DeployraBridge 1.3 (over FTP it always works).
+
+File managers (containers and Minecraft): drop files and whole folders onto the list (drag & drop); the icon next to a file renames it.
 
 ## Moving apps between nodes
 
@@ -356,6 +360,13 @@ An app registered without adopting (e.g. by a script, with just the image and po
 Deployra is adopted automatically on its first deployment (**Fix** and **Update** too) — with the configuration taken from that container.
 The port moves to the new container, and the old one is removed once the new one runs (and answers over HTTP if the app has a domain);
 otherwise the old one comes back.
+
+**In-place update**: on **Fix** and **Update**, such a container (and a compose stack container, e.g. from Portainer — always) is not adopted
+but recreated on the new image: same name, ports, networks, volumes (anonymous ones too) and stack labels; variables, command and working
+directory that came from the old image don't carry over. The old one waits as `<name>-pre-update` and comes back if the new one doesn't
+start (or doesn't answer). Change the image in the stack file in Portainer too — otherwise redeploying the stack brings the old one back.
+
+**Apps → Containers** lists every container on every node that is not an app (with a **Take over** button).
 
 ## Accounts with assigned servers (Pterodactyl-style)
 

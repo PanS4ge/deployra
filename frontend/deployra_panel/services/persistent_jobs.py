@@ -12,8 +12,8 @@ from ..db import Database
 
 
 class PersistentJobRegistry(JobRegistry):
-    def __init__(self, db: Database, keep: int = 200) -> None:
-        super().__init__(keep=keep)
+    def __init__(self, db: Database, keep: int = 200, origin: str = "") -> None:
+        super().__init__(keep=keep, origin=origin)
         self.db = db
         self._load()
 

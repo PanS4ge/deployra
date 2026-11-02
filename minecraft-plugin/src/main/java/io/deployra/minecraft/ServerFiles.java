@@ -225,6 +225,21 @@ final class ServerFiles {
         Files.createDirectories(resolve(path));
     }
 
+    /** Nowa nazwa w tym samym katalogu; istniejącego pliku nie nadpisuje (FileAlreadyExistsException). */
+    void rename(String path, String name) throws IOException {
+        if (name == null || name.isEmpty() || ".".equals(name) || "..".equals(name) || name.length() > 255
+                || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0 || name.indexOf('\0') >= 0) {
+            throw new IOException("bad name");
+        }
+        Path source = resolve(path);
+        if (source.equals(root)) {
+            throw new IOException("refusing to rename the server directory");
+        }
+        Path target = source.resolveSibling(name);
+        resolve(root.relativize(target).toString());  // ten sam test „wewnątrz katalogu serwera”, co dla każdej ścieżki
+        Files.move(source, target);  // bez REPLACE_EXISTING; dowiązanie przenosi się samo, nie jego cel
+    }
+
     void delete(String path) throws IOException {
         Path target = resolve(path);
         if (target.equals(root)) {

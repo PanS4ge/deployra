@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from deployra_common.client import SignedClient
+from deployra_common.errors import CodedError
 from deployra_common.jobs import Job, JobFailed
 from ..i18n import t
 
@@ -37,8 +38,9 @@ async def follow_remote_job(client: SignedClient, job_id: str, panel_job: Job, p
                 panel_job.log(f"{prefix}{data}")
             elif event == "end":
                 snapshot = json.loads(data)
-                if snapshot.get("status") != "ok":
-                    raise JobFailed(snapshot.get("error") or t("msg.remote_job_failed"))
+                if snapshot.get("status") != "ok":  # kod błędu węzła przechodzi do zadania panelu
+                    raise CodedError(snapshot.get("error") or t("msg.remote_job_failed"), code=snapshot.get("code") or "DPL-NODE-JOB",
+                                     remote_job=job_id)
                 return snapshot
     raise JobFailed(t("msg.remote_job_lost"))
 

@@ -86,7 +86,9 @@ async def test_jobs_follow_sync_and_errors():
     bad = registry.start("test", "Zły", broken)
     events = [event async for event in bad.follow()]
     assert bad.status == "error" and bad.error == "nie wyszło"
-    assert events[-2] == ("line", "✖ nie wyszło")
+    assert events[-3] == ("line", "✖ nie wyszło")
+    assert events[-2][1].startswith("⌁ DPL-JOB · test") and bad.code == "DPL-JOB"  # linia z kodem do zgłoszeń
+    assert events[-1][1]["code"] == "DPL-JOB"
     assert registry.list()[0] is bad
 
 

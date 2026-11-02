@@ -8,17 +8,17 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from deployra_common.i18n import tr
 from deployra_common.jobs import JobFailed
-from deployra_common.schemas import AppSpec, StackSpec, check_slug
+from deployra_common.schemas import AppSpec, StackSpec, check_image, check_slug
 from deployra_common.server import receive_verified_upload
 
 from ..context import Context, get_ctx
 from deployra_common.runtimes import KEEP_DIRS
 
-from ..services import adopt, apps, compose, sftp_users, static_sites, transfer
+from ..services import adopt, apps, compose, inplace, sftp_users, static_sites, transfer
 from . import job_response, signed, signed_upload
 
 router = APIRouter(prefix="/api", dependencies=[Depends(signed)])
@@ -162,6 +162,29 @@ async def adopt_container(slug: str, body: AdoptRequest, ctx: Context = Depends(
         raise HTTPException(400, problems[0])
     title = tr("node.job.adopt", name=slug)
     return job_response(ctx.jobs.start("deploy", title, lambda job: adopt.adopt(ctx, job, body.container, body.spec)))
+
+
+class InplaceRequest(BaseModel):
+    image: str
+    verify: bool = False  # po starcie aplikacja musi odpowiedzieć przez HTTP (< 500) na porcie hosta
+    health_path: str = Field("/", max_length=200, pattern=r"^/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$")  # jak AppSpec.health_path
+    cleanup: bool = True  # usuń kopię starego kontenera i stary obraz, gdy nowy działa
+
+
+@router.post("/containers/{cid}/update")
+async def update_in_place(cid: str, body: InplaceRequest, ctx: Context = Depends(get_ctx)) -> dict:
+    """Aktualizacja w miejscu: ten sam kontener (nazwa, porty, sieci, wolumeny, etykiety stacka) na nowym obrazie."""
+    try:
+        image = check_image(body.image)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    try:
+        name = ctx.docker.api.inspect_container(cid)["Name"].lstrip("/")
+    except Exception as exc:  # noqa: BLE001 — docker.errors.NotFound albo atrapa
+        raise HTTPException(404, tr("node.inplace.no_container", name=cid)) from exc
+    options = {"verify": body.verify, "health_path": body.health_path or "/", "cleanup": body.cleanup}
+    title = tr("node.job.inplace", name=name)
+    return job_response(ctx.jobs.start("deploy", title, lambda job: inplace.run(ctx, job, cid, image, **options)))
 
 
 # --- przenoszenie między węzłami ---------------------------------------------------------

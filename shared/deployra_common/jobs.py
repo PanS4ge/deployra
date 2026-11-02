@@ -34,6 +34,7 @@ class Job:
         self.dropped = 0
         self.result: Any = None
         self.error: str | None = None
+        self.code: str | None = None  # kod błędu (DPL-…, zob. errors.py)
         self.created = time.time()
         self.finished: float | None = None
         self._lock = threading.Lock()
@@ -94,6 +95,7 @@ class Job:
             "title": self.title,
             "status": self.status,
             "error": self.error,
+            "code": self.code,
             "result": self.result,
             "created": self.created,
             "finished": self.finished,
@@ -121,8 +123,9 @@ JobFn = Callable[[Job], Any]
 
 
 class JobRegistry:
-    def __init__(self, keep: int = 200) -> None:
+    def __init__(self, keep: int = 200, origin: str = "") -> None:
         self.keep = keep
+        self.origin = origin  # „node 1.8.1” — trafia do linii z kodem błędu
         self._jobs: OrderedDict[str, Job] = OrderedDict()
         self._tasks: set[asyncio.Task] = set()
 
@@ -156,14 +159,25 @@ class JobRegistry:
         except JobFailed as exc:
             job.error = str(exc)
             job.log(f"✖ {exc}")
+            self._diag(job, exc)
             job.status = "error"
         except Exception as exc:  # noqa: BLE001 — błąd zadania trafia do jego logu
             job.error = f"{type(exc).__name__}: {exc}"
             job.log(traceback.format_exc().rstrip())
+            self._diag(job, exc)
             job.status = "error"
         finally:
             job.finished = time.time()
             await job._notify_async()
+
+    def _diag(self, job: Job, exc: BaseException) -> None:
+        from .errors import code_of, diag_line
+
+        try:
+            job.code = code_of(exc)
+            job.log(diag_line(exc, self.origin, job.kind))
+        except Exception:  # noqa: BLE001 — linia diagnostyczna nie może zepsuć zgłoszenia błędu
+            pass
 
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)

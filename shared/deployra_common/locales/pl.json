@@ -190,7 +190,8 @@
       "start": "Start {name}",
       "stop": "Zatrzymanie {name}",
       "handover_commit": "Przełączenie {name} na nową wersję",
-      "handover_abort": "Wycofanie wdrożenia {name}"
+      "handover_abort": "Wycofanie wdrożenia {name}",
+      "inplace": "Aktualizacja {name} w miejscu"
     },
     "join_rejected": "bramka odrzuciła dołączenie ({code}): {error}",
     "log": {
@@ -289,7 +290,10 @@
       "bad_path": "Nieprawidłowa ścieżka",
       "protected": "Nie można usunąć katalogu systemowego {path}",
       "stopped_only_mounts": "Kontener jest zatrzymany — dostępne są tylko podpięte foldery",
-      "read_only": "Folder {path} jest podpięty tylko do odczytu"
+      "read_only": "Folder {path} jest podpięty tylko do odczytu",
+      "bad_name": "Nieprawidłowa nazwa — bez ukośników i znaków sterujących",
+      "exists": "{name} już istnieje w tym katalogu",
+      "protected_rename": "Nie można zmienić nazwy katalogu systemowego {path}"
     },
     "port_taken_by": "port hosta {port} jest zajęty ({holder}) — zmień „Port hosta” w ustawieniach aplikacji albo zostaw go pustym, a Deployra wybierze wolny",
     "port_by_container": "kontener {name}",
@@ -302,6 +306,22 @@
       "no_container": "Nie ma kontenera {name}",
       "not_running": "Kontener {name} nie działa",
       "no_table": "Nie ma tabeli {name}"
+    },
+    "inplace": {
+      "start": "Aktualizacja w miejscu: {name} — {old} → {new}",
+      "swapping": "Zatrzymuję stary {name} i uruchamiam nowy (te same porty, sieci i wolumeny)",
+      "left_stopped": "{name} był zatrzymany — nowy kontener też czeka zatrzymany",
+      "unhealthy": "✖ Docker oznaczył nowy kontener jako niezdrowy (HEALTHCHECK)",
+      "failed": "Nowa wersja {name} ({image}) nie wstała — wrócił poprzedni kontener",
+      "restoring": "Przywracam poprzedni kontener {name} ({image})",
+      "backup_kept": "Poprzedni kontener został jako {backup} (zatrzymany) — usuń go, gdy wszystko działa",
+      "backup_running": "Działa kontener {backup} z poprzedniej aktualizacji — zatrzymaj go albo usuń",
+      "stack_note": "Kontener należy do stacka „{stack}” — zmień obraz na {image} także w pliku stacka (Portainer), inaczej ponowne wdrożenie stacka przywróci stary",
+      "no_old_image": "Nie ma już obrazu {image} — zmienne kontenera przechodzą w całości",
+      "system": "{name} to kontener Deployry — aktualizuje go aktualizator Deployry (Ustawienia → Aktualizacje)",
+      "no_container": "Nie ma kontenera {name}",
+      "done": "✔ {name} działa na {image}",
+      "same_image": "✔ {name} już działa na {image} (obraz bez zmian)"
     }
   },
   "srv": {

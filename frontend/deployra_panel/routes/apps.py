@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from pydantic import ValidationError
 
 from deployra_common import envfile
+from deployra_common.client import RemoteError
 from deployra_common.jobs import Job
 from deployra_common.runtimes import RUNTIMES
 from deployra_common.schemas import AppSpec, VolumeMount
@@ -292,6 +293,33 @@ async def docker_hub_search(q: str = "") -> list[dict]:
                     "port": port,
                 })
     return results[:8]
+
+
+HELPERS = {"files", "install", "transfer", "updater", "network"}  # jednorazowe pomocniki Deployry — nie pokazujemy
+
+
+@router.get("/apps/containers")
+async def other_containers(request: Request, panel: Panel = Depends(get_panel)):
+    """Kontenery ze wszystkich węzłów, których nie ma wśród aplikacji (przełącznik na liście aplikacji)."""
+    import asyncio
+
+    from ..services import uptime
+
+    all_apps = panel.db.fetchall("SELECT * FROM apps")
+    nodes = panel.db.fetchall("SELECT * FROM nodes WHERE status = 'paired' ORDER BY name")
+
+    async def listing(node: dict) -> tuple[dict, list[dict], str | None]:
+        try:
+            items = await asyncio.wait_for(panel.node_client(node).get("/api/containers"), 15)
+        except (RemoteError, httpx.HTTPError, asyncio.TimeoutError, OSError, LookupError) as exc:
+            return node, [], getattr(exc, "detail", None) or str(exc) or type(exc).__name__
+        items = [c for c in items or [] if isinstance(c, dict) and c.get("name")]
+        mine = {c["name"] for app in all_apps if app["node_id"] == node["id"] for c in uptime.app_containers(items, app)}
+        rest = [c for c in items if c["name"] not in mine and c.get("system") not in HELPERS]
+        return node, sorted(rest, key=lambda c: (bool(c.get("system")), c.get("state") != "running", c["name"])), None
+
+    results = await asyncio.gather(*(listing(n) for n in nodes))
+    return render(request, "apps/_containers.html", results=results, total=sum(len(r[1]) for r in results))
 
 
 @router.get("/apps/new")

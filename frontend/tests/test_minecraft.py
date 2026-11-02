@@ -203,3 +203,24 @@ def test_explain_maps_java_errors():
     assert mc.explain("SecurityException: path outside the server directory") == ("mc.err.outside", 403)
     assert mc.explain("FileSystemException: x: Device or resource busy") == ("mc.err.in_use", 409)
     assert mc.explain("NullPointerException") is None
+
+
+def test_rename_validates_name_and_plugin_version(panel, admin, monkeypatch):
+    server_id, _ = mc.create(panel, "Zmiana nazwy")
+    panel.db.update("minecraft_servers", server_id, secret="x")
+    monkeypatch.setattr(mc, "online", lambda _row: True)
+    calls = []
+
+    async def fake_call(_panel, _row, op, args=None, timeout=20):
+        calls.append((op, args))
+        return {}
+
+    monkeypatch.setattr(mc, "call", fake_call)
+    for bad in ("../server.jar", "a/b", "..", "", "x\x00y"):
+        assert admin.post(f"/minecraft/{server_id}/files/rename", data={"path": "/world", "name": bad}).status_code == 400, bad
+    assert admin.post(f"/minecraft/{server_id}/files/rename", data={"path": "/", "name": "x"}).status_code == 400
+    monkeypatch.setattr(mc, "info", lambda _row: {"features": ["files.chunks"]})  # plugin 1.2
+    assert admin.post(f"/minecraft/{server_id}/files/rename", data={"path": "/world", "name": "world_old"}).status_code == 409
+    monkeypatch.setattr(mc, "info", lambda _row: {"features": ["files.chunks", "files.rename"]})
+    assert admin.post(f"/minecraft/{server_id}/files/rename", data={"path": "/world", "name": "world_old"}).status_code == 200
+    assert calls == [("files.rename", {"path": "/world", "name": "world_old"})]

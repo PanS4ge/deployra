@@ -190,7 +190,8 @@
       "start": "Start {name}",
       "stop": "Stop {name}",
       "handover_commit": "Switching {name} to the new version",
-      "handover_abort": "Aborting the deploy of {name}"
+      "handover_abort": "Aborting the deploy of {name}",
+      "inplace": "In-place update of {name}"
     },
     "join_rejected": "the gateway rejected the join ({code}): {error}",
     "log": {
@@ -289,7 +290,10 @@
       "bad_path": "Invalid path",
       "protected": "Cannot delete system directory {path}",
       "stopped_only_mounts": "The container is stopped — only mounted folders are available",
-      "read_only": "Folder {path} is mounted read-only"
+      "read_only": "Folder {path} is mounted read-only",
+      "bad_name": "Invalid name — no slashes or control characters",
+      "exists": "{name} already exists in this directory",
+      "protected_rename": "Cannot rename system directory {path}"
     },
     "port_taken_by": "host port {port} is taken ({holder}) — change “Host port” in the app settings or leave it empty and Deployra picks a free one",
     "port_by_container": "container {name}",
@@ -302,6 +306,22 @@
       "no_container": "Container {name} does not exist",
       "not_running": "Container {name} is not running",
       "no_table": "Table {name} does not exist"
+    },
+    "inplace": {
+      "start": "In-place update: {name} — {old} → {new}",
+      "swapping": "Stopping the old {name} and starting the new one (same ports, networks and volumes)",
+      "left_stopped": "{name} was stopped — the new container stays stopped too",
+      "unhealthy": "✖ Docker marked the new container unhealthy (HEALTHCHECK)",
+      "failed": "The new version of {name} ({image}) did not come up — the previous container is back",
+      "restoring": "Restoring the previous container {name} ({image})",
+      "backup_kept": "The previous container was kept as {backup} (stopped) — remove it once everything works",
+      "backup_running": "Container {backup} from a previous update is running — stop or remove it",
+      "stack_note": "The container belongs to stack “{stack}” — change the image to {image} in the stack file too (Portainer), otherwise redeploying the stack brings the old one back",
+      "no_old_image": "Image {image} is gone — the container's variables are copied as they are",
+      "system": "{name} is a Deployra container — the Deployra updater updates it (Settings → Updates)",
+      "no_container": "No container {name}",
+      "done": "✔ {name} runs {image}",
+      "same_image": "✔ {name} already runs {image} (image unchanged)"
     }
   },
   "srv": {

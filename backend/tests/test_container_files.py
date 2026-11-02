@@ -232,3 +232,26 @@ def test_upload_tar_route_needs_signed_digest(api, ctx):
     assert fake.api._files["/data/plugins/a.jar"] == b"A" * 1000
     plain = sign(api.secret, "POST", path, body)  # zwykły podpis bez skrótu — ten router przyjmuje tylko wysyłki strumieniowe
     assert api.client.post(path, content=body, headers=plain).status_code == 400
+
+
+def test_rename_in_same_directory(api, ctx):
+    fake = ctx.docker_for("local")
+    cid = fake.api.create_container("nginx:alpine", name="c-rename")["Id"]
+    fake.api.start(cid)
+    response = api.request("POST", f"/api/containers/{cid}/files/rename", json={"path": "/srv/www/stara.html", "name": "nowa.html"})
+    assert response.status_code == 200 and response.json()["path"] == "/srv/www/nowa.html"
+    sent = list(fake.api._exec_commands.values())[-1]
+    assert sent[:2] == ["sh", "-c"] and sent[-2:] == ["/srv/www/stara.html", "/srv/www/nowa.html"]  # ścieżki jako argumenty, nie w skrypcie
+    for bad in ("../etc/passwd", "a/b", "..", "", "zła\nnazwa"):
+        assert api.request("POST", f"/api/containers/{cid}/files/rename", json={"path": "/srv/x", "name": bad}).status_code == 400, bad
+    assert api.request("POST", f"/api/containers/{cid}/files/rename", json={"path": "/etc", "name": "inne"}).status_code == 400
+    assert api.request("POST", f"/api/containers/{cid}/files/rename", json={"path": "/tmp/x", "name": "etc"}).status_code == 200  # /tmp/etc — nie systemowy
+
+
+def test_rename_refuses_existing_target(ctx, monkeypatch):
+    fake = ctx.docker_for("local")
+    cid = fake.api.create_container("nginx:alpine", name="c-exists")["Id"]
+    fake.api.start(cid)
+    monkeypatch.setattr(docker_svc, "_exec", lambda client, c, cmd: (17, "DEPLOYRA_EXISTS\n"))
+    with pytest.raises(ValueError, match="nowa.html"):
+        docker_svc.rename_container_path(fake, cid, "/srv/stara.html", "nowa.html")

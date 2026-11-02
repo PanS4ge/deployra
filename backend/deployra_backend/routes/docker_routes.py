@@ -267,6 +267,16 @@ def container_files_mkdir(cid: str, body: MkdirRequest, client: Any = Depends(dk
     return _files_call(docker_svc.mkdir_container, client, cid, body.path)
 
 
+class RenameRequest(BaseModel):
+    path: str
+    name: str  # sama nowa nazwa — plik zostaje w tym samym katalogu
+
+
+@router.post("/containers/{cid}/files/rename")
+def container_files_rename(cid: str, body: RenameRequest, client: Any = Depends(dk)) -> dict:
+    return _files_call(docker_svc.rename_container_path, client, cid, body.path, body.name)
+
+
 @router.get("/containers/{cid}/logs")
 def container_logs(cid: str, tail: int = 300, timestamps: bool = False, client: Any = Depends(dk)) -> dict:
     try:

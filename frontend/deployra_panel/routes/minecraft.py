@@ -287,6 +287,8 @@ async def _files(panel: Panel, row: dict, op: str, args: dict) -> dict:
         await mc.ftp_call(ftp, "delete", path, bool(args.get("is_dir")))
     elif op == "mkdir":
         await mc.ftp_call(ftp, "mkdir", path)
+    elif op == "rename":
+        await mc.ftp_call(ftp, "rename", path, mc.clean_path(posixpath.join(posixpath.dirname(path), args["name"])))
     return {}
 
 
@@ -489,6 +491,29 @@ async def files_mkdir(request: Request, row: dict = Depends(_server), panel: Pan
     except Exception as exc:  # noqa: BLE001
         return toast(str(exc)[:200], "err", status=400)
     return toast(t("containers.folder_created"), extra={"mc-files": True})
+
+
+def bad_name(name: str) -> bool:
+    """Nowa nazwa pliku: bez ukośników i znaków sterujących (zmiana nazwy nie przenosi do innego katalogu)."""
+    return not name or name in (".", "..") or len(name) > 255 or any(ch in name for ch in "/\\\x00\n\r")
+
+
+@router.post("/minecraft/{server_id}/files/rename")
+async def files_rename(request: Request, row: dict = Depends(_server), panel: Panel = Depends(get_panel),
+                       user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES_WRITE))):  # fmt: skip
+    form = await request.form()
+    path, name = mc.clean_path(str(form.get("path") or "")), str(form.get("name") or "").strip()
+    if path == "/" or bad_name(name):
+        return toast(t("mc.bad_path"), "err", status=400)
+    if mc.online(row) and row.get("secret") and not mc.renames(row):
+        return toast(t("mc.rename_needs_update"), "err", status=409)
+    try:
+        await _files(panel, row, "rename", {"path": path, "name": name})
+    except (mc.Offline, mc.BridgeError) as exc:
+        return _bridge_error(exc, path)
+    except Exception as exc:  # noqa: BLE001 — FTP
+        return toast(str(exc)[:200], "err", status=400)
+    return toast(t("containers.renamed", name=name), extra={"mc-files": True})
 
 
 # --- PlaceholderAPI i makra -------------------------------------------------------------------------------

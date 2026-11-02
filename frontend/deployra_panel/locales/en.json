@@ -293,7 +293,11 @@
     "zero_downtime": "Zero downtime",
     "host_port": "Host port",
     "host_port_auto": "automatic",
-    "host_port_hint": "Empty — a free port from the node's pool"
+    "host_port_hint": "Empty — a free port from the node's pool",
+    "other_containers": "Containers outside apps",
+    "other_containers_toggle": "Containers",
+    "no_other_containers": "Every container is an app",
+    "adopt_short": "Take over"
   },
   "auth": {
     "login": "Sign in",
@@ -550,7 +554,11 @@
     "upload_mode_folder": "Folder",
     "download_zip": "Download folder (ZIP)",
     "exit_code": "exit code {code}",
-    "upload_bad_name": "Invalid file name: {name}"
+    "upload_bad_name": "Invalid file name: {name}",
+    "drop_here": "Drop files or folders",
+    "uploading": "Uploading",
+    "rename": "Rename",
+    "renamed": "Renamed to {name}"
   },
   "dashboard": {
     "apps_error": "with errors: {count}",
@@ -587,7 +595,9 @@
     "handover_kept": "Switch failed — the previous version (port {port}) keeps serving traffic",
     "handover_switch": "Switching the gateway to the new version (port {port})",
     "taking_over": "Container {name} isn't managed by Deployra yet — taking it over (the old one stays as {backup})",
-    "takeover_blocked": "Can't take over container {name}: {problem}"
+    "takeover_blocked": "Can't take over container {name}: {problem}",
+    "system_container": "{name} is a Deployra container — the Deployra updater updates it (Settings → Updates), not an app deployment",
+    "inplace": "{name} was created outside Deployra — updating it in place to {image} (same ports, networks and volumes)"
   },
   "dns": {
     "api_token": "API token",
@@ -2090,7 +2100,8 @@
         "enable": "Enabled {name}",
         "restart_needed": "{name} loads on the next server restart"
       }
-    }
+    },
+    "rename_needs_update": "Renaming needs DeployraBridge 1.3 — update the plugin in the server settings."
   },
   "env": {
     "scope": {
@@ -2315,7 +2326,11 @@
     "new_branch_hint": "A fresh image of the same tag won't help — change the image or version in the app settings",
     "switching_image": "The fix is only in a newer version — switching the image: {old} → {new}",
     "switch_reverted": "The app settings go back to the previous image ({image})",
-    "suggest_hint": "“Fix” switches to this image — with an HTTP test and a rollback to the old one on failure"
+    "suggest_hint": "“Fix” switches to this image — with an HTTP test and a rollback to the old one on failure",
+    "deployra_own": "This is a Deployra container — a new Deployra release patches it (Settings → Updates)",
+    "update_deployra": "Update Deployra",
+    "rest_in_branch": "{fixed} — newer branch",
+    "rest_in_branch_hint": "Some vulnerabilities are only fixed in {fixed} (newer branch); a fresh image brings the fixes of the current branch"
   },
   "appupd": {
     "bad_settings": "Invalid update settings",

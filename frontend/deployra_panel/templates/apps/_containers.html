@@ -1,0 +1,45 @@
+{# Kontenery spoza aplikacji (wszystkie węzły) — ładowane na żądanie przełącznikiem na liście aplikacji. #}
+{% from "_macros.html" import status_badge, empty %}
+<div class="stack" id="other-containers">
+  <div class="row" style="gap: 8px">
+    <h3 style="margin: 0"><i class="bi bi-box"></i> {{ t("apps.other_containers") }}</h3>
+    <span class="badge">{{ total }}</span>
+  </div>
+  {% for node, items, error in results %}
+  {% if error %}<div class="callout warn small"><i class="bi bi-hdd-network"></i> {{ node.name }}: {{ error }}</div>{% endif %}
+  {% endfor %}
+  {% if total %}
+  <div class="grid grid-auto">
+    {% for node, items, error in results %}{% for c in items %}
+    <div class="card app-card other-container" data-state="{{ c.state }}" data-text="{{ (c.name ~ ' ' ~ node.name ~ ' ' ~ (c.image or '') ~ ' ' ~ (c.stack or '')) | lower }}"
+         x-show="otherVisible($el)">
+      <div class="card-head" style="gap: 10px">
+        <i class="bi bi-{{ 'gear' if c.system else 'stack' if c.stack else 'box' }}" style="font-size: 18px; color: var(--muted)"></i>
+        <h3 class="trunc"><a class="card-link" href="/nodes/{{ node.id }}/containers/{{ c.short_id }}">{{ c.name }}</a></h3>
+        {{ status_badge(c.state) }}
+      </div>
+      <div class="card-body stack" style="gap: 8px">
+        <div class="small dim row between">
+          <span class="row" style="gap: 6px"><i class="bi bi-hdd-network"></i> {{ node.name }}{% if c.stack %} <span class="muted">· {{ c.stack }}</span>{% endif %}</span>
+          {% if c.system %}<span class="badge">Deployra</span>{% endif %}
+        </div>
+        <div class="small mono trunc muted" title="{{ c.image }}">{{ c.image }}</div>
+        {% set published = c.ports | selectattr("host") | list %}
+        {% if published %}<div class="row" style="gap: 4px; flex-wrap: wrap">{% for p in published[:4] %}<span class="badge mono">{{ p.host }}→{{ p.container }}</span>{% endfor %}</div>{% endif %}
+        <div class="row" style="gap: 4px; justify-content: flex-end">
+          {% if not c.app and not c.stack and not c.system and has(user, P.ALLOW_DEPLOYMENT) %}
+          <a class="btn sm ghost" href="/nodes/{{ node.id }}/containers/{{ c.short_id }}/adopt" title="{{ t('adopt.button') }}"><i class="bi bi-box-arrow-in-down-right"></i> {{ t("apps.adopt_short") }}</a>
+          {% endif %}
+          <a class="btn icon sm ghost" title="{{ t('common.logs') }}" href="/nodes/{{ node.id }}/containers/{{ c.short_id }}#logs"><i class="bi bi-journal-text"></i></a>
+          {% if has(user, P.ALLOW_CONTAINER_FILES) and (c.state == "running" or c.mounts) %}
+          <a class="btn icon sm ghost" title="{{ t('containers.files') }}" href="/nodes/{{ node.id }}/containers/{{ c.short_id }}/files"><i class="bi bi-folder2-open"></i></a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}{% endfor %}
+  </div>
+  {% else %}
+  <div class="card">{{ empty("box", t("apps.no_other_containers")) }}</div>
+  {% endif %}
+</div>

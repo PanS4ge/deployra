@@ -189,6 +189,19 @@ class FakeAPI:
         }  # fmt: skip
         return {"Id": cid}
 
+    def create_container_from_config(self, config: dict, name: str | None = None) -> dict:
+        """Jak `POST /containers/create` z surową konfiguracją (aktualizacja w miejscu); całość zostaje w `raw`."""
+        host = config.get("HostConfig") or {}
+        env = dict(item.split("=", 1) for item in config.get("Env") or [] if "=" in item)
+        bindings = {k: int(v[0]["HostPort"]) for k, v in (host.get("PortBindings") or {}).items() if v and v[0].get("HostPort")}
+        cid = self.create_container(config["Image"], command=config.get("Cmd"), name=name, environment=env, labels=config.get("Labels"),
+                                    host_config={"restart_policy": host.get("RestartPolicy")})["Id"]  # fmt: skip
+        self.containers_[cid].update(ports=bindings, raw=config, networks=list(((config.get("NetworkingConfig") or {}).get("EndpointsConfig") or {})))
+        return {"Id": cid}
+
+    def connect_container_to_network(self, cid: str, network: str, aliases: Any = None, **_: Any) -> None:
+        self._find(cid).setdefault("networks", []).append(network)
+
     def start(self, cid: str) -> None:
         c = self._find(cid)
         if c["labels"].get("deployra.system") == "files":  # pomocnik menedżera plików: listing podpiętego folderu
@@ -239,7 +252,7 @@ class FakeAPI:
         c = self._find(cid)
         running = c["state"] == "running"
         return {
-            "Id": c["id"], "Name": "/" + c["name"], "Created": "2026-10-10T08:00:00Z",
+            "Id": c["id"], "Name": "/" + c["name"], "Created": "2026-10-10T08:00:00Z", "Image": self._image_id(c["image"]),
             "Config": {"Image": c["image"], "Labels": c["labels"], "Env": [f"{k}={v}" for k, v in (c["env"] or {}).items()] or ["PATH=/usr/bin"],
                        "Cmd": c.get("command") or ["nginx", "-g", "daemon off;"], "Entrypoint": None,
                        "ExposedPorts": {k: {} for k in c["ports"]}},

@@ -204,7 +204,9 @@ w wersji z pierwszego wdrożenia. Potem panel skanuje jeszcze raz. Gdy poprawka 
 szuka w rejestrze tagu z poprawką w tym samym wariancie (`php:8.0-apache` → `php:8.2-apache`, `8.0.30-apache` → `8.2.35-apache`) i pokazuje
 go przy pozycji — **Napraw** zmienia wtedy obraz aplikacji, po starcie sprawdza HTTP (aplikacje z domeną: kod < 500), a przy błędzie wraca
 do starego obrazu. Po udanej zmianie stary obraz jest usuwany (o ile nikt go nie używa), a przejęty kontener spoza Deployry — też (po teście).
-Kontenery spoza aplikacji Deployry aktualizujesz sam (strona kontenera albo stack).
+Kontenery spoza aplikacji Deployry aktualizujesz sam (strona kontenera albo stack). Kontenery samej Deployry (panel, węzeł, bramka) mają
+zamiast **Napraw** przycisk **Aktualizuj Deployrę** — łata je nowe wydanie. Gdy część dziur łata dopiero nowsza gałąź, kolumna
+„Poprawione w” pokazuje najpierw poprawkę z obecnej gałęzi (np. Python 3.13.17 → 3.13.18, reszta w 3.15.0).
 
 **Ignoruj** chowa paczkę, dopóki nie pojawi się dla niej nowa podatność. Kilka aplikacji naraz: zaznacz je i wybierz **Napraw zaznaczone**
 (po kolei w jednym zadaniu — nieudana nie zatrzymuje reszty, na końcu jeden ponowny skan) albo **Ignoruj zaznaczone**. Węzeł, który nie odpowiada, zostawia swoje wyniki bez zmian
@@ -332,7 +334,9 @@ HMAC z ochroną przed powtórzeniem. Szczegóły: `minecraft-plugin/README.md`.
 Pliki bez FTP i bez dodatkowego portu: od DeployraBridge 1.2 pliki ponad 8 MB i całe foldery idą przez plugin kawałkami po 4 MB,
 w tle (postęp w zadaniu, na końcu sprawdzenie SHA-256 i podmiana pliku); pobieranie dużych plików działa tak samo. Starszy plugin
 zaktualizujesz z panelu (**Pliki** albo **Ustawienia → Zaktualizuj plugin**): nowy jar trafia do `plugins/update/` i wczytuje się
-przy restarcie serwera.
+przy restarcie serwera. Zmiana nazwy plików wymaga DeployraBridge 1.3 (przez FTP działa zawsze).
+
+Menedżery plików (kontenery i Minecraft): pliki i całe foldery można upuścić na listę (drag & drop), a ikona przy pliku zmienia nazwę.
 
 ## Przenoszenie aplikacji między węzłami
 
@@ -354,6 +358,13 @@ Jeśli nowy kontener nie wstanie, stary wraca sam. Kontenery stacków compose pr
 Aplikacja dopisana bez przejęcia (np. skryptem, z samym obrazem i portem), której kontenerem jest dokładnie jeden kontener spoza
 Deployry, zostaje przejęta automatycznie przy pierwszym wdrożeniu (także **Napraw** i **Aktualizuj**) — z konfiguracją z tego kontenera.
 Port przechodzi na nowy kontener, a stary jest usuwany, gdy nowy działa (i odpowiada przez HTTP, jeśli aplikacja ma domenę); inaczej stary wraca.
+
+**Aktualizacja w miejscu**: przy **Napraw** i **Aktualizuj** taki kontener (a kontener ze stacka compose, np. z Portainera — zawsze) nie jest
+przejmowany, tylko odtwarzany na nowym obrazie: ta sama nazwa, porty, sieci, wolumeny (także anonimowe) i etykiety stacka; zmienne,
+polecenie i katalog roboczy ze starego obrazu nie przechodzą do nowego. Stary czeka jako `<nazwa>-pre-update` i wraca, jeśli nowy nie wstanie
+(albo nie odpowiada). Obraz w pliku stacka zmień też w Portainerze — inaczej ponowne wdrożenie stacka przywróci stary.
+
+**Aplikacje → Kontenery** pokazuje wszystkie kontenery ze wszystkich węzłów, które nie są aplikacjami (z przyciskiem **Przejmij**).
 
 ## Konta z przypisanymi serwerami (jak w Pterodactylu)
 

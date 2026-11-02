@@ -96,6 +96,10 @@ final class Operations {
             files.mkdir(Json.str(args.get("path"), ""));
             return new LinkedHashMap<String, Object>();
         }
+        if ("files.rename".equals(op)) {
+            files.rename(Json.str(args.get("path"), ""), Json.str(args.get("name"), ""));
+            return new LinkedHashMap<String, Object>();
+        }
         if ("plugins.list".equals(op)) {
             return sync(new Callable<Map<String, Object>>() {
                 @Override
@@ -135,7 +139,7 @@ final class Operations {
         out.put("software", Bukkit.getName());
         out.put("mc_version", Bukkit.getBukkitVersion().split("-")[0]);
         out.put("plugin_version", plugin.getDescription().getVersion());
-        out.put("features", java.util.Arrays.asList("files.chunks", "plugins.manage"));  // co ten plugin umie ponad 1.1
+        out.put("features", java.util.Arrays.asList("files.chunks", "plugins.manage", "files.rename"));  // co ten plugin umie ponad 1.1
         out.put("players_online", Bukkit.getOnlinePlayers().size());
         out.put("players_max", Bukkit.getMaxPlayers());
         out.put("motd", Bukkit.getMotd());

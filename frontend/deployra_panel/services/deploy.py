@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from deployra_common.client import RemoteError
+from deployra_common.errors import CodedError, code_of
 from deployra_common.jobs import Job, JobFailed
 from deployra_common.schemas import AppSpec
 
@@ -72,7 +73,11 @@ async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = N
               cleanup: bool = False) -> dict:
     """Wdrożenie aplikacji; z `adopt_container` węzeł zamiast stawiać od zera przejmuje istniejący kontener,
     z `refresh` pobiera od nowa obraz środowiska i bazowy obraz Dockerfile'a (naprawa podatności), z `verify` po starcie
-    sprawdza HTTP (aplikacje z domeną; błąd → poprzednia wersja), z `cleanup` usuwa stary obraz i kopię przejętego kontenera."""
+    sprawdza HTTP (aplikacje z domeną; błąd → poprzednia wersja), z `cleanup` usuwa stary obraz i kopię przejętego kontenera.
+
+    Aplikacja z obrazu, która wskazuje kontener postawiony poza Deployrą: przy naprawie/aktualizacji (`refresh`) i dla
+    kontenerów ze stacka compose (tych nie da się przejąć) węzeł aktualizuje go w miejscu — ta sama nazwa, porty, sieci
+    i wolumeny, nowy obraz. Przy zwykłym wdrożeniu kontener spoza stacka jest przejmowany (staje się `app-<slug>`)."""
     app = panel.db.get("apps", app_id)
     if not app:
         raise JobFailed(t("msg.no_app"))
@@ -84,13 +89,18 @@ async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = N
     spec = spec.model_copy(update={"refresh_image": refresh, "verify": verify and bool(spec.domains), "cleanup": cleanup})
     first = app["status"] == "new"
     panel.db.update("apps", app_id, status="deploying", last_job=job.id, last_error=None)
+    inplace = None
     try:
         client = panel.node_client(node)
         job.log(t("deploy.start", slug=spec.slug, kind=spec.source.kind, node=node["name"]))
         if not adopt_container and spec.source.kind == "image" and spec.endpoint == "local":
             foreign = await foreign_container(client, app)
-            if foreign:  # aplikacja dopisana bez przejęcia — bez tego obok starego stanąłby drugi kontener bez jego wolumenów
-                name, cid = foreign
+            if foreign and foreign["system"]:
+                raise CodedError(t("deploy.system_container", name=foreign["name"]), code="DPL-SYSTEM", container=foreign["name"])
+            if foreign and (refresh or foreign["stack"]):
+                inplace = foreign
+            elif foreign:  # aplikacja dopisana bez przejęcia — bez tego obok starego stanąłby drugi kontener bez jego wolumenów
+                name, cid = foreign["name"], foreign["id"]
                 job.log(t("deploy.taking_over", name=name, backup=f"{name}-pre-deployra"))
                 base, _ = load(panel, app)
                 merged = await from_container(client, base, cid, name)
@@ -99,13 +109,19 @@ async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = N
                 # stary kontener znika dopiero, gdy nowy działa (i odpowiada, jeśli aplikacja ma domenę)
                 spec = spec.model_copy(update={"refresh_image": refresh, "verify": bool(merged.domains), "cleanup": True})
                 adopt_container = cid
-        if first and not adopt_container:  # ochrona przed przepełnieniem — ponowne wdrożenie już nie pyta (świadoma decyzja)
+        if first and not adopt_container and not inplace:  # ochrona przed przepełnieniem — ponowne wdrożenie już nie pyta (świadoma decyzja)
             from . import resources
 
             problem = await resources.capacity_problem(panel, node, spec.memory_mb)
             if problem:
                 raise JobFailed(problem + " " + t("res.retry_hint"))
-        if adopt_container:
+        if inplace:
+            from urllib.parse import quote
+
+            job.log(t("deploy.inplace", name=inplace["name"], image=spec.source.image))
+            body = {"image": spec.source.image, "verify": spec.verify, "health_path": spec.health_path or "/", "cleanup": True}
+            remote = await relay.start_and_follow(client, f"/api/containers/{quote(inplace['id'], safe='')}/update", body, job, "  ")
+        elif adopt_container:
             body = {"container": adopt_container, "spec": spec.model_dump(mode="json")}
             remote = await relay.start_and_follow(client, f"/api/apps/{spec.slug}/adopt", body, job, "  ")
         else:
@@ -113,6 +129,8 @@ async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = N
         result = remote.get("result") or {}
         host_port, upstream_host = result.get("host_port"), result.get("upstream_host")
         previous_port = app.get("host_port")
+        if inplace and not host_port:  # kontener bez opublikowanego portu (bot, worker) — bramka zostaje, jak była
+            host_port = previous_port
         panel.db.update("apps", app_id, host_port=host_port)
         app = panel.db.get("apps", app_id)
         if upstream_host and node["transport"] == "tunnel" and not _routed(upstream_host, node.get("lan_subnets") or []):
@@ -130,13 +148,14 @@ async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = N
         panel.plugins.emit("app.deployed", app=panel.db.get("apps", app_id), job=job.id)
         return {"host_port": host_port}
     except (JobFailed, RemoteError, httpx.HTTPError, LookupError) as exc:
-        await _failed(panel, job, app, exc)
+        await _failed(panel, job, app, exc, node=node, step="inplace" if inplace else "adopt" if adopt_container else "deploy")
 
 
-async def foreign_container(client: Any, app: dict) -> tuple[str, str] | None:
-    """Kontener aplikacji dopisanej bez przejęcia (ręcznie, skryptem): nie ma `app-<slug>`, a port hosta aplikacji publikuje
-    albo jej dokładną nazwę ma jeden kontener spoza Deployry (bez etykiety aplikacji, nie z compose, nie systemowy).
-    Nowej aplikacji z kreatora nie dotyczy — nie przejmujemy cudzego kontenera tylko dlatego, że nazywa się tak samo."""
+async def foreign_container(client: Any, app: dict) -> dict | None:
+    """Kontener aplikacji dopisanej bez przejęcia (ręcznie, skryptem, stackiem w Portainerze): nie działa `app-<slug>`,
+    a port hosta aplikacji publikuje albo jej dokładną nazwę ma jeden kontener bez etykiety aplikacji Deployry.
+    Nowej aplikacji z kreatora nie dotyczy — nie ruszamy cudzego kontenera tylko dlatego, że nazywa się tak samo.
+    Zwraca {name, id, stack, system}; `system` — kontener samej Deployry (aktualizuje go aktualizator)."""
     if app.get("status") == "new":
         return None
     try:
@@ -145,11 +164,15 @@ async def foreign_container(client: Any, app: dict) -> tuple[str, str] | None:
         return None  # bez listy kontenerów zwykłe wdrożenie — sprawdzenie nie może go zablokować
     items = [c for c in listed if isinstance(c, dict) and c.get("name")] if isinstance(listed, list) else []
     slug, port = app["slug"], app.get("host_port")
-    if any(c["name"] in (f"app-{slug}", f"app-{slug}-next") or c.get("app") == slug for c in items):
+    owned = [c for c in items if c["name"] in (f"app-{slug}", f"app-{slug}-next") or c.get("app") == slug]
+    if any(c.get("state") == "running" for c in owned):  # zatrzymana pozostałość po nieudanym wdrożeniu nie przesłania obcego
         return None
-    found = [c for c in items if not c.get("system") and not c.get("stack") and not c.get("app")
+    found = [c for c in items if c not in owned and not c.get("app")
              and (c["name"] == slug or (port and any(p.get("host") == port for p in c.get("ports") or [])))]  # fmt: skip
-    return (found[0]["name"], found[0].get("id") or found[0]["name"]) if len(found) == 1 else None
+    if len(found) != 1:
+        return None
+    c = found[0]
+    return {"name": c["name"], "id": c.get("id") or c["name"], "stack": c.get("stack"), "system": bool(c.get("system"))}
 
 
 async def from_container(client: Any, spec: AppSpec, cid: str, name: str) -> AppSpec:
@@ -174,7 +197,7 @@ async def from_container(client: Any, spec: AppSpec, cid: str, name: str) -> App
     })  # fmt: skip
 
 
-async def _failed(panel: Any, job: Job, app: dict, exc: Exception) -> None:
+async def _failed(panel: Any, job: Job, app: dict, exc: Exception, node: dict | None = None, step: str = "") -> None:
     message = getattr(exc, "detail", None) or str(exc) or type(exc).__name__
     panel.db.update("apps", app["id"], status="error", last_error=message)
     panel.plugins.emit("app.failed", app=panel.db.get("apps", app["id"]), job=job.id, error=message)
@@ -182,7 +205,10 @@ async def _failed(panel: Any, job: Job, app: dict, exc: Exception) -> None:
     from .notify import Message
 
     await alerts.event(panel, "deploy_failed", Message(t("alerts.title.deploy_failed", name=app["name"]), message[:1500], "err"))
-    raise JobFailed(message) from exc
+    # kod i kontekst do zgłoszenia (linia „⌁ DPL-…” pod błędem); kod z węzła przechodzi dalej
+    context = {"app": f"{app['slug']}#{app['id']}", "kind": app.get("kind"), "node": (node or {}).get("name"), "step": step,
+               **(getattr(exc, "context", None) or {})}  # fmt: skip
+    raise CodedError(message, code=code_of(exc), **context) from exc
 
 
 def static_kind(spec: AppSpec) -> bool:

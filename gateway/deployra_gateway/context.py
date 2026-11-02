@@ -56,7 +56,7 @@ class Context:
 
         self.external = ExternalTunnels(config, self.state)
         self.nginx = NginxControl(config.nginx_dir, config.nginx_reload, config.reload_timeout)
-        self.jobs = JobRegistry()
+        self.jobs = JobRegistry(origin=f"wg {__version__}")
         self.guard = SignatureGuard(lambda key: self.state.panel_secret if key == "panel" else None, NonceCache())
         self.gate = Gate()
         self.updates = UpdateAgent(config.update_dir)

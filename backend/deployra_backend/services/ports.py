@@ -5,14 +5,16 @@ from __future__ import annotations
 import socket
 from typing import Any
 
+from deployra_common.errors import CodedError
 from deployra_common.i18n import tr
-from deployra_common.jobs import JobFailed
 
 from ..state import State
 
 
-class PortTaken(JobFailed, RuntimeError):
+class PortTaken(CodedError, RuntimeError):
     """Port hosta zajęty — w zadaniu czytelny komunikat zamiast śladu stosu, w API 409."""
+
+    code = "DPL-PORT"
 
 
 def _port_free(port: int) -> bool:
@@ -89,8 +91,9 @@ def allocate(
             state.mutate("ports", lambda ports: {**ports, key: port})
             return port
     if preferred and not fallback:
-        raise PortTaken(tr("node.port_taken_by", port=preferred, holder=holder(state, client, key, preferred)))
-    raise PortTaken(tr("node.no_free_port"))
+        who = holder(state, client, key, preferred)
+        raise PortTaken(tr("node.port_taken_by", port=preferred, holder=who), app=key, port=preferred, holder=who)
+    raise PortTaken(tr("node.no_free_port"), code="DPL-PORT-POOL", app=key, pool=f"{pool[0]}-{pool[1]}")
 
 
 def release(state: State, key: str) -> None:
@@ -110,7 +113,7 @@ def allocate_spare(state: State, client: Any, key: str, pool: tuple[int, int], c
         if port not in taken and (not check_host or _port_free(port)):
             state.mutate("ports", lambda ports: {**ports, key + SPARE: port})
             return port
-    raise PortTaken(tr("node.no_free_port"))
+    raise PortTaken(tr("node.no_free_port"), code="DPL-PORT-POOL", app=key, pool=f"{pool[0]}-{pool[1]}")
 
 
 def commit_spare(state: State, key: str) -> None:

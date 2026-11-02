@@ -869,3 +869,28 @@ async def container_file_mkdir(
     except Exception as exc:
         return toast(getattr(exc, "detail", str(exc)), "err", status=400)
 
+
+@router.post("/nodes/{node_id}/containers/{cid}/files/rename")
+async def container_file_rename(
+    request: Request,
+    node_id: int,
+    cid: str,
+    node: dict = Depends(node_or_404),
+    ep: str = Depends(ep_param),
+    panel: Panel = Depends(get_panel),
+    user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES_WRITE)),
+):
+    """Nowa nazwa pliku albo folderu w tym samym katalogu (węzeł sprawdza nazwę i nie nadpisuje istniejącego)."""
+    form = await request.form()
+    path, name = str(form.get("path") or "").strip(), str(form.get("name") or "").strip()
+    dir_path = str(form.get("dir_path") or "/").strip()
+    if not path or not name:
+        return toast(t("common.required_field"), "err", status=400)
+    try:
+        await _client(panel, node).post(_p(f"/api/containers/{cid}/files/rename", ep), json={"path": path, "name": name})
+    except RemoteError as exc:
+        return toast(str(exc.detail), "err", status=400)
+    except (httpx.HTTPError, LookupError) as exc:
+        return toast(str(exc) or type(exc).__name__, "err", status=502)
+    return redirect(request, files_url(node["id"], cid, dir_path, ep), t("containers.renamed", name=name))
+

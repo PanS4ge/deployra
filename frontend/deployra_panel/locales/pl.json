@@ -293,7 +293,11 @@
     "zero_downtime": "Bez przestojów",
     "host_port": "Port hosta",
     "host_port_auto": "automatycznie",
-    "host_port_hint": "Puste — wolny port z puli węzła"
+    "host_port_hint": "Puste — wolny port z puli węzła",
+    "other_containers": "Kontenery spoza aplikacji",
+    "other_containers_toggle": "Kontenery",
+    "no_other_containers": "Każdy kontener jest aplikacją",
+    "adopt_short": "Przejmij"
   },
   "auth": {
     "login": "Zaloguj",
@@ -550,7 +554,11 @@
     "upload_mode_folder": "Folder",
     "download_zip": "Pobierz folder (ZIP)",
     "exit_code": "kod {code}",
-    "upload_bad_name": "Nieprawidłowa nazwa pliku: {name}"
+    "upload_bad_name": "Nieprawidłowa nazwa pliku: {name}",
+    "drop_here": "Upuść pliki albo foldery",
+    "uploading": "Wgrywanie",
+    "rename": "Zmień nazwę",
+    "renamed": "Zmieniono nazwę na {name}"
   },
   "dashboard": {
     "apps_error": "z błędem: {count}",
@@ -587,7 +595,9 @@
     "handover_kept": "Przełączenie nieudane — poprzednia wersja (port {port}) dalej obsługuje ruch",
     "handover_switch": "Przełączam bramkę na nową wersję (port {port})",
     "taking_over": "Kontener {name} nie jest jeszcze zarządzany przez Deployrę — przejmuję go (stary zostaje jako {backup})",
-    "takeover_blocked": "Nie da się przejąć kontenera {name}: {problem}"
+    "takeover_blocked": "Nie da się przejąć kontenera {name}: {problem}",
+    "system_container": "{name} to kontener Deployry — aktualizuje go aktualizator Deployry (Ustawienia → Aktualizacje), nie wdrożenie aplikacji",
+    "inplace": "{name} jest spoza Deployry — aktualizuję go w miejscu na {image} (te same porty, sieci i wolumeny)"
   },
   "dns": {
     "api_token": "Token API",
@@ -2090,7 +2100,8 @@
         "enable": "Włączono {name}",
         "restart_needed": "{name} wczyta się po restarcie serwera"
       }
-    }
+    },
+    "rename_needs_update": "Zmiana nazwy wymaga DeployraBridge 1.3 — zaktualizuj plugin w ustawieniach serwera."
   },
   "env": {
     "scope": {
@@ -2315,7 +2326,11 @@
     "new_branch_hint": "Świeży obraz tego samego tagu nie pomoże — zmień obraz albo wersję w ustawieniach aplikacji",
     "switching_image": "Poprawka jest dopiero w nowszej wersji — zmieniam obraz: {old} → {new}",
     "switch_reverted": "W ustawieniach aplikacji wraca poprzedni obraz ({image})",
-    "suggest_hint": "„Napraw” przejdzie na ten obraz — z testem HTTP i powrotem do starego przy błędzie"
+    "suggest_hint": "„Napraw” przejdzie na ten obraz — z testem HTTP i powrotem do starego przy błędzie",
+    "deployra_own": "To kontener Deployry — łata go nowe wydanie Deployry (Ustawienia → Aktualizacje)",
+    "update_deployra": "Aktualizuj Deployrę",
+    "rest_in_branch": "{fixed} — nowsza gałąź",
+    "rest_in_branch_hint": "Część podatności łata dopiero {fixed} (nowsza gałąź); świeży obraz da poprawki z obecnej gałęzi"
   },
   "appupd": {
     "bad_settings": "Nieprawidłowe ustawienia aktualizacji",
