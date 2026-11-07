@@ -67,6 +67,7 @@ class NonceCache:
     def __init__(self, window: int = WINDOW, max_size: int = 50_000) -> None:
         self.window = window
         self.max_size = max_size
+        self.started = time.time()  # nonce sprzed startu procesu są nieznane — takie podpisy odrzucamy
         self._seen: OrderedDict[str, float] = OrderedDict()
         self._lock = threading.Lock()
 
@@ -131,6 +132,8 @@ def verify(
     expected = hmac.new(secret, _canonical(method, path, ts, nonce, digest), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, sig):
         raise SignatureError(tr("srv.auth.bad_signature"))
+    if nonces is not None and ts + 2 < nonces.started:  # podpisane przed restartem: nonce przepadły, więc nie da się wykluczyć powtórki
+        raise SignatureError(tr("srv.auth.replay"))
     if nonces is not None and not nonces.check_and_add(nonce, now):
         raise SignatureError(tr("srv.auth.replay"))
     return key_id

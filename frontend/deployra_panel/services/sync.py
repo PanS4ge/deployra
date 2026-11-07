@@ -236,6 +236,38 @@ async def push_edge_routes(panel: Any) -> None:
         pass
 
 
+async def set_node_lan(panel: Any, node: dict, subnets: list[str]) -> dict:
+    """Podsieci za węzłem — w trzech miejscach naraz: hub (AllowedIPs peera), sam węzeł (NAT na żywo) i bramka brzegowa
+    (trasy przez hub). Zwraca {"node": True/False} — False, gdy węzeł (starsza wersja) nie przyjął zmiany."""
+    values = _check_subnets(list(subnets))
+    client = panel.hub_client()
+    if node["transport"] != "tunnel" or not client or not node.get("peer_id"):
+        raise LookupError(t("msg.lan_tunnel_only"))
+    await client.request("PATCH", f"/api/peers/{node['peer_id']}", json={"lan_subnets": values})
+    panel.db.update("nodes", node["id"], lan_subnets=values)
+    await push_edge_routes(panel)
+    try:
+        result = await panel.node_client(node).put("/api/wg/lan", json={"lan_subnets": values})
+        return {"node": bool(result.get("ok")), "applied": bool(result.get("applied"))}
+    except (RemoteError, httpx.HTTPError):
+        return {"node": False, "applied": False}
+
+
+def subnet_for(panel: Any, node: dict, host: str) -> str | None:
+    """Podsieć /24 do dopisania węzłowi dla adresu „za węzłem”; None, gdy niepotrzebna (nazwa hosta, adres publiczny,
+    sieć tunelu albo podsieć już jest)."""
+    try:
+        address = ipaddress.ip_address(str(host).strip("[]"))
+    except ValueError:
+        return None
+    if address.version != 4 or not address.is_private or address.is_loopback:
+        return None
+    for net in [*(node.get("lan_subnets") or []), (panel.gateway() or {}).get("subnet") or "10.66.0.0/24"]:
+        if address in ipaddress.ip_network(net, strict=False):
+            return None
+    return str(ipaddress.ip_network(f"{address}/24", strict=False))
+
+
 # --- węzły -------------------------------------------------------------------------------
 
 

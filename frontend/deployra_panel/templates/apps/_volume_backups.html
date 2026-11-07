@@ -1,0 +1,31 @@
+<div class="card-head"><h3><i class="bi bi-hdd-stack"></i> {{ t("vbackup.title") }}</h3><span class="spacer"></span>
+  {% if sched %}
+    {% if sched.last_status == "ok" %}<span class="badge ok">{{ sched.last_run_at | ago }}</span>
+    {% elif sched.last_status == "error" %}<span class="badge err" title="{{ sched.last_error }}">{{ t("vbackup.failed") }}</span>{% endif %}
+    <button class="btn sm ghost" hx-post="/apps/{{ app.id }}/volume-backups/run" hx-swap="none"><i class="bi bi-play"></i> {{ t("vbackup.run") }}</button>
+  {% endif %}
+</div>
+<form class="card-body form-grid" hx-post="/apps/{{ app.id }}/volume-backups" hx-swap="none">
+  <div class="field"><label>{{ t("vbackup.cron") }}</label><input class="input mono" name="cron" value="{{ sched.cron if sched else '0 3 * * *' }}" required></div>
+  <div class="field"><label>{{ t("vbackup.retention") }}</label><input class="input" name="retention" type="number" min="1" max="365" value="{{ sched.retention if sched else 7 }}"></div>
+  <label class="check"><input type="checkbox" name="stop_app" value="1" {{ "checked" if sched and sched.stop_app }}><span class="sw"></span><span>{{ t("vbackup.stop_app") }}</span></label>
+  <label class="check"><input type="checkbox" name="enabled" value="1" {{ "checked" if not sched or sched.enabled }}><span class="sw"></span><span>{{ t("vbackup.enabled") }}</span></label>
+  <div class="field full row" style="justify-content: flex-end"><button class="btn primary"><i class="bi bi-check2"></i> {{ t("common.save") }}</button></div>
+</form>
+{% if error %}<div class="card-body"><div class="callout err small"><i class="bi bi-cloud-slash"></i><div>{{ error }}</div></div></div>{% endif %}
+{% if items %}
+<div class="table-wrap">
+  <table class="table">
+    <tbody>
+    {% for b in items %}
+      <tr>
+        <td class="mono small">{{ b.stamp[:4] }}-{{ b.stamp[4:6] }}-{{ b.stamp[6:8] }} {{ b.stamp[9:11] }}:{{ b.stamp[11:13] }}</td>
+        <td class="small muted">{{ b.size | bytes }}</td>
+        <td class="actions"><button class="btn sm ghost" hx-post="/apps/{{ app.id }}/volume-backups/restore" hx-vals='{"name": "{{ b.name }}"}' hx-swap="none"
+              hx-confirm="{{ t('vbackup.restore_confirm', name=app.name) }}" data-danger><i class="bi bi-arrow-counterclockwise"></i> {{ t("vbackup.restore") }}</button></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% elif sched %}<div class="card-body small muted">{{ t("vbackup.none_yet") }}</div>{% endif %}

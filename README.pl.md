@@ -60,6 +60,7 @@ Który plik z `deploy/` do czego służy, opisuje [deploy/README.md](deploy/READ
 git clone https://github.com/PanS4ge/deployra.git && cd deployra
 DEPLOYRA_PUBLIC_HOST=vps.example.com docker compose -f deploy/vps.compose.yml up -d
 docker logs deployra-wg | grep "Kod synchronizacji"   # z DEPLOYRA_LANG=en: "Sync code"
+docker logs deployra-panel 2>&1 | grep "Kod konfiguracji"   # kod do pierwszej konfiguracji panelu (/setup)
 ```
 
 Otwórz panel (np. przez `ssh -L 8080:127.0.0.1:8080 vps`), przejdź konfigurację, a potem w **Tunel** wpisz adres `127.0.0.1:51821`, kod
@@ -215,13 +216,64 @@ zamiast **Napraw** przycisk **Aktualizuj Deployrę** — łata je nowe wydanie. 
 Ograniczenia: pakiety systemowe obrazu (apt/apk, np. OpenSSL) nie są skanowane, a oprogramowanie bez zmiennej z wersją i bez znanego
 tagu nie zostanie rozpoznane.
 
-## Logowanie Deployra przed aplikacją
+## Listy dostępu i logowanie przed aplikacją
 
-Lista dostępu z opcją **Wymagaj logowania Deployra** chroni dowolną aplikację kontem z panelu (forward auth przez nginx
-`auth_request`), także aplikację bez własnego logowania. Można zawęzić dostęp do wybranych użytkowników. Po zalogowaniu panel
-przekierowuje z powrotem jednorazowym tokenem, a aplikacja dostaje własne ciasteczko (działa też na domenach innych niż panel)
-i nagłówek `X-Deployra-User` z e-mailem. Wymaga HTTPS na hoście i ustawionej domeny panelu; z hasłami Basic Auth łączy się tylko
-w trybie „wystarczy jeden warunek”.
+Lista dostępu ma trzy tryby logowania (do tego reguły IP allow/deny i „wystarczy jeden warunek”):
+
+| Tryb | Jak wygląda | Zabezpieczenia |
+|---|---|---|
+| **Bez logowania** | tylko reguły IP | — |
+| **Logowanie Deployra** | własna strona logowania na hoście aplikacji (`/__deployra_auth/login`) | konta listy i/lub konta panelu, opcjonalne 2FA (TOTP), limity prób, blokada konta, ban IP na bramce, sesje do odwołania |
+| **Okienko przeglądarki** | klasyczne okno Basic Auth z nginx | tylko hasło (bez 2FA i limitów) |
+
+**Konta listy** zakłada się w edycji listy: login + hasło (przycisk generuje mocne), opcjonalnie 2FA — panel pokazuje sekret
+i adres `otpauth://` raz, do przekazania osobie. Te same konta działają w obu trybach (hasło trzymane jako scrypt i apr1).
+
+Logowanie Deployra działa w całości na hoście aplikacji, więc nie wymaga publicznej domeny panelu i przechodzi przez dowolny
+łańcuch (internet → bramka brzegowa → hub → węzeł → serwer WireGuard). Bramka przekazuje `/__deployra_auth/…` do panelu przez
+tunel z tokenem bramki — bez niego panel odrzuca żądania, więc hasła da się zgadywać tylko przez bramkę, z jej limitami:
+- rosnące opóźnienie po 5 błędach na konto, blokada konta na 15 min po 10 (alert „Konto listy dostępu zablokowane”),
+- 20 błędów na godzinę z jednego adresu = ban na bramce na godzinę,
+- ciasteczko `__Host-dpl_fs` (HttpOnly, Secure, tylko ten host), w bazie tylko skrót tokenu sesji; wyłączenie konta, zmiana
+  hasła albo trybu kończy sesje od razu; „Wyloguj wszystkich” w edycji listy,
+- strona logowania bez JavaScriptu, ze ścisłym CSP, tokenem CSRF i sprawdzaniem `Origin`.
+
+Aplikacja dostaje nagłówek `X-Deployra-User` (login konta albo e-mail konta panelu); od klienta ten nagłówek jest zawsze czyszczony.
+Opcja **Konta panelu też mogą wchodzić** (z zawężeniem do wybranych) zostawia logowanie kontem panelu — wtedy potrzebna jest domena
+panelu. Starsze listy z hasłami Basic przechodzą na konta same przy starcie panelu.
+
+## Proxy przez węzeł (łańcuch)
+
+Host proxy może celować w **adres za węzłem** (np. usługę `10.8.0.2:3923` w sieci serwera WireGuard działającego na węźle):
+internet → bramka brzegowa → hub → węzeł → serwer WG. Przy zapisie hosta z opcją **Przez węzeł** panel sam dopisuje podsieć adresu
+(domyślnie /24) w trzech miejscach: hub (AllowedIPs peera), węzeł (NAT na żywo, bez restartu tunelu) i bramka brzegowa (trasy).
+NAT na węźle nie zakłada interfejsu wyjściowego, więc działa też dla sieci za `wg0` serwera WG albo mostem Dockera.
+
+**Test trasy** w formularzu hosta sprawdza każdy odcinek osobno: panel → węzeł (API), węzeł → cel (TCP, z interfejsem, którym idzie
+ruch), bramka → cel (HTTP jak nginx) — i podpowiada, co poprawić. **Konfiguracja na bramkach** pokazuje, co nginx każdej bramki ma
+na dysku dla tego hosta, a zapis hosta mówi, która bramka nie przyjęła konfiguracji.
+
+## WebSSH i terminal
+
+**Terminal kontenera** jest w nagłówku aplikacji (bez chodzenia przez Pliki). Działa przez Cloudflare i nginx bez zrywania (ping co
+25 s), łączy się sam po przerwie, ma kopiuj/wklej (Ctrl+Shift+C/V, prawy przycisk), rozmiar czcionki, wybór użytkownika i katalogu.
+Na węźle terminal nie zajmuje wątku z puli, więc kilka terminali naraz nie przytyka węzła.
+
+**WebSSH** (przycisk w nagłówku węzła; wyszarzony bez danych SSH) — powłoka na samym serwerze węzła. W Ustawieniach węzła → SSH:
+adres (domyślnie adres w tunelu), login i hasło albo klucz prywatny (zaszyfrowane, nigdy nie wracają do przeglądarki). Panel łączy się
+po SSH bezpośrednio, więc szyfrowanie jest od końca do końca także dla węzłów bez tunelu. Klucz hosta: najpierw **Sprawdź klucz
+hosta** i akceptacja odcisku (porównaj z `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`); klucz jest sprawdzany przed wysłaniem
+hasła, a jego zmiana przerywa połączenie. Otwarcie powłoki wymaga uprawnienia **WebSSH** i ponownego potwierdzenia hasłem (i 2FA)
+co 15 min; sesja zamyka się po 30 min bezczynności; start i koniec trafiają do dziennika.
+
+## Kopie wolumenów
+
+W aplikacji karta **Kopie wolumenów**: harmonogram (cron), ile kopii trzymać, opcjonalne zatrzymanie aplikacji na czas kopii.
+Węzeł pakuje wolumeny, pliki strony i stack (jak przy przenoszeniu), panel szyfruje paczkę (AES-256-GCM w kawałkach, klucz z
+`secret.key` panelu — obcięcie albo zmiana pliku wychodzą przy odczycie) i wysyła do magazynu kopii (Ustawienia → Kopia: S3/R2,
+SFTP, FTP, dysk). **Przywróć** zatrzymuje aplikację, wgrywa dane i ją uruchamia. Bez `secret.key` kopii nie da się odczytać —
+trzymaj go osobno. Stan panelu można kopiować automatycznie co 6/12/24 h (Ustawienia → Kopia). Nieudane kopie, zadania cykliczne,
+wygasające certyfikaty i niedostępne bramki mają własne alerty.
 
 ## HTTP/3
 
@@ -408,8 +460,22 @@ działa z uprawnieniami panelu. Dokumentacja i przykład: [docs/plugins.pl.md](d
   nie da się podmienić kluczy bez kodu. Stare DH na liczbach pierwszych < 100 z XOR-em jest usunięte.
 - Każde żądanie panel → bramka/węzeł jest podpisane HMAC-SHA256 (znacznik czasu ±60 s, nonce przeciw powtórkom); ruch idzie tunelem WG.
 - API węzła i bramki słucha tylko na adresie w tunelu; pula portów aplikacji jest dostępna wyłącznie z `wg0` (reguła `DOCKER-USER`).
-- Hasła: scrypt z solą. Sesje: ciasteczko httponly + token CSRF. Sekrety (tokeny Cloudflare, klucze) zaszyfrowane AES-GCM w bazie.
-- Terminal, surowy nginx, tunel i usuwanie są osobnymi (ryzykownymi) uprawnieniami.
+- Hasła: scrypt (N=2^17, starsze hashe przeliczane przy logowaniu). Sesje: ciasteczko httponly + token CSRF, nowa sesja przy
+  każdym logowaniu, lista aktywnych sesji z wylogowaniem w **Moim koncie**. Sekrety zaszyfrowane AES-GCM w bazie.
+- **2FA** (TOTP + 10 kodów zapasowych) w **Moim koncie**; administrator może wymagać 2FA od wszystkich (Ustawienia → Użytkownicy).
+- Limity logowania trwałe w bazie: 10 błędów na 15 min z adresu, rosnące opóźnienie dla konta (bez blokady, którą mógłby wywołać obcy);
+  prawdziwy adres klienta także za bramką brzegową (adresy tunelowe bramek są zaufanymi pośrednikami).
+- **Pierwsza konfiguracja** (`/setup`) wymaga kodu z logów panelu — obcy nie założy administratora na świeżej instalacji ani po resecie.
+- Nagłówki: `X-Frame-Options`, CSP `frame-ancestors`, `nosniff`, `Referrer-Policy`, HSTS przy HTTPS.
+- **Dziennik zdarzeń** (Ustawienia → Dziennik): logowania (także nieudane), każda zmiana (metoda, ścieżka, status — bez treści
+  formularzy), WebSSH, terminal, logowania list dostępu; filtry i eksport CSV; alerty o logowaniu z nowego adresu i serii nieudanych.
+- Uprawnienia ryzykowne (nadaje tylko konto z „uprawnieniami ryzykownymi”): terminal, surowy nginx, tunel, usuwanie, edycja kont,
+  przeglądarka baz, **dostęp do hosta z kontenerów** (ścieżki systemowe, `docker.sock`, sieć hosta, `privileged`, `cap_add` — też
+  w compose) i **WebSSH**. Konta administratora nie zmieni nikt bez pełnego dostępu; zmiana własnego hasła wymaga obecnego.
+- Tokeny API działają tylko dla `/mcp`, mają datę ważności i nie dają więcej niż konto; nowy token jest pokazywany raz.
+- Ochrona przed SSRF: powiadomienia, monitory URL i zdalne bazy nie sięgną usług metadanych chmury (169.254.169.254 itd.).
+- Bramka ufa `X-Forwarded-Proto` tylko od zaufanych pośredników; podpis węzła sprzed restartu (nieznane nonce) jest odrzucany;
+  blokada parowania liczona per adres IP; token gita nie trafia na linię poleceń.
 
 ## Zużycie RAM
 

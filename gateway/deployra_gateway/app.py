@@ -373,6 +373,15 @@ def create_api_app(ctx: Context, *, start_scheduler: bool = True) -> FastAPI:
         result = ctx.apply_proxy(body)
         return {"ok": result.ok, "status": result.status, "message": result.message}
 
+    @router.get("/proxy/sites/{site_id}")
+    def site_conf(site_id: int, ctx: Context = Depends(get_ctx)) -> dict:
+        """Konfiguracja hosta, którą nginx tej bramki naprawdę ma na dysku (diagnoza bez SSH); None = hosta tu nie ma."""
+        try:
+            conf = (ctx.config.nginx_dir / "http" / f"site-{site_id}.conf").read_text(encoding="utf-8")
+        except OSError:
+            conf = None
+        return {"conf": conf, "last_apply": ctx.last_apply}
+
     @router.get("/certs")
     def list_certs(ctx: Context = Depends(get_ctx)) -> list[dict]:
         return certs_list(ctx)

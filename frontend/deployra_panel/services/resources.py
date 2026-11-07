@@ -166,7 +166,11 @@ async def loop(panel: Any) -> None:
         started = time.time()
         try:
             await tick(panel, tracker)
-            if time.time() - last_cleanup > 3600:
+            hourly = time.time() - last_cleanup > 3600
+            from . import watch
+
+            await watch.tick(panel, hourly)  # certyfikaty, bramki/tunel, automatyczna kopia panelu
+            if hourly:
                 await asyncio.to_thread(cleanup, panel)
                 last_cleanup = time.time()
         except Exception as exc:  # noqa: BLE001 — pętla zasobów nie może paść

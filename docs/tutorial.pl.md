@@ -80,7 +80,8 @@ Panel słucha tylko na `127.0.0.1:8080`, więc na początek wejdź przez tunel S
 ssh -L 8080:127.0.0.1:8080 root@vps.example.com
 ```
 
-Otwórz <http://localhost:8080>. Kreator konfiguracji poprosi o konto administratora (e-mail i hasło — to są dane logowania do panelu),
+Otwórz <http://localhost:8080>. Kreator konfiguracji poprosi najpierw o **kod konfiguracji** z logów panelu
+(`docker logs deployra-panel 2>&1 | grep "Kod konfiguracji"`), potem o konto administratora (e-mail i hasło — to są dane logowania do panelu),
 domenę bazową aplikacji (`example.com`) i domenę panelu (`deploy.example.com`).
 
 Potem **Tunel → Połącz z Deployra-WG**:
@@ -146,7 +147,8 @@ VPS potrzebuje wtedy tylko ~250 MB RAM, a panel, aplikacje i ich dane są u cieb
    DEPLOYRA_NAME=dom docker compose -f deploy/panel-node.compose.yml up -d --build
    ```
 
-3. Wejdź na `http://<adres-domowego-serwera>:8080`, załóż konto administratora, a w **Tunel → Połącz z Deployra-WG** wpisz
+3. Wejdź na `http://<adres-domowego-serwera>:8080`, wpisz kod konfiguracji (`docker logs deployra-panel 2>&1 | grep "Kod konfiguracji"`),
+   załóż konto administratora, a w **Tunel → Połącz z Deployra-WG** wpisz
    `vps.example.com:51821` i kod z kroku 1 (bez zaznaczania „ten sam serwer”). Węzeł **dom** pojawi się w **Węzłach** sam — panel
    paruje go automatycznie.
 4. Panel pod domeną: **Proxy → Nowy host** `deploy.example.com` → węzeł **dom**, port `8080`, HTTPS.

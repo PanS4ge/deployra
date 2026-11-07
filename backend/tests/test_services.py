@@ -89,7 +89,7 @@ def test_wg_spoke_config_with_lan_routing():
     assert "PostUp = sysctl -w net.ipv4.ip_forward=1 || true" in text
     assert "PostUp = iptables -A FORWARD -i %i -j ACCEPT" in text and "PostUp = iptables -A FORWARD -o %i -j ACCEPT" in text
     assert "AllowedIPs = 10.66.0.0/24" in text and "PersistentKeepalive = 25" in text
-    assert "iptables -t nat -A POSTROUTING -s 10.66.0.0/24 -d 192.168.1.0/24 -o eth0 -j MASQUERADE" in text
+    assert "iptables -t nat -A POSTROUTING -s 10.66.0.0/24 -d 192.168.1.0/24 -j MASQUERADE" in text  # bez -o: działa też za wg0 / mostem
     assert "0.0.0.0/0" not in text
 
 

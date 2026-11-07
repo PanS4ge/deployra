@@ -128,6 +128,7 @@
       "no_previous": "brak poprzedniej wersji do przywrócenia",
       "old_build_removed": "Usunięto stary build {tags}",
       "other_endpoint": "aplikacja działa na innym endpoincie — usuń ją i wdróż ponownie, żeby przenieść",
+      "port_from_container": "Port w kontenerze biorę z działającej wersji: {port} (w ustawieniach było {configured})",
       "removed": "Aplikacja {slug} usunięta",
       "restoring": "Przywracam poprzednią wersję {image}",
       "running": "✔ Kontener działa",
@@ -322,6 +323,15 @@
       "no_container": "Nie ma kontenera {name}",
       "done": "✔ {name} działa na {image}",
       "same_image": "✔ {name} już działa na {image} (obraz bez zmian)"
+    },
+    "lan": {
+      "bad_subnet": "zła podsieć {subnet}: tylko IPv4, co najmniej /8, poza siecią tunelu",
+      "no_tunnel": "węzeł nie jest w tunelu Deployra-WG",
+      "applied": "Podsieci za węzłem: {subnets}"
+    },
+    "probe": {
+      "ip_only": "podaj adres IP",
+      "not_private": "test trasy tylko do adresów prywatnych i podsieci węzła"
     }
   },
   "srv": {
@@ -398,6 +408,17 @@
       "single_line": "polecenia PostUp/PostDown muszą być jednoliniowe",
       "sync_failed": "wg syncconf nie powiodło się: {error}",
       "up_failed": "wg-quick up nie powiodło się: {error}"
+    },
+    "host": {
+      "path": "ścieżka hosta {path} daje dostęp do systemu węzła",
+      "network": "sieć „{network}” daje kontenerowi sieć węzła",
+      "shared_network": "sieć „{network}” współdzieli sieć z innym kontenerem",
+      "privileged": "{service}: tryb uprzywilejowany (privileged)",
+      "mode": "{service}: {key}: {value}",
+      "caps": "{service}: dodatkowe uprawnienia jądra ({caps})",
+      "devices": "{service}: urządzenia hosta (devices)",
+      "security_opt": "{service}: wyłączone zabezpieczenia (security_opt)",
+      "denied": "Kontener z dostępem do hosta wymaga uprawnienia „Dostęp do hosta z kontenerów”: {problems}"
     }
   }
 }

@@ -363,6 +363,12 @@ async def loop(panel: Any) -> None:
             await tick(panel)
         except Exception as exc:  # noqa: BLE001 — pętla harmonogramu nie może paść
             logger.error(f"Kopie baz: {type(exc).__name__}: {exc}")
+        try:
+            from . import volume_backups
+
+            await volume_backups.tick(panel)  # kopie wolumenów aplikacji — ten sam rytm co kopie baz
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"Kopie wolumenów: {type(exc).__name__}: {exc}")
         await asyncio.sleep(TICK - (time.time() % TICK) + 0.5)  # kolejne sprawdzenie na początku minuty
 
 

@@ -85,3 +85,48 @@ def test_wg_keys_match_rfc7748_vector():
     assert base64.b64decode(wg.pubkey(alice)) == expected
     priv, pub = wg.genkey()
     assert wg.pubkey(priv) == pub and wg.valid_key(pub) and wg.valid_key(wg.genpsk())
+
+
+def test_scrypt_rehash_and_strong_default(monkeypatch):
+    from deployra_common import passwords
+
+    old = passwords.hash_password("haslo-123")  # w testach N=2^14
+    monkeypatch.setattr(passwords, "_N", 2**17)
+    assert passwords.needs_rehash(old) and passwords.verify_password("haslo-123", old)
+    strong = passwords.hash_password("haslo-123")  # 2^17 wymaga maxmem > 32 MiB
+    assert strong.startswith("scrypt$131072$") and passwords.verify_password("haslo-123", strong)
+    assert not passwords.needs_rehash(strong) and not passwords.verify_password("zle", strong)
+    assert not passwords.verify_password("x", "scrypt$99999999$8$1$AAAA$AAAA")  # absurdalne parametry odrzucone
+
+
+def test_signature_from_before_restart_is_rejected():
+    import time
+
+    import pytest
+
+    from deployra_common import hmac_auth
+
+    secret, now = b"s" * 32, time.time()
+    old = hmac_auth.sign(secret, "GET", "/api/x", b"", key_id="k", ts=int(now) - 30)  # podpisane przed startem procesu
+    cache = hmac_auth.NonceCache()
+    with pytest.raises(hmac_auth.SignatureError):
+        hmac_auth.verify(secret, "GET", "/api/x", b"", old, nonces=cache, now=now)
+    fresh = hmac_auth.sign(secret, "GET", "/api/x", b"", key_id="k")
+    assert hmac_auth.verify(secret, "GET", "/api/x", b"", fresh, nonces=cache) == "k"
+
+
+def test_host_access_checks():
+    from deployra_common import hostaccess
+    from deployra_common.schemas import VolumeMount
+
+    assert hostaccess.host_path_problem("/") and hostaccess.host_path_problem("/var/run/docker.sock")
+    assert hostaccess.host_path_problem("/var") and hostaccess.host_path_problem("/etc/nginx")
+    assert hostaccess.host_path_problem("/etc/localtime", read_only=True) is None and hostaccess.host_path_problem("/etc/localtime")
+    assert hostaccess.host_path_problem("/srv/app") is None and hostaccess.host_path_problem("dane") is None
+    assert hostaccess.spec_problems([VolumeMount(source="/srv/x", target="/x")], "deployra") == []
+    assert hostaccess.spec_problems([], "host") and hostaccess.spec_problems([], "container:wg")
+    compose = "services:\n  a:\n    image: x\n    cap_add: [NET_ADMIN]\n    volumes: ['./d:/d', {type: bind, source: /root, target: /r}]\n" \
+              "volumes:\n  v:\n    driver_opts: {type: none, o: bind, device: /}\n"
+    problems = hostaccess.compose_problems(compose)
+    assert len(problems) == 3 and any("NET_ADMIN" in p for p in problems)
+    assert hostaccess.compose_problems("services:\n  web:\n    image: nginx\n    volumes: ['./html:/usr/share/nginx/html:ro']\n") == []

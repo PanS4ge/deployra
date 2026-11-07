@@ -2,6 +2,7 @@ import asyncio
 import html
 import json
 
+import httpx
 import pytest
 
 from deployra_common import pairing
@@ -122,3 +123,43 @@ def test_dns_points_at_edge(admin, hub):
                     public_host="203.0.113.9", api_url="http://10.66.0.7:2751")  # fmt: skip
     assert asyncio.run(dns.public_ip(panel)) == "203.0.113.9"
     assert json.dumps(panel.edge()["public_host"]) == '"203.0.113.9"'
+
+
+def test_push_reports_the_gateway_that_failed(admin, hub):
+    """Hub (pusty stan przy bramce brzegowej) przyjął, krawędź nie odpowiada — panel mówi, która bramka zawiodła."""
+    from deployra_panel.services import proxy_state
+
+    panel, fakes = hub
+    panel.db.insert("gateway", name="oracle", role="edge", status="paired", secret=panel.sealer.seal(b"e" * 32),
+                    public_host="203.0.113.9", api_url="http://10.66.0.7:2751")  # fmt: skip
+
+    async def offline(path, json=None, **_):
+        raise httpx.ConnectError("connection refused")
+
+    fakes["edge"].put = offline
+    result = asyncio.run(proxy_state.push(panel))
+    assert result["status"] == "pending" and not result["ok"]
+    assert "oracle: connection refused" in result["message"]
+    assert {g["gateway"]: g["status"] for g in result["gateways"]} == {"Deployra-WG": "applied", "oracle": "unreachable"}
+
+    async def rejected(path, json=None, **_):
+        return {"ok": False, "status": "rejected", "message": "nginx: [emerg] unknown directive"}
+
+    fakes["edge"].put = rejected
+    result = asyncio.run(proxy_state.push(panel))
+    assert result["status"] == "rejected" and result["message"].startswith("oracle: nginx")
+
+
+def test_gateway_conf_preview(admin, hub):
+    panel, fakes = hub
+    site_id = panel.db.insert("sites", kind="proxy", domains=["a.example.com"], enabled=1, ssl_forced=0, http2=0, hsts=0, hsts_subdomains=0,
+                              block_exploits=0, websockets=0, caching=0, trust_forwarded_proto=0)  # fmt: skip
+
+    async def get(path, **_):
+        fakes["hub"].calls.append(("GET", path))
+        return {"conf": "server { listen 80; }", "last_apply": {"ok": True, "status": "applied"}}
+
+    fakes["hub"].get = get
+    page = admin.get(f"/proxy/hosts/{site_id}/gateway-conf", headers={"HX-Request": "true"}).text
+    assert ("GET", f"/api/proxy/sites/{site_id}") in fakes["hub"].calls
+    assert "server { listen 80; }" in page and "Deployra-WG" in page

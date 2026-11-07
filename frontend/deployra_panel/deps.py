@@ -39,6 +39,17 @@ def require(*perms: Permission) -> Callable[..., dict[str, Any]]:
     return dependency
 
 
+def require_any(*perms: Permission) -> Callable[..., dict[str, Any]]:
+    """Wystarczy jedno z uprawnień (np. podgląd, który ma sens przy kilku różnych)."""
+
+    def dependency(user: dict = Depends(current_user)) -> dict[str, Any]:
+        if not any(has(user, perm) for perm in perms):
+            raise Forbidden()
+        return user
+
+    return dependency
+
+
 def node_or_404(node_id: int, panel: Panel = Depends(get_panel)) -> dict[str, Any]:
     node = panel.node(node_id)
     if not node:

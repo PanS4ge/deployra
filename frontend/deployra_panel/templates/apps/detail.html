@@ -11,6 +11,7 @@
 {% include "partials/app_badge.html" %}
 {% if spec.source.kind in ("image", "git", "runtime", "compose") %}
 {% if has(user, P.ALLOW_SEEKING_CONTAINER) %}<a class="btn ghost" href="/apps/{{ app.id }}/logs"><i class="bi bi-journal-text"></i> {{ t("apps.logs") }}</a>{% endif %}
+{% if has(user, P.ALLOW_CONTAINER_TERMINAL) and app.kind not in ("static", "compose") %}<a class="btn ghost" href="/apps/{{ app.id }}/terminal" hx-boost="false"><i class="bi bi-terminal"></i> Terminal</a>{% endif %}
 {% if has(user, P.ALLOW_CONTAINER_FILES) %}<a class="btn ghost" href="/apps/{{ app.id }}/files"><i class="bi bi-folder2-open"></i> {{ t("containers.files") }}</a>{% endif %}
 {% endif %}
 {% if has(user, P.ALLOW_DATABASES) %}<a class="btn ghost" href="/apps/{{ app.id }}/database"><i class="bi bi-database"></i> {{ t("db.app_button") }}</a>{% endif %}
@@ -120,12 +121,19 @@
   </div>
   {% endif %}
 
+  {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}
+  <div class="card" id="volume-backups" hx-get="/apps/{{ app.id }}/volume-backups" hx-trigger="load" hx-swap="innerHTML">
+    <div class="card-head"><h3><i class="bi bi-hdd-stack"></i> {{ t("vbackup.title") }}</h3></div>
+    <div class="card-body small muted">…</div>
+  </div>
+  {% endif %}
+
   {% if hook_url %}
   <div class="card">
     <div class="card-head"><h3><i class="bi bi-git"></i> Webhook (push → deploy)</h3></div>
     <div class="card-body stack small">
       <div class="field"><label>Payload URL</label>{{ copy_pill(hook_url) }}</div>
-      <div class="field"><label>Secret</label>{{ copy_pill(hook_secret) }}</div>
+      {% if hook_secret %}<div class="field"><label>Secret</label>{{ copy_pill(hook_secret) }}</div>{% endif %}
       <div class="dim">{{ t("apps.webhook_hint", branch=spec.source.git_branch) }}</div>
       {% if has(user, P.ALLOW_DEPLOYMENT_MODIFICATIONS) %}<button class="btn sm ghost" hx-post="/apps/{{ app.id }}/webhook/rotate" hx-swap="none" hx-confirm="{{ t('apps.rotate_confirm') }}"><i class="bi bi-arrow-repeat"></i> {{ t("apps.rotate") }}</button>{% endif %}
     </div>

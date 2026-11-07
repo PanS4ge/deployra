@@ -12,7 +12,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 
 from deployra_common.client import RemoteError
-from deployra_common.passwords import hash_password
+from deployra_common.passwords import hash_password, verify_password
 
 from ..context import Panel, get_panel
 from ..db import now
@@ -121,10 +121,21 @@ async def disable_tunnel(request: Request, panel: Panel = Depends(get_panel), us
 
 
 @router.get("/settings/users")
-def users_page(request: Request, panel: Panel = Depends(get_panel)):
+def users_page(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(current_user)):
     rows = panel.db.all("users")
+    request.state.require_2fa = bool(panel.db.setting("require_2fa"))
+    if not any(has(user, p) for p in USER_ADMIN):  # bez zarządzania kontami: tylko własne konto (zmiana hasła, imienia)
+        rows = [r for r in rows if r["id"] == user["id"]]
     return render(request, "settings/users.html", title=t("nav.users"), tab="users", users=rows, labels=LABELS, risky=RISKY,
                   parse=parse, grantable=grantable, groups=GROUPS)  # fmt: skip
+
+
+USER_ADMIN = (Permission.ALLOW_CREATING_USERS_SETTING, Permission.ALLOW_MODIFYING_USERS, Permission.ALLOW_DELETING_USERS)
+
+
+def _admin_account(row: dict) -> bool:
+    """Pierwsze konto albo konto z pełnym dostępem."""
+    return bool(row.get("undeletable")) or Permission.FULL_ACCESS in parse(row.get("permissions"))
 
 
 @router.post("/settings/users/save")
@@ -136,6 +147,9 @@ async def save_user(request: Request, panel: Panel = Depends(get_panel), user: d
         raise HTTPException(404, t("msg.no_user"))
     if target and target["id"] != user["id"] and not has(user, Permission.ALLOW_MODIFYING_USERS):
         return toast(t("msg.no_perm_edit_users"), "err", status=403)
+    if target and target["id"] != user["id"] and _admin_account(target) and not has(user, Permission.FULL_ACCESS):
+        # hasło / e-mail administratora = przejęcie pełnego dostępu
+        return toast(t("msg.no_perm_edit_admin"), "err", status=403)
     if not target and not has(user, Permission.ALLOW_CREATING_USERS_SETTING):
         return toast(t("msg.no_perm_create_users"), "err", status=403)
     email = str(form.get("email") or "").strip().lower()
@@ -149,6 +163,10 @@ async def save_user(request: Request, panel: Panel = Depends(get_panel), user: d
         return toast(t("msg.password_short"), "err", status=400)
     if password and len(password) < 8:
         return toast(t("msg.password_short"), "err", status=400)
+    if target and target["id"] == user["id"] and (password or email != target["email"]):
+        current = str(form.get("current_password") or "")  # sesja na cudzym komputerze nie wystarczy do zmiany danych logowania
+        if not await run_in_threadpool(verify_password, current, target["password_hash"]):
+            return toast(t("msg.bad_current_password"), "err", status=403)
     # uprawnienia: można nadać tylko te, które samemu się ma (ryzykowne — tylko z ALLOW_RISKY_PERMISSIONS)
     requested = {p for p in Permission if form.get(f"perm_{p.name}")}
     current = parse(target["permissions"]) if target else set()
@@ -177,9 +195,31 @@ async def save_user(request: Request, panel: Panel = Depends(get_panel), user: d
         panel.db.update("users", target["id"], **values)
         if password and target["id"] != user["id"]:
             panel.sessions.destroy_for_user(target["id"])  # zmiana hasła wylogowuje inne sesje tego konta
+        elif password:  # własne hasło: zostaje tylko ta sesja
+            panel.sessions.destroy_others(target["id"], user.get("sid"))
     else:
         panel.db.insert("users", undeletable=0, created_at=now(), **values)
     return redirect(request, "/settings/users", t("msg.user_saved"))
+
+
+@router.post("/settings/users/{user_id}/2fa/reset")
+def reset_user_2fa(request: Request, user_id: int, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.FULL_ACCESS))):
+    """Zgubiony telefon: pełny dostęp wyłącza 2FA innego konta (i kończy jego sesje)."""
+    target = panel.db.get("users", user_id)
+    if not target:
+        raise HTTPException(404, t("msg.no_user"))
+    panel.db.update("users", user_id, totp_secret=None, totp_step=None, backup_codes=None)
+    panel.sessions.destroy_for_user(user_id)
+    return redirect(request, "/settings/users", t("account.2fa_reset", email=target["email"]))
+
+
+@router.post("/settings/users/require-2fa")
+def require_2fa(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_RISKY_SETTINGS))):
+    value = not bool(panel.db.setting("require_2fa"))
+    if value and not user.get("totp_secret"):
+        return toast(t("account.enable_yours_first"), "err", status=400)
+    panel.db.set_setting("require_2fa", value)
+    return redirect(request, "/settings/users", t("account.require_on") if value else t("account.require_off"))
 
 
 @router.post("/settings/users/{user_id}/delete")
@@ -274,6 +314,7 @@ async def save_backup_storage(request: Request, panel: Panel = Depends(get_panel
     curr = panel.db.setting("backup_config") or {}
     target = str(form.get("target") or "local")
     retention = int(form.get("retention") or 10)
+    auto_hours = max(0, min(int(form.get("auto_hours") or 0), 24 * 30))
     secrets_included = bool(form.get("secrets_included"))
 
     s3_secret = str(form.get("s3_secret_key") or "").strip()
@@ -284,6 +325,7 @@ async def save_backup_storage(request: Request, panel: Panel = Depends(get_panel
         **curr,
         "target": target,
         "retention": retention,
+        "auto_hours": auto_hours,
         "secrets_included": secrets_included,
         "local_path": str(form.get("local_path") or "./backups").strip(),
         "s3_endpoint": str(form.get("s3_endpoint") or "https://s3.amazonaws.com").strip(),
@@ -329,6 +371,10 @@ async def run_backup_now(panel: Panel = Depends(get_panel), user: dict = Depends
     from ..services import backup_storage
 
     res = backup_storage.run_backup(panel)
+    if not res.get("ok"):
+        from ..services import watch
+
+        await watch.backup_failed(panel, res.get("error") or "?")
     if res.get("ok"):
         return toast(f"Kopia zapasowa wykonana pomyślnie ({res.get('filename')})", "ok")
     return toast(f"Błąd kopii zapasowej: {res.get('error')}", "err", status=500)
@@ -364,6 +410,7 @@ async def import_backup(request: Request, file: UploadFile, panel: Panel = Depen
     except (ValueError, AssertionError):
         return toast(t("msg.not_backup"), "err", status=400)
     restored = 0
+    raw_nginx = has(user, Permission.ALLOW_PROXY_ADVANCED)  # surowy nginx z pliku kopii tylko dla tych, którzy mogą go pisać
     with panel.db.transaction():
         for row in data["tables"].get("settings", []):
             value = row["value"]
@@ -373,6 +420,8 @@ async def import_backup(request: Request, file: UploadFile, panel: Panel = Depen
         for table in ("access_lists", "certificates", "sites", "streams"):
             panel.db.execute(f"DELETE FROM {table}")
             for row in data["tables"].get(table, []):
+                if table == "sites" and not raw_nginx:
+                    row = {**row, "advanced": "", "locations": [{**loc, "advanced": ""} for loc in row.get("locations") or [] if isinstance(loc, dict)]}
                 panel.db.insert(table, **row)
                 restored += 1
     from ..services import proxy_state
@@ -468,36 +517,86 @@ def delete_env_group(request: Request, group_id: int, panel: Panel = Depends(get
 # --- Serwer MCP & Tokeny API ----------------------------------------------------------------------
 
 
+_FRESH_TOKENS: dict[str, tuple[str, float]] = {}  # sesja → (nowy token, do kiedy pokazać); token nie trafia do adresu
+
+
 @router.get("/settings/mcp")
-def mcp_page(request: Request, new_token: str = "", panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
+def mcp_page(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
+    import time
+
     from ..services import tokens
     from ..services.mcp_server import registry
 
-    token_list = tokens.list_tokens(panel)
+    fresh = _FRESH_TOKENS.pop(user.get("sid") or "", None)
+    new_token = fresh[0] if fresh and fresh[1] > time.time() else ""
+    everyone = has(user, Permission.FULL_ACCESS)  # pełny dostęp widzi i usuwa tokeny wszystkich kont
+    token_list = tokens.list_tokens(panel, None if everyone else user["id"])
     base_url = str(request.base_url).rstrip("/")
     tools = registry.list_tools(user)
     return render(
         request, "settings/mcp.html", title=t("settings.tab_mcp"), tab="mcp",
-        tokens=token_list, new_token=new_token, base_url=base_url, tools=tools,
+        tokens=token_list, new_token=new_token, base_url=base_url, tools=tools, now_ts=time.time(),
     )
 
 
 @router.post("/settings/mcp/tokens")
-async def create_mcp_token_route(request: Request, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
+async def create_mcp_token_route(request: Request, panel: Panel = Depends(get_panel),
+                                 user: dict = Depends(require(Permission.ALLOW_SETTINGS, Permission.ALLOW_MCP))):  # fmt: skip
+    import time
+
     from ..services import tokens
 
     form = await request.form()
     name = str(form.get("name") or "Agent AI").strip()[:60]
-    raw_token, _ = tokens.create_token(panel, name, user["id"])
-    return redirect(request, f"/settings/mcp?new_token={raw_token}", t("mcp.token_created"))
+    days = int(form.get("days") or 0) if str(form.get("days") or "0").isdigit() else 90
+    raw_token, _ = tokens.create_token(panel, name, user["id"], days=min(days, 3650) or None)
+    if user.get("sid"):
+        _FRESH_TOKENS[user["sid"]] = (raw_token, time.time() + 300)
+    return redirect(request, "/settings/mcp", t("mcp.token_created"))
 
 
 @router.post("/settings/mcp/tokens/{token_id}/delete")
 def delete_mcp_token_route(request: Request, token_id: int, panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_SETTINGS))):
     from ..services import tokens
 
-    tokens.delete_token(panel, token_id)
+    if not tokens.delete_token(panel, token_id, None if has(user, Permission.FULL_ACCESS) else user["id"]):
+        return toast(t("mcp.token_not_yours"), "err", status=404)
     return redirect(request, "/settings/mcp", t("mcp.token_deleted"))
+
+
+# --- dziennik zdarzeń ---------------------------------------------------------------------------------
+
+
+@router.get("/settings/audit")
+def audit_page(request: Request, email: str = "", action: str = "", q: str = "", days: int = 30, page: int = 1,
+               panel: Panel = Depends(get_panel), user: dict = Depends(require(Permission.ALLOW_RISKY_SETTINGS))):  # fmt: skip
+    from ..services import audit
+
+    days, page = max(1, min(days, 3650)), max(1, page)
+    rows = audit.listing(panel, email=email, action=action, query=q.strip()[:100], days=days, limit=101, offset=(page - 1) * 100)
+    return render(request, "settings/audit.html", title=t("audit.title"), tab="audit", rows=rows[:100], more=len(rows) > 100,
+                  page=page, f={"email": email, "action": action, "q": q, "days": days}, emails=audit.emails(panel),
+                  actions=audit.actions(panel), keep=int(panel.db.setting("audit_days") or audit.DEFAULT_DAYS))  # fmt: skip
+
+
+@router.get("/settings/audit.csv")
+def audit_csv(email: str = "", action: str = "", q: str = "", days: int = 30, panel: Panel = Depends(get_panel),
+              user: dict = Depends(require(Permission.ALLOW_RISKY_SETTINGS))):  # fmt: skip
+    from ..services import audit
+
+    rows = audit.listing(panel, email=email, action=action, query=q.strip()[:100], days=max(1, min(days, 3650)), limit=50_000)
+    return Response(audit.to_csv(rows), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="deployra-audit.csv"'})  # fmt: skip
+
+
+@router.post("/settings/audit/retention")
+def audit_retention(request: Request, days: int = Form(90), panel: Panel = Depends(get_panel),
+                    user: dict = Depends(require(Permission.ALLOW_RISKY_SETTINGS))):  # fmt: skip
+    from ..services import audit
+
+    panel.db.set_setting("audit_days", max(7, min(days, 3650)))
+    audit.cleanup(panel)
+    return redirect(request, "/settings/audit", t("audit.retention_saved"))
 
 
 # --- strefa ryzyka ---------------------------------------------------------------------------------

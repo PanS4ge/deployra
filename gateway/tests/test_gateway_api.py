@@ -94,6 +94,9 @@ def test_full_sync_join_and_proxy_flow(ctx):
     result = _signed(api, secret, "PUT", "/api/proxy", proxy).json()
     assert result["status"] == "written"
     assert "proxy_pass http://10.66.0.3:20001;" in (ctx.config.nginx_dir / "http" / "site-1.conf").read_text()
+    shown = _signed(api, secret, "GET", "/api/proxy/sites/1").json()  # podgląd dla panelu: to, co jest na dysku
+    assert "proxy_pass http://10.66.0.3:20001;" in shown["conf"] and shown["last_apply"]["status"] == "written"
+    assert _signed(api, secret, "GET", "/api/proxy/sites/99").json()["conf"] is None
     bad = {"sites": [{"id": 1, "domains": ["x.com;evil"], "upstream": {"host": "10.66.0.3", "port": 1}}]}
     assert _signed(api, secret, "PUT", "/api/proxy", bad).status_code == 422
 

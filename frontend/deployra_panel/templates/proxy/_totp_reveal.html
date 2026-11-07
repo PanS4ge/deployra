@@ -1,0 +1,12 @@
+{% from "_macros.html" import copy_pill %}
+<div class="card-body">
+  <div class="callout ok">
+    <i class="bi bi-shield-lock-fill" style="font-size: 1.4rem"></i>
+    <div class="stack" style="gap: 6px; flex: 1; min-width: 0">
+      <b>{{ t("access.totp_ready", name=username) }}</b>
+      <div class="small muted">{{ t("access.totp_ready_hint") }}</div>
+      <div class="field"><label>{{ t("access.totp_secret") }}</label>{{ copy_pill(secret) }}</div>
+      <div class="field"><label>otpauth://</label>{{ copy_pill(uri) }}</div>
+    </div>
+  </div>
+</div>

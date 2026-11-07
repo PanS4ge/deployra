@@ -13,7 +13,7 @@ from ..deps import current_user, require
 from ..i18n import t
 from ..permissions import Permission
 from ..services import databases
-from ..web import redirect, render, toast
+from ..web import redirect, render, safe_next, toast
 
 router = APIRouter(dependencies=[Depends(current_user)])
 VIEW = Depends(require(Permission.ALLOW_DATABASES))
@@ -57,8 +57,7 @@ async def _values(panel: Panel, form: Any, existing: dict | None = None) -> dict
 
 
 def _next(form: Any, fallback: str) -> str:
-    target = str(form.get("next") or "")
-    return target if target.startswith("/") and not target.startswith("//") else fallback
+    return safe_next(str(form.get("next") or ""), fallback)
 
 
 @router.post("/databases/connections")

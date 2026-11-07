@@ -44,7 +44,17 @@ RULES: dict[str, Rule] = {
     "app_moved": Rule("event", level="info"),
     "update_available": Rule("event", level="info"),
     "vulnerability": Rule("event", level="err"),  # próg wagi — w ustawieniach skanowania podatności
-    "app_update": Rule("event", level="info"),  # nowa wersja obrazu aplikacji / aktualizacja automatyczna
+    "app_update": Rule("event", level="info"),
+    "access_account_locked": Rule("event", level="warn"),  # konto listy dostępu zablokowane po serii złych haseł
+    "login_new_ip": Rule("event", level="warn"),  # logowanie do panelu z adresu, z którego konto jeszcze się nie logowało
+    "login_failed_spike": Rule("event", level="err"),  # seria nieudanych logowań do panelu
+    "cert_expiring": Rule("event", 14, unit=" dni", level="warn"),  # próg = dni do wygaśnięcia (services/watch.py)
+    "cert_renew_failed": Rule("event", level="err"),
+    "task_failed": Rule("event", level="err"),  # zadanie cykliczne zakończone błędem / limitem czasu
+    "panel_backup_failed": Rule("event", level="err"),
+    "gateway_offline": Rule("event", level="err"),  # API bramki nie odpowiada
+    "tunnel_peer_offline": Rule("event", level="err"),  # bramka brzegowa bez handshake'u z hubem
+    "volume_backup_failed": Rule("event", level="err"),  # nowa wersja obrazu aplikacji / aktualizacja automatyczna
 }
 
 

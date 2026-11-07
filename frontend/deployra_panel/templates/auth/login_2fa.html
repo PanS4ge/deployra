@@ -1,0 +1,16 @@
+{% extends "auth_base.html" %}
+{% block content %}
+<div class="card glow">
+  <div class="card-body">
+    <form class="stack" hx-post="/login/2fa" hx-swap="none">
+      <input type="hidden" name="next" value="{{ next }}">
+      <div class="field">
+        <label for="code">{{ t("account.code") }}</label>
+        <input class="input mono" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus style="letter-spacing: .2em; text-align: center; font-size: 1.2rem">
+      </div>
+      <button class="btn primary" type="submit"><span class="spin"></span><i class="bi bi-shield-check"></i> {{ t("fwd.verify") }}</button>
+      <a class="small muted" href="/login" style="text-align: center">{{ t("fwd.back") }}</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

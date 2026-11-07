@@ -65,6 +65,9 @@ async def issue(panel: Any, job: Job, cert_id: int) -> dict:
         snapshot = await relay.start_and_follow(client, "/api/certs/issue", request.model_dump(mode="json"), job, "  ")
     except JobFailed as exc:
         panel.db.update("certificates", cert_id, status="error", error=str(exc))
+        from . import watch
+
+        await watch.cert_failed(panel, cert, str(exc))
         raise
     info = snapshot.get("result") or {}
     panel.db.update("certificates", cert_id, status="valid", expires_at=info.get("not_after"), error=None)

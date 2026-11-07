@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block crumbs %}<div class="crumbs"><a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% endblock %}
+{% block heading %}WebSSH · {{ node.name }}{% endblock %}
+{% block content %}
+<form class="card" style="max-width: 440px" hx-post="/nodes/{{ node.id }}/ssh/reauth" hx-swap="none">
+  <div class="card-head"><h3><i class="bi bi-shield-lock"></i> {{ t("ssh.reauth_title") }}</h3></div>
+  <div class="card-body stack">
+    <div class="field"><label>{{ t("common.password") }}</label><input class="input" name="password" type="password" autocomplete="current-password" required autofocus></div>
+    {% if user.totp_secret %}<div class="field"><label>{{ t("account.code") }}</label><input class="input mono" name="code" inputmode="numeric" autocomplete="one-time-code" required></div>{% endif %}
+    <button class="btn primary"><span class="spin"></span><i class="bi bi-terminal"></i> {{ t("ssh.open") }}</button>
+  </div>
+</form>
+{% endblock %}

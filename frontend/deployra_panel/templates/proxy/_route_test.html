@@ -1,0 +1,14 @@
+<div class="table-wrap">
+  <table class="table">
+    <tbody>
+    {% for h in hops %}
+      <tr>
+        <td style="width: 36px">{% if h.ok %}<i class="bi bi-check-circle-fill" style="color: var(--ok)"></i>{% else %}<i class="bi bi-x-circle-fill" style="color: var(--err)"></i>{% endif %}</td>
+        <td><b>{{ h.name }}</b>{% if h.detail %}<div class="small muted mono">{{ h.detail }}</div>{% endif %}{% if h.hint %}<div class="small">{{ h.hint }}</div>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td class="muted">{{ t("route.nothing") }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>

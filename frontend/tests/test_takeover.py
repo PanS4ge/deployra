@@ -76,6 +76,35 @@ def test_registered_app_takes_over_its_container(app, monkeypatch):
     assert stored.volumes[0].target == "/var/www/html" and stored.refresh_image is False  # uzupełniona specyfikacja zostaje
 
 
+def test_takeover_uses_the_real_container_port(app, monkeypatch):
+    """Po skrypcie rejestracji ustawienia mówią 20000, a kontener ma 8080 → 80: przejęcie bierze 80."""
+    panel, app_id = app
+    stored, options = deploy.load(panel, panel.db.get("apps", app_id))
+    panel.db.update("apps", app_id, spec=deploy.store(panel, stored.model_copy(update={"container_port": 20000}), options))
+    node = Node([{"name": "errpage", "id": "c0ffee", "app": None, "stack": None, "system": None, "ports": [{"container": 80, "host": 8080}]}])
+    sent, _ = run(panel, app_id, node, monkeypatch, refresh=False)
+    assert sent[0][1]["spec"]["container_port"] == 80
+    assert deploy.load(panel, panel.db.get("apps", app_id))[0].container_port == 80
+
+
+def test_port_corrected_by_the_node_is_saved(app, monkeypatch):
+    panel, app_id = app
+    stored, options = deploy.load(panel, panel.db.get("apps", app_id))
+    panel.db.update("apps", app_id, spec=deploy.store(panel, stored.model_copy(update={"container_port": 20000}), options))
+    node = Node([{"name": "app-errpage", "app": "errpage", "stack": None, "system": None, "ports": [{"container": 80, "host": 8080}]}])
+
+    async def follow(client, path, body, job, prefix=""):
+        return {"result": {"host_port": 8080, "container_port": 80}}
+
+    monkeypatch.setattr(panel, "node_client", lambda n: node)
+    monkeypatch.setattr(deploy.relay, "start_and_follow", follow)
+    try:
+        asyncio.run(deploy.run(panel, Job(), app_id, refresh=True, verify=True))
+    except Exception:  # noqa: BLE001 — bramka i DNS w tym teście nie istnieją; liczy się zapisany port
+        pass
+    assert deploy.load(panel, panel.db.get("apps", app_id))[0].container_port == 80
+
+
 def test_managed_app_deploys_normally(app, monkeypatch):
     panel, app_id = app
     node = Node([{"name": "app-errpage", "app": "errpage", "stack": None, "system": None, "ports": [{"container": 80, "host": 8080}]}])

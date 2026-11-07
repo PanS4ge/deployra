@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block heading %}{{ t("account.title") }}{% endblock %}
+{% block content %}
+{% if forced and not has_2fa %}
+<div class="callout warn"><i class="bi bi-shield-exclamation"></i><div>{{ t("account.forced") }}</div></div>
+{% endif %}
+<div class="grid grid-2">
+  <form class="card" hx-post="/account/password" hx-swap="none">
+    <div class="card-head"><h3><i class="bi bi-key"></i> {{ t("account.password") }}</h3></div>
+    <div class="card-body stack">
+      <div class="field"><label>{{ t("users.current_password") }}</label><input class="input" name="current" type="password" autocomplete="current-password" required></div>
+      <div class="field"><label>{{ t("common.password") }}</label><input class="input" name="password" type="password" minlength="8" autocomplete="new-password" required></div>
+      <div class="field"><label>{{ t("common.password_repeat") }}</label><input class="input" name="password_repeat" type="password" minlength="8" autocomplete="new-password" required></div>
+      <div class="row" style="justify-content: flex-end"><button class="btn primary"><span class="spin"></span><i class="bi bi-check2"></i> {{ t("common.save") }}</button></div>
+    </div>
+  </form>
+
+  <div class="card">
+    <div class="card-head"><h3><i class="bi bi-shield-lock"></i> {{ t("account.2fa") }}</h3><span class="spacer"></span>
+      {% if has_2fa %}<span class="badge ok"><i class="bi bi-shield-check"></i> {{ t("account.2fa_on") }}</span>{% else %}<span class="badge warn">{{ t("account.2fa_off") }}</span>{% endif %}</div>
+    <div class="card-body stack" id="twofa">
+      {% if has_2fa %}
+        <div class="small muted">{{ t("account.backup_left", count=backup_left) }}</div>
+        <form class="row" style="gap: 8px; flex-wrap: wrap" hx-post="/account/2fa/backup" hx-target="#twofa-out" hx-swap="innerHTML">
+          <input class="input mono" name="code" style="max-width: 180px" inputmode="numeric" autocomplete="one-time-code" placeholder="{{ t('account.code_ph') }}" required>
+          <button class="btn sm ghost"><i class="bi bi-arrow-repeat"></i> {{ t("account.new_backup") }}</button>
+        </form>
+        {% if not forced %}
+        <form class="row" style="gap: 8px; flex-wrap: wrap" hx-post="/account/2fa/disable" hx-swap="none" hx-confirm="{{ t('account.disable_confirm') }}">
+          <input class="input" name="password" type="password" style="max-width: 180px" autocomplete="current-password" placeholder="{{ t('common.password') }}" required>
+          <input class="input mono" name="code" style="max-width: 140px" inputmode="numeric" autocomplete="one-time-code" placeholder="{{ t('account.code_ph') }}" required>
+          <button class="btn sm ghost" data-danger><i class="bi bi-shield-x"></i> {{ t("account.disable") }}</button>
+        </form>
+        {% endif %}
+      {% else %}
+        <div class="small muted">{{ t("account.2fa_hint") }}</div>
+        <div><button class="btn primary" hx-post="/account/2fa/start" hx-target="#twofa-out" hx-swap="innerHTML"><span class="spin"></span><i class="bi bi-shield-plus"></i> {{ t("account.enable") }}</button></div>
+      {% endif %}
+      <div id="twofa-out"></div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top: 16px">
+  <div class="card-head"><h3><i class="bi bi-laptop"></i> {{ t("account.sessions") }}</h3><span class="spacer"></span>
+    {% if sessions | length > 1 %}<button class="btn sm ghost" hx-post="/account/sessions/revoke-others" hx-swap="none" hx-confirm="{{ t('account.revoke_others_confirm') }}"><i class="bi bi-box-arrow-right"></i> {{ t("account.revoke_others") }}</button>{% endif %}</div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>{{ t("account.device") }}</th><th>IP</th><th>{{ t("account.last_seen") }}</th><th></th></tr></thead>
+      <tbody>
+      {% for s in sessions %}
+        <tr>
+          <td class="small"><span class="trunc" style="max-width: 420px; display: inline-block">{{ s.user_agent or "—" }}</span>{% if s.handle == current %} <span class="badge violet">{{ t("account.this_session") }}</span>{% endif %}</td>
+          <td class="mono small">{{ s.ip or "—" }}</td>
+          <td class="small muted">{{ (s.last_seen or s.created_at) | ago }}</td>
+          <td class="actions">{% if s.handle != current %}<button class="btn icon sm ghost" title="{{ t('account.revoke') }}" hx-post="/account/sessions/{{ s.handle }}/revoke" hx-swap="none"><i class="bi bi-x-lg"></i></button>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

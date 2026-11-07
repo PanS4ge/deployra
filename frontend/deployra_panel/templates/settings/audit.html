@@ -1,0 +1,49 @@
+{% extends "settings/_layout.html" %}
+{% block settings %}
+<form class="card" method="get" action="/settings/audit" hx-boost="true">
+  <div class="card-body row" style="gap: 8px; flex-wrap: wrap; align-items: flex-end">
+    <div class="field" style="margin: 0; min-width: 180px"><label>{{ t("audit.user") }}</label>
+      <select class="select" name="email"><option value="">—</option>{% for e in emails %}<option value="{{ e }}" {{ "selected" if f.email == e }}>{{ e }}</option>{% endfor %}</select></div>
+    <div class="field" style="margin: 0; min-width: 150px"><label>{{ t("audit.action") }}</label>
+      <select class="select" name="action"><option value="">—</option>{% for a in actions %}<option value="{{ a }}" {{ "selected" if f.action == a }}>{{ t("audit.a." ~ a) if t("audit.a." ~ a) != "audit.a." ~ a else a }}</option>{% endfor %}</select></div>
+    <div class="field" style="margin: 0; flex: 1; min-width: 160px"><label>{{ t("audit.search") }}</label><input class="input" name="q" value="{{ f.q }}" placeholder="/apps, 203.0.113.7"></div>
+    <div class="field" style="margin: 0; width: 120px"><label>{{ t("audit.days") }}</label><input class="input" name="days" type="number" min="1" max="3650" value="{{ f.days }}"></div>
+    <button class="btn primary"><i class="bi bi-funnel"></i> {{ t("audit.filter") }}</button>
+    <a class="btn ghost" hx-boost="false" href="/settings/audit.csv?email={{ f.email | urlencode }}&action={{ f.action | urlencode }}&q={{ f.q | urlencode }}&days={{ f.days }}"><i class="bi bi-download"></i> CSV</a>
+  </div>
+</form>
+
+<div class="card">
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>{{ t("audit.when") }}</th><th>{{ t("audit.user") }}</th><th>{{ t("audit.action") }}</th><th>{{ t("audit.what") }}</th><th>IP</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td class="small nowrap" title="{{ r.at | dt }}">{{ r.at | ago }}</td>
+          <td class="small">{{ r.user_email or "—" }}</td>
+          <td>{% set label = t("audit.a." ~ r.action) %}<span class="badge {{ '' if r.ok else 'err' }}">{{ label if label != "audit.a." ~ r.action else r.action }}</span></td>
+          <td class="small mono">{% if r.method %}{{ r.method }} {{ r.path }} <span class="{{ 'dim' if r.ok else 'err' }}">· {{ r.status }}</span>{% endif %}{% if r.target %} {{ r.target }}{% endif %}{% if r.details %} <span class="dim">{{ r.details | tojson }}</span>{% endif %}</td>
+          <td class="small mono">{{ r.ip or "—" }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="muted">{{ t("audit.empty") }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page > 1 or more %}
+  <div class="card-body row" style="justify-content: space-between">
+    {% if page > 1 %}<a class="btn sm ghost" href="/settings/audit?email={{ f.email | urlencode }}&action={{ f.action | urlencode }}&q={{ f.q | urlencode }}&days={{ f.days }}&page={{ page - 1 }}"><i class="bi bi-chevron-left"></i></a>{% else %}<span></span>{% endif %}
+    {% if more %}<a class="btn sm ghost" href="/settings/audit?email={{ f.email | urlencode }}&action={{ f.action | urlencode }}&q={{ f.q | urlencode }}&days={{ f.days }}&page={{ page + 1 }}"><i class="bi bi-chevron-right"></i></a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<form class="card" hx-post="/settings/audit/retention" hx-swap="none">
+  <div class="card-body row" style="gap: 8px; align-items: flex-end">
+    <div class="field" style="margin: 0; width: 200px"><label>{{ t("audit.keep") }}</label><input class="input" name="days" type="number" min="7" max="3650" value="{{ keep }}"></div>
+    <button class="btn">{{ t("common.save") }}</button>
+  </div>
+</form>
+{% endblock %}

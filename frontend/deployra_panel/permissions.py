@@ -35,6 +35,8 @@ class Permission(Enum):
     ALLOW_CONTAINER_FILES_WRITE = "Q"
     ALLOW_DATABASES = "R"
     ALLOW_DATABASES_WRITE = "S"
+    ALLOW_DOCKER_HOST = "T"  # kontenery z dostępem do hosta: ścieżki systemowe, docker.sock, sieć hosta, privileged
+    ALLOW_NODE_SSH = "U"  # WebSSH: powłoka na samym serwerze węzła
 
 
 class _Labels:
@@ -91,6 +93,7 @@ GROUPS_SPEC = [
             Permission.ALLOW_DELETE_DOCKERS,
             Permission.ALLOW_PULL_IMAGES,
             Permission.ALLOW_SEEKING_CONTAINER,
+            Permission.ALLOW_DOCKER_HOST,
         ],
     },
     {
@@ -100,6 +103,7 @@ GROUPS_SPEC = [
             Permission.ALLOW_CONTAINER_FILES,
             Permission.ALLOW_CONTAINER_FILES_WRITE,
             Permission.ALLOW_CONTAINER_TERMINAL,
+            Permission.ALLOW_NODE_SSH,
         ],
     },
     {
@@ -164,6 +168,10 @@ RISKY = {
     Permission.ALLOW_DATABASES_WRITE,
     Permission.ALLOW_MCP,
     Permission.ALLOW_TUNNEL,
+    Permission.ALLOW_MODIFYING_USERS,  # zmienia hasła i e-maile innych kont
+    Permission.ALLOW_DATABASES,  # przeglądarka łączy się rootem z danych kontenera
+    Permission.ALLOW_DOCKER_HOST,  # = root na węźle
+    Permission.ALLOW_NODE_SSH,  # powłoka na serwerze
 }
 
 _BY_VALUE = {p.value: p for p in Permission}

@@ -11,6 +11,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import ValidationError
 
 from deployra_common import envfile
@@ -24,7 +25,7 @@ from ..deps import current_user, require
 from ..i18n import t
 from ..permissions import Permission, has
 from ..services import app_updates, charts, deploy, env_groups, migrate, relay, resources, scheduled_tasks
-from ..web import redirect, render, templates, toast
+from ..web import host_access_denied, redirect, render, templates, toast
 
 router = APIRouter(dependencies=[Depends(current_user)])
 MAX_UPLOAD = 1024 * 1024 * 1024  # 1 GB
@@ -132,6 +133,15 @@ def _host_port(form: Any, existing: AppSpec | None) -> int | None:
         return existing.host_port if existing else None
     value = str(form.get("host_port") or "").strip()
     return int(value) if value else None
+
+
+def _host_problems(spec: AppSpec) -> list[str]:
+    from deployra_common import hostaccess
+
+    out = hostaccess.spec_problems(spec.volumes)
+    if spec.source.kind == "compose":
+        out += hostaccess.compose_problems(spec.source.compose or "")
+    return out
 
 
 def spec_from_form(form: Any, slug: str, existing: AppSpec | None = None) -> tuple[AppSpec, dict]:
@@ -350,6 +360,8 @@ async def create_app(request: Request, panel: Panel = Depends(get_panel), user: 
         return toast(t("msg.pick_paired_node"), "err", status=400)
     try:
         spec, options = spec_from_form(form, slug)
+        if denied := host_access_denied(user, _host_problems(spec)):
+            return denied
         if panel.db.get("apps", spec.slug, key="slug"):
             raise ValueError(t("msg.app_exists", slug=spec.slug))
         group_ids = env_groups.resolve_ids(panel, _group_ids(form, user, []))
@@ -425,7 +437,8 @@ def app_page(request: Request, job: str = "", app: dict = Depends(_app), panel: 
     app_profile = detect_profile(img, spec.env, [{"container": spec.container_port}] if spec.container_port else [])
     return render(
         request, "apps/detail.html", title=app["name"], app=app, spec=spec, options=options, node=node, site=site, cert=cert,
-        job=live_job, hook_url=hook_url, hook_secret=panel.sealer.unseal(app.get("webhook_secret")),
+        job=live_job, hook_url=hook_url,
+        hook_secret=panel.sealer.unseal(app.get("webhook_secret")) if has(request.state.user, Permission.ALLOW_DEPLOYMENT_MODIFICATIONS) else None,
         monitor=monitor, monitor_stats=uptime.stats_for(panel, [("app", app["id"])]).get(("app", app["id"])),
         settings=panel.db.settings(), other_nodes=others, auto_capable=migrate.auto_capable(spec),
         acls=panel.db.fetchall("SELECT id, name FROM access_lists ORDER BY name"),
@@ -555,6 +568,68 @@ async def app_logs(request: Request, app: dict = Depends(_app), panel: Panel = D
 async def app_files(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
                     user: dict = Depends(require(Permission.ALLOW_CONTAINER_FILES))):  # fmt: skip
     return await _to_container(request, panel, app, suffix="/files")
+
+
+@router.get("/apps/{app_id}/volume-backups")
+async def volume_backups_card(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                              user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
+    """Karta kopii wolumenów (ładowana osobno — lista kopii czyta magazyn, który bywa wolny)."""
+    from ..services import volume_backups
+
+    sched = volume_backups.schedule_for(panel, app["id"])
+    items, error = [], None
+    if sched:
+        try:
+            items = await run_in_threadpool(volume_backups.stored, panel, sched)
+        except Exception as exc:  # noqa: BLE001 — magazyn nieosiągalny: formularz zostaje
+            error = str(exc) or type(exc).__name__
+    return render(request, "apps/_volume_backups.html", app=app, sched=sched, items=items, error=error)
+
+
+@router.post("/apps/{app_id}/volume-backups")
+async def save_volume_backups(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                              user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
+    from ..services import volume_backups
+
+    form = await request.form()
+    try:
+        volume_backups.save(panel, app["id"], str(form.get("cron") or "0 3 * * *"), form.get("retention"), bool(form.get("stop_app")),
+                            bool(form.get("enabled")))  # fmt: skip
+    except ValueError as exc:
+        return toast(str(exc), "err", status=400)
+    return redirect(request, f"/apps/{app['id']}#volume-backups", t("vbackup.saved"))
+
+
+@router.post("/apps/{app_id}/volume-backups/run")
+def run_volume_backup(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                      user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
+    from ..services import volume_backups
+
+    sched = volume_backups.schedule_for(panel, app["id"])
+    if not sched:
+        return toast(t("vbackup.no_schedule"), "warn", status=400)
+    job = volume_backups.start(panel, sched["id"])
+    return redirect(request, f"/jobs/{job.id}")
+
+
+@router.post("/apps/{app_id}/volume-backups/restore")
+async def restore_volume_backup(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                                user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
+    from ..services import volume_backups
+
+    sched = volume_backups.schedule_for(panel, app["id"])
+    name = str((await request.form()).get("name") or "")
+    if not sched or not volume_backups.NAME.match(name):
+        return toast(t("vbackup.no_backup"), "err", status=400)
+    job = panel.jobs.start("volume_restore", t("vbackup.restore_job", name=app["name"]), lambda job: volume_backups.restore(panel, job, sched["id"], name))
+    return redirect(request, f"/jobs/{job.id}")
+
+
+@router.get("/apps/{app_id}/terminal")
+async def app_terminal(request: Request, app: dict = Depends(_app), panel: Panel = Depends(get_panel),
+                       user: dict = Depends(require(Permission.ALLOW_CONTAINER_TERMINAL))):  # fmt: skip
+    """Terminal kontenera aplikacji wprost z jej strony (bez chodzenia przez Pliki)."""
+    return await _to_container(request, panel, app, suffix="/terminal")
 
 
 async def _app_target_or_toast(panel: Panel, app: dict):
@@ -808,6 +883,9 @@ async def edit(request: Request, app: dict = Depends(_app), panel: Panel = Depen
         group_ids = env_groups.resolve_ids(panel, _group_ids(form, user, env_groups.attached_ids(panel, app["id"])))
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc), "err", status=400)
+    if _host_problems(spec) != _host_problems(old_spec):  # nowy dostęp do hosta (stary, przejęty, zostaje bez pytania)
+        if denied := host_access_denied(user, _host_problems(spec)):
+            return denied
     changes = _changes(old_spec, spec)
     decision = str(form.get("decision") or "")
     if changes and decision not in ("deploy", "save"):

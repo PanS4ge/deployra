@@ -3,16 +3,25 @@
 from __future__ import annotations
 
 import base64
+import functools
 import hashlib
 import hmac
+import os
 import secrets
 
-_N, _R, _P = 2**14, 8, 1
+# scrypt N=2^17, r=8 (~128 MiB na hash) — zalecenie OWASP; DEPLOYRA_SCRYPT_N obniża koszt (testy, bardzo słabe maszyny)
+_N = max(2**14, int(os.environ.get("DEPLOYRA_SCRYPT_N") or 2**17))
+_R, _P = 8, 1
+_MAX_N = 2**20
+
+
+def _maxmem(n: int, r: int) -> int:
+    return 2 * 128 * r * n + (8 << 20)
 
 
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
-    digest = hashlib.scrypt(password.encode(), salt=salt, n=_N, r=_R, p=_P, dklen=32)
+    digest = hashlib.scrypt(password.encode(), salt=salt, n=_N, r=_R, p=_P, dklen=32, maxmem=_maxmem(_N, _R))
     return f"scrypt${_N}${_R}${_P}${base64.b64encode(salt).decode()}${base64.b64encode(digest).decode()}"
 
 
@@ -21,14 +30,30 @@ def verify_password(password: str, stored: str | None) -> bool:
         return False
     try:
         scheme, n, r, p, salt, digest = stored.split("$")
-        if scheme != "scrypt":
+        if scheme != "scrypt" or int(n) > _MAX_N or int(r) > 32 or int(p) > 16:
             return False
         calc = hashlib.scrypt(
-            password.encode(), salt=base64.b64decode(salt), n=int(n), r=int(r), p=int(p), dklen=len(base64.b64decode(digest))
+            password.encode(), salt=base64.b64decode(salt), n=int(n), r=int(r), p=int(p), dklen=len(base64.b64decode(digest)),
+            maxmem=_maxmem(int(n), int(r)),
         )
         return hmac.compare_digest(calc, base64.b64decode(digest))
     except (ValueError, TypeError):
         return False
+
+
+def needs_rehash(stored: str | None) -> bool:
+    """Hash scrypt słabszy niż obecne ustawienia (starsza wersja Deployry) — przeliczyć przy najbliższym logowaniu."""
+    try:
+        scheme, n, *_ = (stored or "").split("$")
+        return scheme == "scrypt" and int(n) < _N
+    except ValueError:
+        return False
+
+
+@functools.lru_cache(maxsize=1)
+def dummy_hash() -> str:
+    """Hash do porównania, gdy konta nie ma — odpowiedź trwa tyle samo, więc nie zdradza, które loginy istnieją."""
+    return hash_password(secrets.token_urlsafe(16))
 
 
 _APR_ALPHABET = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"

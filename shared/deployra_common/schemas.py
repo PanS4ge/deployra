@@ -405,12 +405,23 @@ class PanelAuth(BaseModel):
 
     verify: str  # bramka → panel: sprawdzenie ciasteczka (GET /auth/forward)
     callback: str  # bramka → panel: wymiana jednorazowego tokenu na ciasteczko (GET /auth/forward/callback)
-    login: str  # przeglądarka → panel: strona logowania (adres publiczny)
+    login: str  # przeglądarka → panel: strona logowania kontem panelu (adres publiczny)
+    # Lista dostępu 2.0: strona logowania na hoście aplikacji (/__deployra_auth/…) — bramka przekazuje ją do panelu
+    # pod `base` z tokenem `gw_token`, bez którego panel odrzuca te żądania (nie da się ominąć bramki i jej banów)
+    base: str | None = None
+    gw_token: str | None = None
 
-    @field_validator("verify", "callback", "login")
+    @field_validator("verify", "callback", "login", "base")
     @classmethod
-    def _url(cls, v: str) -> str:
-        if not _PANEL_URL.match(v):
+    def _url(cls, v: str | None) -> str | None:
+        if v is not None and not _PANEL_URL.match(v):
+            raise ValueError(tr("srv.schema.bad_url"))
+        return v
+
+    @field_validator("gw_token")
+    @classmethod
+    def _token(cls, v: str | None) -> str | None:
+        if v is not None and not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", v):
             raise ValueError(tr("srv.schema.bad_url"))
         return v
 

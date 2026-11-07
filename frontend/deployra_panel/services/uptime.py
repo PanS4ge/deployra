@@ -157,7 +157,11 @@ class Checker:
     def __init__(self, panel: Any) -> None:
         self.panel = panel
         self._containers: dict[tuple[int, str], tuple[float, list[dict]]] = {}
-        self._http = httpx.AsyncClient(timeout=10, follow_redirects=True, headers={"User-Agent": "Deployra-Uptime/1.0"})
+        from .netguard import httpx_guard
+
+        # hak sprawdza adres każdego żądania, także po przekierowaniu (monitor nie dojdzie do metadanych chmury)
+        self._http = httpx.AsyncClient(timeout=10, follow_redirects=True, headers={"User-Agent": "Deployra-Uptime/1.0"},
+                                       event_hooks={"request": [httpx_guard]})  # fmt: skip
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -212,7 +216,7 @@ class Checker:
                 if ok and keyword and keyword not in response.text:
                     return False, elapsed(), t("uptime.msg.keyword_missing", status=response.status_code, keyword=keyword)
                 return ok, elapsed(), f"HTTP {response.status_code}"
-        except (RemoteError, httpx.HTTPError, LookupError, asyncio.TimeoutError) as exc:
+        except (RemoteError, httpx.HTTPError, LookupError, asyncio.TimeoutError, ValueError) as exc:  # ValueError: adres zablokowany
             return False, None, (getattr(exc, "detail", None) or str(exc) or type(exc).__name__)[:300]
         return None, None, t("uptime.msg.unknown_kind")
 

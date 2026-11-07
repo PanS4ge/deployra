@@ -14,11 +14,12 @@ from deployra_common.jobs import Job, JobFailed
 from .compose import run_streaming
 
 
-def _auth_args(token: str | None) -> list[str]:
+def _auth_env(token: str | None) -> dict[str, str]:
+    """Token przez zmienne środowiskowe gita (GIT_CONFIG_*), nie w argumentach — linię poleceń widzi każdy w `ps`."""
     if not token:
-        return []
+        return {}
     basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
-    return ["-c", f"http.extraHeader=Authorization: Basic {basic}"]
+    return {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "http.extraHeader", "GIT_CONFIG_VALUE_0": f"Authorization: Basic {basic}"}
 
 
 def _ssh_env(work: Path, data_dir: Path, ssh_key: str | None) -> dict[str, str]:
@@ -35,8 +36,8 @@ def _ssh_env(work: Path, data_dir: Path, ssh_key: str | None) -> dict[str, str]:
 
 
 def _git(job: Job, args: list[str], cwd: Path | None, env: dict[str, str], token: str | None, shown: str) -> None:
-    cmd = ["git", *_auth_args(token), *args]
-    run_streaming(job, cmd, cwd=cwd, env={"GIT_TERMINAL_PROMPT": "0", **env}, shown=shown)
+    cmd = ["git", *args]
+    run_streaming(job, cmd, cwd=cwd, env={"GIT_TERMINAL_PROMPT": "0", **_auth_env(token), **env}, shown=shown)
 
 
 def checkout(job: Job, builds_dir: Path, data_dir: Path, slug: str, url: str, branch: str, token: str | None, ssh_key: str | None) -> tuple[Path, str]:

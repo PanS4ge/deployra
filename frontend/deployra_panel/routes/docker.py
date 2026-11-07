@@ -21,11 +21,11 @@ from deployra_common.jobs import Job
 from deployra_common.schemas import ContainerSpec, NetworkSpec, PortMap, StackSpec, VolumeMount, VolumeSpec
 
 from ..context import Panel, get_panel
-from ..deps import current_user, node_or_404, require
+from ..deps import current_user, node_or_404, require, require_any
 from ..i18n import t
 from ..permissions import Permission
 from ..services import relay
-from ..web import redirect, render, templates, toast, toast_headers
+from ..web import host_access_denied, redirect, render, templates, toast, toast_headers
 from .jobs import line_html
 
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -160,6 +160,11 @@ async def container_create(request: Request, node: dict = Depends(node_or_404), 
         )
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc) if isinstance(exc, ValidationError) else str(exc), "err", status=400)
+
+    from deployra_common import hostaccess
+
+    if denied := host_access_denied(user, hostaccess.spec_problems(spec.volumes, spec.network)):
+        return denied
 
     # Sprawdzenie kolizji portów hosta
     host_ports = [p.host for p in spec.ports if p.host is not None]
@@ -414,13 +419,15 @@ async def stacks(request: Request, node: dict = Depends(node_or_404), ep: str = 
 
 
 @router.get("/nodes/{node_id}/stacks/new")
-def stack_new(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param)):
+def stack_new(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param),
+              user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT))):  # fmt: skip
     sample = "services:\n  web:\n    image: nginx:alpine\n    restart: unless-stopped\n    ports:\n      - \"20080:80\"\n"
     return render(request, "nodes/stack_edit.html", title=t("stacks.new"), node=node, tab="stacks", stack={"name": "", "compose": sample, "env": {}}, new=True)
 
 
 @router.get("/nodes/{node_id}/stacks/{name}")
-async def stack_edit(request: Request, name: str, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel)):
+async def stack_edit(request: Request, name: str, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
+                     user: dict = Depends(require_any(Permission.ALLOW_DEPLOYMENT, Permission.ALLOW_MODIFY_DOCKERS))):  # compose i .env = hasła
     stack = await _client(panel, node).get(_p(f"/api/stacks/{name}", ep))
     return render(request, "nodes/stack_edit.html", title=f"Stack {name}", node=node, tab="stacks", stack=stack, new=False)
 
@@ -434,6 +441,11 @@ async def stack_save(request: Request, name: str = Form(...), compose: str = For
         spec = StackSpec(compose=compose.replace("\r\n", "\n"), env=_kv_lines(env))
     except (ValidationError, ValueError) as exc:
         return toast(_errors(exc) if isinstance(exc, ValidationError) else str(exc), "err", status=400)
+
+    from deployra_common import hostaccess
+
+    if denied := host_access_denied(user, hostaccess.compose_problems(spec.compose)):
+        return denied
 
     # Sprawdzenie kolizji portów hosta w compose
     compose_ports = extract_compose_host_ports(compose)
@@ -477,7 +489,8 @@ async def stack_action(request: Request, name: str, verb: str, node: dict = Depe
 
 
 @router.get("/nodes/{node_id}/sftp")
-async def sftp(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel)):
+async def sftp(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
+               user: dict = Depends(require(Permission.ALLOW_DEPLOYMENT_MODIFICATIONS))):  # fmt: skip
     data = await _client(panel, node).get(_p("/api/sftp", ep))
     apps = panel.db.fetchall("SELECT slug, name FROM apps WHERE node_id = ? AND kind IN ('static', 'git') ORDER BY slug", [node["id"]])
     return render(request, "nodes/sftp.html", title=f"{node['name']} · SFTP", node=node, tab="sftp", data=data, apps=apps)
@@ -538,7 +551,8 @@ async def wg_port_save(request: Request, port: int = Form(...), redirect_url: st
 
 
 @router.get("/nodes/{node_id}/settings")
-def node_settings(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel)):
+def node_settings(request: Request, node: dict = Depends(node_or_404), ep: str = Depends(ep_param), panel: Panel = Depends(get_panel),
+                  user: dict = Depends(require_any(Permission.ALLOW_MODIFY_DOCKERS, Permission.ALLOW_SETTINGS, Permission.ALLOW_TUNNEL, Permission.ALLOW_NODE_SSH))):  # fmt: skip
     return render(request, "nodes/settings.html", title=f"{node['name']} · {t('nav.settings').lower()}", node=node, tab="settings", gateways=panel.gateways())
 
 

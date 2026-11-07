@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import socket
 
 from typing import Any
@@ -297,11 +298,18 @@ async def container_logs_stream(
         yield ServerSentEvent(raw_data=f"⚠️ Błąd strumienia logów: {exc}", event="line")
 
 
+_EXEC_USER = re.compile(r"^[A-Za-z0-9_.-]{1,32}(:[A-Za-z0-9_.-]{1,32})?$")
+
+
 @ws_router.websocket("/containers/{cid}/exec")
 async def container_exec(
-    websocket: WebSocket, cid: str, shell: str = "auto", cols: int = 120, rows: int = 32, ep: str = "local"
+    websocket: WebSocket, cid: str, shell: str = "auto", cols: int = 120, rows: int = 32, ep: str = "local", user: str = "",
+    workdir: str = "",
 ) -> None:
-    """Terminal: bajty binarne = wejście/wyjście PTY, tekst JSON = sterowanie (resize)."""
+    """Terminal: bajty binarne = wejście/wyjście PTY, tekst JSON = sterowanie (resize, ping).
+
+    Gniazdo PTY jest nieblokujące (`loop.sock_recv`), więc otwarty terminal nie zajmuje wątku z puli, którą dzielą
+    wszystkie wywołania Dockera — kilka terminali naraz nie przytyka węzła."""
     ctx: Context = websocket.app.state.ctx
     try:
         ctx.guard.check_websocket(websocket)
@@ -309,21 +317,25 @@ async def container_exec(
     except (PermissionError, HTTPException, LookupError, ValueError):
         await websocket.close(code=4401)
         return
+    if (user and not _EXEC_USER.match(user)) or (workdir and (not workdir.startswith("/") or any(c in workdir for c in "\0\n\r"))):
+        await websocket.close(code=4400)
+        return
     await websocket.accept()
     api = client.api
     try:
-        exec_id = (
-            await asyncio.to_thread(
-                api.exec_create, cid, SHELLS.get(shell, SHELLS["auto"]), stdin=True, tty=True,
-                environment={"TERM": "xterm-256color", "COLUMNS": str(cols), "LINES": str(rows)},
-            )
-        )["Id"]  # fmt: skip
+        options: dict = {"environment": {"TERM": "xterm-256color", "COLUMNS": str(cols), "LINES": str(rows)}}
+        if user:
+            options["user"] = user
+        if workdir:
+            options["workdir"] = workdir
+        exec_id = (await asyncio.to_thread(api.exec_create, cid, SHELLS.get(shell, SHELLS["auto"]), stdin=True, tty=True, **options))["Id"]
         sock = await asyncio.to_thread(api.exec_start, exec_id, tty=True, socket=True)
     except Exception as exc:  # noqa: BLE001 — błąd trafia do terminala
         await websocket.send_text(json.dumps({"type": "error", "message": str(exc)}))
         await websocket.close()
         return
     raw: socket.socket = getattr(sock, "_sock", sock)
+    raw.setblocking(False)
     loop = asyncio.get_running_loop()
 
     async def resize(c: int, r: int) -> None:
@@ -334,7 +346,10 @@ async def container_exec(
 
     async def pump_out() -> None:
         while True:
-            data = await loop.run_in_executor(None, raw.recv, 65536)
+            try:
+                data = await loop.sock_recv(raw, 65536)
+            except OSError:
+                return
             if not data:
                 return
             await websocket.send_bytes(data)
@@ -345,7 +360,7 @@ async def container_exec(
             if message["type"] == "websocket.disconnect":
                 return
             if message.get("bytes"):
-                await loop.run_in_executor(None, raw.sendall, message["bytes"])
+                await loop.sock_sendall(raw, message["bytes"])
             elif message.get("text"):
                 try:
                     control = json.loads(message["text"])
@@ -354,7 +369,8 @@ async def container_exec(
                 if control.get("type") == "resize":
                     await resize(int(control.get("cols", 80)), int(control.get("rows", 24)))
                 elif control.get("type") == "input":
-                    await loop.run_in_executor(None, raw.sendall, str(control.get("data", "")).encode())
+                    await loop.sock_sendall(raw, str(control.get("data", "")).encode())
+                # „ping” (co 25 s z przeglądarki) tylko podtrzymuje połączenie przez Cloudflare/nginx — nic do zrobienia
 
     await resize(cols, rows)
     tasks = [asyncio.create_task(pump_out()), asyncio.create_task(pump_in())]

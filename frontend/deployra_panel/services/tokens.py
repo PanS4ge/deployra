@@ -17,8 +17,9 @@ def hash_token(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def create_token(panel: Panel, name: str, user_id: int, permissions: str = "") -> tuple[str, dict[str, Any]]:
-    """Tworzy nowy token API i zapisuje jego hash w bazie. Zwraca surowy token (jednorazowo widoczny) i wiersz bazy."""
+def create_token(panel: Panel, name: str, user_id: int, permissions: str = "", days: int | None = None) -> tuple[str, dict[str, Any]]:
+    """Tworzy nowy token API i zapisuje jego hash w bazie. Zwraca surowy token (jednorazowo widoczny) i wiersz bazy.
+    `days` = ważność (None/0 = bez wygasania)."""
     raw = f"{TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
     thash = hash_token(raw)
     prefix = f"{raw[:14]}..."
@@ -33,6 +34,7 @@ def create_token(panel: Panel, name: str, user_id: int, permissions: str = "") -
         permissions=permissions.strip(),
         created_at=now_iso,
         last_used_at=None,
+        expires_at=time.time() + days * 86400 if days else None,
     )
     row = panel.db.get("api_tokens", row_id)
     return raw, row
@@ -44,7 +46,7 @@ def verify_token(panel: Panel, raw: str) -> dict[str, Any] | None:
         return None
     thash = hash_token(raw)
     row = panel.db.fetchone("SELECT * FROM api_tokens WHERE token_hash = ?", [thash])
-    if not row:
+    if not row or (row.get("expires_at") and row["expires_at"] < time.time()):
         return None
 
     user = panel.db.get("users", row["user_id"])
@@ -59,11 +61,21 @@ def verify_token(panel: Panel, raw: str) -> dict[str, Any] | None:
 
     # Klonujemy słownik użytkownika i dodajemy metadane tokena
     auth_user = dict(user)
-    if row.get("permissions"):
-        auth_user["permissions"] = row["permissions"]
+    if row.get("permissions"):  # token może mieć mniej uprawnień niż konto, nigdy więcej
+        auth_user["permissions"] = narrow(user.get("permissions"), row["permissions"])
     auth_user["token_id"] = row["id"]
     auth_user["token_name"] = row["name"]
     return auth_user
+
+
+def narrow(user_perms: str | None, token_perms: str) -> str:
+    """Część wspólna uprawnień konta i tokenu (pełny dostęp konta = wszystko, o co prosi token)."""
+    from ..permissions import Permission, encode, parse
+
+    mine, wanted = parse(user_perms), parse(token_perms)
+    if Permission.FULL_ACCESS in mine:
+        return encode(wanted)
+    return encode(wanted & mine - {Permission.FULL_ACCESS})
 
 
 def list_tokens(panel: Panel, user_id: int | None = None) -> list[dict[str, Any]]:

@@ -140,6 +140,10 @@ async def execute(panel: Any, task_id: int) -> None:
                         output=(output or "")[-OUTPUT_LIMIT:])  # fmt: skip
         panel.db.update("scheduled_tasks", task_id, last_run_at=started, last_status=status)
         trim_runs(panel, task_id)
+    if status in ("failed", "timeout"):
+        from . import watch
+
+        await watch.task_failed(panel, task, status, output)
 
 
 def tick(panel: Any, when: datetime) -> list[int]:

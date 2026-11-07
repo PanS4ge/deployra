@@ -328,13 +328,9 @@ async def node_gateway(
 @router.post("/nodes/{node_id}/subnets")
 async def subnets(request: Request, lan_subnets: str = Form(""), node: dict = Depends(node_or_404), panel: Panel = Depends(get_panel),
                   user: dict = Depends(require(Permission.ALLOW_TUNNEL))):  # fmt: skip
-    values = sync._check_subnets([s for s in lan_subnets.replace(",", "\n").splitlines()])
-    client = panel.hub_client()
-    if node["transport"] != "tunnel" or not client:
-        raise LookupError(t("msg.lan_tunnel_only"))
-    await client.request("PATCH", f"/api/peers/{node['peer_id']}", json={"lan_subnets": values})
-    panel.db.update("nodes", node["id"], lan_subnets=values)
-    await sync.push_edge_routes(panel)
+    result = await sync.set_node_lan(panel, node, [s for s in lan_subnets.replace(",", "\n").splitlines()])
+    if not result["node"]:  # starszy węzeł: hub i bramka już wiedzą, NAT na węźle po aktualizacji / ręcznie
+        return toast(t("msg.subnets_saved_node_old"), "warn")
     return toast(t("msg.subnets_saved"), "ok")
 
 

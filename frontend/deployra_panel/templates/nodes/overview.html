@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% from "_macros.html" import status_badge %}
 {% block crumbs %}<div class="crumbs"><a href="/nodes">{{ t("nav.nodes") }}</a> /</div>{% endblock %}
-{% block actions %}{{ status_badge(node.status) }}{% endblock %}
+{% block actions %}{% set can_ssh = has(user, P.ALLOW_NODE_SSH) and ssh_configured(node) %}
+{% if can_ssh %}<a class="btn sm cool" href="/nodes/{{ node.id }}/ssh" hx-boost="false"><i class="bi bi-terminal"></i> WebSSH</a>
+{% else %}<button class="btn sm" disabled title="{{ t('ssh.disabled_hint') if has(user, P.ALLOW_NODE_SSH) else t('msg.forbidden') }}"><i class="bi bi-terminal"></i> WebSSH</button>{% endif %}
+{{ status_badge(node.status) }}{% endblock %}
 {% macro copy_box(text) -%}
 <div class="snippet">
   <pre class="code-block">{{ text }}</pre>

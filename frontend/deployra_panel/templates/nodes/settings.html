@@ -51,6 +51,30 @@
     </form>
   </div>
   {% endif %}
+  {% if has(user, P.ALLOW_NODE_SSH) %}{% set ssh = ssh_settings(node) %}
+  <div class="card" id="ssh" x-data="{ auth: '{{ ssh.auth }}' }">
+    <div class="card-head"><h3><i class="bi bi-terminal-split"></i> SSH (WebSSH)</h3><span class="spacer"></span>
+      {% if ssh.fingerprint %}<span class="badge ok" title="{{ ssh.fingerprint }}"><i class="bi bi-shield-check"></i> {{ t("ssh.key_trusted") }}</span>{% endif %}</div>
+    <form class="card-body form-grid" hx-post="/nodes/{{ node.id }}/ssh/settings" hx-swap="none">
+      <div class="field"><label>{{ t("ssh.host") }}</label><input class="input mono" name="host" value="{{ ssh.host }}" placeholder="{{ ssh_default_host(node) }}"></div>
+      <div class="field"><label>{{ t("ssh.port") }}</label><input class="input" name="port" type="number" min="1" max="65535" value="{{ ssh.port }}"></div>
+      <div class="field"><label>{{ t("ssh.username") }}</label><input class="input mono" name="username" value="{{ ssh.username }}" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label>{{ t("ssh.auth") }}</label>
+        <div class="seg sm"><label><input type="radio" name="auth" value="password" x-model="auth"><span>{{ t("common.password") }}</span></label>
+          <label><input type="radio" name="auth" value="key" x-model="auth"><span>{{ t("ssh.key") }}</span></label></div></div>
+      <div class="field full" x-show="auth === 'password'"><label>{{ t("common.password") }}</label>
+        <input class="input" name="password" type="password" autocomplete="new-password" placeholder="{{ t('ssh.secret_set') if ssh.has_secret else '' }}"></div>
+      <div class="field full" x-show="auth === 'key'" x-cloak><label>{{ t("ssh.private_key") }}</label>
+        <textarea class="textarea mono" name="key" style="min-height: 80px" spellcheck="false" placeholder="{{ t('ssh.secret_set') if ssh.has_secret else '-----BEGIN OPENSSH PRIVATE KEY-----' }}"></textarea>
+        <input class="input" name="passphrase" type="password" autocomplete="off" placeholder="{{ t('ssh.passphrase') }}" style="margin-top: 6px"></div>
+      <div class="field full row" style="justify-content: flex-end; gap: 8px">
+        <button type="button" class="btn ghost" hx-post="/nodes/{{ node.id }}/ssh/hostkey" hx-target="#ssh-hostkey" hx-swap="innerHTML"><span class="spin"></span><i class="bi bi-fingerprint"></i> {{ t("ssh.check_key") }}</button>
+        <button class="btn primary"><i class="bi bi-check2"></i> {{ t("common.save") }}</button>
+      </div>
+      <div class="field full" id="ssh-hostkey"></div>
+    </form>
+  </div>
+  {% endif %}
   {% if node.transport == "tunnel" %}
   <div class="card">
     <div class="card-head"><h3><i class="bi bi-router"></i> {{ t("nodes.lan_behind") }}</h3></div>

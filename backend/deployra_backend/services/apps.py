@@ -91,37 +91,107 @@ def _container_spec(ctx: Any, spec: AppSpec, image: str, host_port: int | None, 
     )
 
 
+PARKED_SUFFIX = "-previous"
+
+
+def bound_port(client: Any, name: str, host_port: int | None) -> int | None:
+    """Port w kontenerze, na który działający kontener aplikacji kieruje port hosta — z Dockera, nie z ustawień."""
+    existing = docker_svc.find_container(client, name) if host_port else None
+    if not existing:
+        return None
+    bindings = (client.api.inspect_container(existing["Id"]).get("HostConfig") or {}).get("PortBindings") or {}
+    for key, targets in bindings.items():
+        if key.endswith("/udp"):
+            continue
+        if any(str((t or {}).get("HostPort")) == str(host_port) for t in targets or []):
+            try:
+                return int(key.split("/")[0])
+            except ValueError:
+                return None
+    return None
+
+
+def real_port(client: Any, job: Job, spec: AppSpec, host_port: int | None) -> AppSpec:
+    """Zmiana wersji (naprawa, aktualizacja obrazu) nie zmienia portów: gdy ustawienia mówią co innego niż działający
+    kontener (np. 20000 zamiast 80 po dopisaniu aplikacji), nowa wersja dostaje port z działającego kontenera."""
+    if not (spec.verify or spec.refresh_image) or not spec.container_port:
+        return spec
+    real = bound_port(client, container_name(spec.slug), host_port)
+    if real and real != spec.container_port:
+        job.log(tr("node.app.port_from_container", port=real, configured=spec.container_port))
+        return spec.model_copy(update={"container_port": real})
+    return spec
+
+
+def _park(client: Any, name: str) -> dict | None:
+    """Poprzednia wersja schodzi na bok (zatrzymana, inna nazwa, bez restartu), zamiast znikać — przy błędzie wraca 1:1."""
+    existing = docker_svc.find_container(client, name)
+    if not existing:
+        return None
+    info = client.api.inspect_container(existing["Id"])
+    parked = {"id": info["Id"], "image": info["Config"]["Image"], "running": bool((info.get("State") or {}).get("Running")),
+              "restart": (info.get("HostConfig") or {}).get("RestartPolicy") or {"Name": "no"}}  # fmt: skip
+    stale = docker_svc.find_container(client, name + PARKED_SUFFIX)
+    if stale:  # resztka po przerwanym wdrożeniu
+        client.api.remove_container(stale["Id"], force=True)
+    if parked["running"]:
+        client.api.stop(parked["id"])
+    client.api.rename(parked["id"], name + PARKED_SUFFIX)
+    client.api.update_container(parked["id"], restart_policy={"Name": "no"})
+    return parked
+
+
+def _unpark(client: Any, job: Job, parked: dict, name: str) -> None:
+    job.log(tr("node.app.restoring", image=parked["image"]))
+    try:
+        client.api.rename(parked["id"], name)
+        client.api.update_container(parked["id"], restart_policy={k: v for k, v in parked["restart"].items() if k in ("Name", "MaximumRetryCount")})
+        if parked["running"]:
+            client.api.start(parked["id"])
+    except Exception as exc:  # noqa: BLE001 — zgłaszamy pierwotny błąd, ślad zostaje w logu
+        job.log(tr("node.adopt.restore_failed", error=exc))
+
+
 def replace_container(ctx: Any, job: Job, spec: AppSpec, image: str, host_port: int | None) -> str:
-    """Zastępuje kontener aplikacji nowym; jeśli nowy nie wstanie, wraca do poprzedniego obrazu."""
+    """Zastępuje kontener aplikacji nowym. Poprzedni czeka zatrzymany obok; jeśli nowy nie wstanie (albo nie przejdzie
+    testu HTTP), wraca dokładnie poprzedni kontener — z jego portami, zmiennymi i wolumenami, nie odtworzony z ustawień."""
     client = ctx.docker_for(spec.endpoint)
     name = container_name(spec.slug)
-    previous_image = None
     existing = docker_svc.find_container(client, name)
+    parked = None
     if existing:
-        previous_image = client.api.inspect_container(existing["Id"])["Config"]["Image"]
-        job.log(tr("node.app.stopping_previous", image=previous_image))
-        client.api.remove_container(existing["Id"], force=True)
-    if host_port:
-        job.log(tr("node.app.starting", name=name, image=image, host_port=host_port, port=spec.container_port))
-    else:
-        job.log(tr("node.app.starting_worker", name=name, image=image))
-    cid = docker_svc.run_container(client, _container_spec(ctx, spec, image, host_port))
-    if _wait_running(client, cid, ctx.wait_seconds):
-        if _verified(ctx, job, spec, client, cid, host_port):
-            job.log(tr("node.app.running"))
-            if spec.cleanup and previous_image and previous_image != image:
-                _drop_image(client, job, previous_image)
-            return cid
-        job.log(tr("node.app.verify_failed"))
-    else:
-        job.log(tr("node.app.crashed"))
-    logs = client.api.logs(cid, tail=40).decode(errors="replace")
-    job.log(logs.rstrip() or tr("node.app.no_logs"))
-    client.api.remove_container(cid, force=True)
-    if previous_image and previous_image != image:
-        job.log(tr("node.app.restoring", image=previous_image))
-        docker_svc.run_container(client, _container_spec(ctx, spec, previous_image, host_port))
-    raise JobFailed(tr("node.app.failed"))
+        job.log(tr("node.app.stopping_previous", image=client.api.inspect_container(existing["Id"])["Config"]["Image"]))
+        parked = _park(client, name)
+    cid = None
+    try:
+        if host_port:
+            job.log(tr("node.app.starting", name=name, image=image, host_port=host_port, port=spec.container_port))
+        else:
+            job.log(tr("node.app.starting_worker", name=name, image=image))
+        cid = docker_svc.run_container(client, _container_spec(ctx, spec, image, host_port))
+        if _wait_running(client, cid, ctx.wait_seconds):
+            if _verified(ctx, job, spec, client, cid, host_port):
+                job.log(tr("node.app.running"))
+                if parked:
+                    client.api.remove_container(parked["id"], force=True)
+                    if spec.cleanup and parked["image"] != image:
+                        _drop_image(client, job, parked["image"])
+                return cid
+            job.log(tr("node.app.verify_failed"))
+        else:
+            job.log(tr("node.app.crashed"))
+        logs = client.api.logs(cid, tail=40).decode(errors="replace")
+        job.log(logs.rstrip() or tr("node.app.no_logs"))
+        raise JobFailed(tr("node.app.failed"))
+    except BaseException:
+        if cid:
+            try:
+                client.api.remove_container(cid, force=True)
+            except Exception:  # noqa: BLE001 — już go nie ma
+                pass
+        if parked:
+            _unpark(client, job, parked, name)
+        raise
 
 
 def _verified(ctx: Any, job: Job, spec: AppSpec, client: Any, cid: str, host_port: int | None) -> bool:
@@ -195,6 +265,7 @@ def _handover_deploy(ctx: Any, job: Job, spec: AppSpec, base: dict, previous: di
     elif kind == "image":
         image = docker_svc.pull_image(client, job, spec.source.image)
         extra = {"previous_image": previous.get("image")}
+        spec = real_port(client, job, spec, previous.get("host_port"))
     else:
         image, sha = _git_image(ctx, job, spec)
         extra = {"previous_image": previous.get("image"), "sha": sha}
@@ -232,7 +303,7 @@ def _handover_deploy(ctx: Any, job: Job, spec: AppSpec, base: dict, previous: di
     record = {**base, **extra, "image": image, "host_port": host_port, "container": cid}
     ctx.state.mutate("apps", lambda apps: {**apps, spec.slug: {**apps.get(spec.slug, {}), "handover": record}})
     job.log(tr("node.app.handover_ready", host_port=host_port))
-    return {"host_port": host_port, "upstream_host": base["upstream_host"], "handover": True}
+    return {"host_port": host_port, "upstream_host": base["upstream_host"], "handover": True, "container_port": spec.container_port}
 
 
 def commit_handover(ctx: Any, job: Job, slug: str) -> dict:
@@ -351,8 +422,10 @@ def _deploy(ctx: Any, job: Job, spec: AppSpec) -> dict:
 
     if kind == "image":
         image = docker_svc.pull_image(client, job, spec.source.image)
+        spec = real_port(client, job, spec, host_port)
         cid = replace_container(ctx, job, spec, image, host_port)
-        return _record(ctx, spec.slug, **base, host_port=host_port, image=image, previous_image=previous.get("image"), container=cid)
+        return {**_record(ctx, spec.slug, **base, host_port=host_port, image=image, previous_image=previous.get("image"), container=cid),
+                "container_port": spec.container_port}
 
     if kind == "compose":
         service = spec.source.expose_service or next(iter(compose.parse_compose(spec.source.compose)["services"]))

@@ -117,6 +117,10 @@ def parse_form(panel: Any, form: Any, existing: dict[str, Any] | None = None) ->
         host = _text(form, "host", 253)
         if not HOST.match(host):
             raise ValueError(t("db.err_host"))
+        from .netguard import host_blocked
+
+        if host_blocked(host):  # usługa metadanych chmury / link-local — nie przez przeglądarkę baz
+            raise ValueError(t("net.blocked", host=host))
         try:
             port = int(form.get("port") or 3306)
         except (TypeError, ValueError):

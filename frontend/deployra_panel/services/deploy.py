@@ -127,6 +127,10 @@ async def run(panel: Any, job: Job, app_id: int, adopt_container: str | None = N
         else:
             remote = await relay.start_and_follow(client, "/api/apps/deploy", spec.model_dump(mode="json"), job, "  ")
         result = remote.get("result") or {}
+        real = result.get("container_port")
+        if real and spec.container_port and int(real) != spec.container_port:  # węzeł wziął port z działającego kontenera
+            stored, _ = load(panel, app)
+            panel.db.update("apps", app_id, spec=store(panel, stored.model_copy(update={"container_port": int(real)}), options))
         host_port, upstream_host = result.get("host_port"), result.get("upstream_host")
         previous_port = app.get("host_port")
         if inplace and not host_port:  # kontener bez opublikowanego portu (bot, worker) — bramka zostaje, jak była
@@ -186,14 +190,16 @@ async def from_container(client: Any, spec: AppSpec, cid: str, name: str) -> App
     if plan.get("problems"):
         raise JobFailed(t("deploy.takeover_blocked", name=name, problem=plan["problems"][0]))
     ports = plan.get("ports") or []
-    port = next((p for p in ports if p["container"] == spec.container_port), None) or (ports[0] if ports else {})
+    # prawdziwe mapowanie wygrywa z ustawieniami: najpierw port hosta aplikacji, potem port kontenera, potem pierwszy
+    port = (next((p for p in ports if spec.host_port and p.get("host") == spec.host_port), None)
+            or next((p for p in ports if p["container"] == spec.container_port), None) or (ports[0] if ports else {}))
     source = spec.source.model_copy(update={"image": plan.get("image") or spec.source.image,
                                             "command": plan.get("command") if plan.get("command") is not None else spec.source.command})  # fmt: skip
     return spec.model_copy(update={
         "source": source, "env": {**(plan.get("env") or {}), **spec.env},
         "volumes": spec.volumes or [VolumeMount(**v) for v in plan.get("volumes") or []],
         "memory_mb": spec.memory_mb or plan.get("memory_mb"), "cpus": spec.cpus or plan.get("cpus"),
-        "host_port": spec.host_port or port.get("host"), "container_port": spec.container_port or port.get("container"),
+        "host_port": spec.host_port or port.get("host"), "container_port": port.get("container") or spec.container_port,
     })  # fmt: skip
 
 

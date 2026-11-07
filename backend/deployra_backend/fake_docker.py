@@ -124,6 +124,7 @@ class FakeAPI:
         self.oneoff_runs: list[dict] = []
         self.on_oneoff: Any = None  # testy: podgląd/emulacja jednorazowych kontenerów (instalacja, tar wolumenów)
         self.crash_images: set[str] = set()
+        self._exec_tty: dict[str, dict] = {}
         self._cpu = 0
         self.image_env = {repo: list(env) for repo, env in IMAGE_ENV.items()}
         self._image_gen: dict[str, int] = {}  # przebudowany obraz dostaje nowe ID, jak w Dockerze
@@ -301,15 +302,42 @@ class FakeAPI:
     def top(self, cid: str) -> dict:
         return {"Titles": ["PID", "CMD"], "Processes": [["1", "nginx: master"]]}
 
-    def exec_create(self, cid: str, cmd: Any, tty: bool = False, **_: Any) -> dict:
-        if tty:
-            raise NotFound("terminal nie działa w trybie atrapy Dockera")
-        self._find(cid)
+    def exec_create(self, cid: str, cmd: Any, tty: bool = False, **options: Any) -> dict:
+        c = self._find(cid)
+        if tty and c["state"] != "running":
+            raise NotFound(f"container {c['name']} is not running")
         eid = f"exec-{next(self._ids)}"
         self._exec_commands[eid] = cmd
+        if tty:
+            self._exec_tty[eid] = options
         return {"Id": eid}
 
-    def exec_start(self, exec_id: str, **_: Any) -> bytes:
+    def exec_resize(self, exec_id: str, height: int = 24, width: int = 80) -> None:
+        self._exec_tty.setdefault(exec_id, {})["size"] = (width, height)
+
+    def exec_start(self, exec_id: str, socket: bool = False, **_: Any) -> Any:
+        if socket and exec_id in self._exec_tty:  # terminal-atrapa: echo wejścia, „exit” kończy sesję
+            import socket as socketlib
+
+            ours, theirs = socketlib.socketpair()
+
+            def shell() -> None:
+                theirs.sendall(b"atrapa$ ")
+                try:
+                    while chunk := theirs.recv(4096):
+                        if b"exit" in chunk:
+                            break
+                        theirs.sendall(chunk.replace(b"\r", b"\r\n") + b"")
+                except OSError:
+                    pass
+                finally:
+                    theirs.close()
+
+            threading.Thread(target=shell, daemon=True).start()
+            return ours
+        return self._exec_start_plain(exec_id)
+
+    def _exec_start_plain(self, exec_id: str) -> bytes:
         cmd = self._exec_commands.get(exec_id, [])
         cmd_str = " ".join(cmd) if isinstance(cmd, list) else str(cmd)
         if "TARGET" in cmd_str or "printf" in cmd_str:

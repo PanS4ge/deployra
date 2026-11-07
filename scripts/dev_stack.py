@@ -132,7 +132,8 @@ def seed_panel() -> None:
     gw_code = json.loads((DEV / "gateway" / "state.json").read_text(encoding="utf-8"))["pairing_code"]
     node_code = json.loads((DEV / "node" / "state.json").read_text(encoding="utf-8"))["pairing_code"]
     with httpx.Client(base_url=PANEL, timeout=60, headers={"HX-Request": "true"}) as c:
-        c.post("/setup", data={"name": "Ada", "surname": "Kosmiczna", "email": ADMIN[0], "password": ADMIN[1], "password_repeat": ADMIN[1],
+        code = (DEV / "panel" / "setup.code").read_text(encoding="utf-8").strip()
+        c.post("/setup", data={"setup_code": code, "name": "Ada", "surname": "Kosmiczna", "email": ADMIN[0], "password": ADMIN[1], "password_repeat": ADMIN[1],
                                "base_domain": "example.com", "panel_domain": "deploy.example.com"})  # fmt: skip
         csrf = re.search(r'name="csrf-token" content="([^"]+)"', c.get("/settings", headers={"HX-Request": ""}).text).group(1)
         c.headers["X-CSRF-Token"] = csrf

@@ -1,33 +1,106 @@
 {% extends "base.html" %}
 {% block crumbs %}<div class="crumbs"><a href="/proxy/access">{{ t("proxy.tab_access") }}</a> /</div>{% endblock %}
+{% set mode = acl_mode %}
 {% block content %}
-<form class="card" hx-post="/proxy/access/save" hx-swap="none">
+<form class="card" hx-post="/proxy/access/save" hx-swap="none" x-data="{ mode: '{{ mode }}', panel: {{ 'true' if acl.get('allow_panel', 1) else 'false' }} }">
   <input type="hidden" name="id" value="{{ acl.id or '' }}">
   <div class="card-body form-grid">
     <div class="field full"><label>{{ t("common.name") }}</label><input class="input" name="name" value="{{ acl.name or '' }}" required></div>
-    <div class="field">
-      <label>{{ t("access.users") }}</label>
-      <textarea class="textarea" name="users" style="min-height: 120px" placeholder="{{ t('access.users_placeholder') }}">{% for u in acl.users or [] %}{{ u.username }}
-{% endfor %}</textarea>
-      <div class="hint">{{ t("access.users_hint") }}</div>
+    <div class="field full">
+      <label>{{ t("access.login_mode") }}</label>
+      <div class="seg">
+        <label><input type="radio" name="login_mode" value="none" x-model="mode"><span><i class="bi bi-unlock"></i> {{ t("access.mode_none") }}</span></label>
+        <label><input type="radio" name="login_mode" value="deployra" x-model="mode"><span><i class="bi bi-person-badge"></i> {{ t("access.mode_deployra") }}</span></label>
+        <label><input type="radio" name="login_mode" value="basic" x-model="mode"><span><i class="bi bi-window"></i> {{ t("access.mode_basic") }}</span></label>
+      </div>
     </div>
-    <div class="field">
+
+    <template x-if="mode === 'deployra'"><div class="field full stack" style="gap: 10px">
+      <label class="check"><input type="checkbox" name="require_totp" value="1" {{ "checked" if acl.require_totp }}><span class="sw"></span><span>{{ t("access.require_totp") }}</span></label>
+      <label class="check"><input type="checkbox" name="allow_panel" value="1" x-model="panel"><span class="sw"></span><span>{{ t("access.allow_panel") }}</span></label>
+      <div class="field" x-show="panel">
+        <label>{{ t("access.login_users") }}</label>
+        <select class="select" name="login_users" multiple style="min-height: 100px">{% for u in panel_users or [] %}<option value="{{ u.id }}" {{ "selected" if u.id in (acl.login_users or []) }}>{{ u.email }}</option>{% endfor %}</select>
+      </div>
+      <div class="field" style="max-width: 220px"><label>{{ t("access.session_hours") }}</label><input class="input" name="session_hours" type="number" min="1" max="720" value="{{ acl.session_hours or 12 }}"></div>
+    </div></template>
+    <template x-if="mode === 'basic'"><div class="field full">
+      <label class="check"><input type="checkbox" name="pass_auth" value="1" {{ "checked" if acl.pass_auth }}><span class="sw"></span><span>{{ t("access.pass_auth") }}</span></label>
+    </div></template>
+
+    <div class="field full">
       <label>{{ t("access.ip_rules_long") }}</label>
-      <textarea class="textarea" name="clients" style="min-height: 120px" placeholder="allow 192.168.1.0/24&#10;deny 203.0.113.7">{% for c in acl.clients or [] %}{{ c.directive }} {{ c.address }}
+      <textarea class="textarea" name="clients" style="min-height: 90px" placeholder="allow 192.168.1.0/24&#10;deny 203.0.113.7">{% for c in acl.clients or [] %}{{ c.directive }} {{ c.address }}
 {% endfor %}</textarea>
       <div class="hint">{{ t("access.ip_hint") }}</div>
     </div>
-    <label class="check"><input type="checkbox" name="satisfy_any" value="1" {{ "checked" if acl.satisfy_any }}><span class="sw"></span><span>{{ t("access.satisfy_any") }}</span></label>
-    <label class="check"><input type="checkbox" name="pass_auth" value="1" {{ "checked" if acl.pass_auth }}><span class="sw"></span><span>{{ t("access.pass_auth") }}</span></label>
-    <label class="check"><input type="checkbox" name="deployra_login" value="1" {{ "checked" if acl.deployra_login }}><span class="sw"></span><span>{{ t("access.deployra_login") }}</span></label>
-    <div class="field">
-      <label>{{ t("access.login_users") }}</label>
-      <select class="select" name="login_users" multiple style="min-height: 120px">{% for u in panel_users or [] %}<option value="{{ u.id }}" {{ "selected" if u.id in (acl.login_users or []) }}>{{ u.email }}</option>{% endfor %}</select>
-    </div>
+    <label class="check" x-show="mode !== 'none'"><input type="checkbox" name="satisfy_any" value="1" {{ "checked" if acl.satisfy_any }}><span class="sw"></span><span>{{ t("access.satisfy_any") }}</span></label>
   </div>
   <div class="card-body row" style="justify-content: flex-end; border-top: 1px solid var(--border)">
     <a class="btn ghost" href="/proxy/access">{{ t("common.cancel") }}</a>
-    <button class="btn primary"><i class="bi bi-check2"></i> {{ t("common.save") }}</button>
+    <button class="btn primary"><span class="spin"></span><i class="bi bi-check2"></i> {{ t("common.save") }}</button>
   </div>
 </form>
+
+{% if acl.id %}
+<div class="card" style="margin-top: 16px" id="acl-accounts">
+  <div class="card-head">
+    <h3><i class="bi bi-people"></i> {{ t("access.accounts") }}</h3><span class="spacer"></span>
+    {% if mode == "basic" %}<span class="badge warn" title="{{ t('access.basic_no_2fa') }}"><i class="bi bi-exclamation-triangle"></i> {{ t("access.mode_basic") }}</span>{% endif %}
+  </div>
+  <div id="totp-reveal"></div>
+  {% if accounts %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>{{ t("fwd.username") }}</th><th>{{ t("common.name") }}</th><th>2FA</th><th>{{ t("access.last_login") }}</th><th></th></tr></thead>
+      <tbody>
+      {% for a in accounts %}
+        <tr x-data="{ pw: false }">
+          <td class="name">
+            <span class="mono">{{ a.username }}</span>
+            {% if not a.enabled %}<span class="badge err">{{ t("access.disabled") }}</span>{% endif %}
+            {% if a.locked_until and a.locked_until > now_ts %}<span class="badge warn">{{ t("access.locked") }}</span>{% endif %}
+          </td>
+          <td>{{ a.name or "—" }}</td>
+          <td>{% if a.totp_secret %}<span class="badge ok"><i class="bi bi-shield-check"></i></span>{% else %}<span class="dim">—</span>{% endif %}</td>
+          <td class="small muted">{% if a.last_login_at %}{{ a.last_login_at | ago }} · {{ a.last_login_ip }}{% else %}—{% endif %}</td>
+          <td class="actions">
+            <button class="btn icon sm ghost" title="{{ t('access.change_password') }}" @click="pw = !pw"><i class="bi bi-key"></i></button>
+            {% if a.totp_secret %}
+            <button class="btn icon sm ghost" title="{{ t('access.totp_off') }}" hx-post="/proxy/access/{{ acl.id }}/accounts/{{ a.id }}/totp/off" hx-swap="none" hx-confirm="{{ t('access.totp_off_confirm', name=a.username) }}"><i class="bi bi-shield-x"></i></button>
+            {% else %}
+            <button class="btn icon sm ghost" title="{{ t('access.totp_on') }}" hx-post="/proxy/access/{{ acl.id }}/accounts/{{ a.id }}/totp" hx-target="#totp-reveal" hx-swap="innerHTML"><i class="bi bi-shield-plus"></i></button>
+            {% endif %}
+            <button class="btn icon sm ghost" title="{{ t('common.enable') if not a.enabled else t('common.disable') }}" hx-post="/proxy/access/{{ acl.id }}/accounts/{{ a.id }}/toggle" hx-swap="none"><i class="bi bi-{{ 'play' if not a.enabled else 'pause' }}"></i></button>
+            <button class="btn icon sm ghost" title="{{ t('common.delete') }}" hx-post="/proxy/access/{{ acl.id }}/accounts/{{ a.id }}/delete" hx-swap="none" hx-confirm="{{ t('access.account_delete_confirm', name=a.username) }}" data-danger><i class="bi bi-trash"></i></button>
+            <form class="row" style="gap: 6px; margin-top: 6px" x-show="pw" x-cloak hx-post="/proxy/access/{{ acl.id }}/accounts/{{ a.id }}/password" hx-swap="none">
+              <input class="input sm" name="password" type="password" minlength="8" autocomplete="new-password" placeholder="{{ t('access.new_password') }}" required>
+              <button class="btn sm primary"><i class="bi bi-check2"></i></button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  <form class="card-body row" style="gap: 8px; flex-wrap: wrap; align-items: flex-end; border-top: 1px solid var(--border)"
+        hx-post="/proxy/access/{{ acl.id }}/accounts" hx-swap="none"
+        x-data="{ gen() { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; const r = crypto.getRandomValues(new Uint32Array(18)); return Array.from(r, v => a[v % a.length]).join(''); } }">
+    <div class="field" style="flex: 1; min-width: 140px; margin: 0"><label>{{ t("fwd.username") }}</label><input class="input" name="username" required maxlength="64" autocomplete="off"></div>
+    <div class="field" style="flex: 1; min-width: 140px; margin: 0"><label>{{ t("common.name") }}</label><input class="input" name="name" maxlength="60"></div>
+    <div class="field" style="flex: 1.3; min-width: 200px; margin: 0"><label>{{ t("fwd.password") }}</label>
+      <div class="row" style="gap: 6px; flex-wrap: nowrap"><input class="input mono" name="password" x-ref="pw" minlength="8" required autocomplete="new-password" style="flex: 1; min-width: 0">
+      <button type="button" class="btn sm ghost" title="{{ t('access.generate') }}" @click="$refs.pw.value = gen()"><i class="bi bi-magic"></i></button></div>
+    </div>
+    <button class="btn primary"><span class="spin"></span><i class="bi bi-person-plus"></i> {{ t("access.add_account") }}</button>
+  </form>
+  {% if mode == "deployra" %}
+  <div class="card-body row small" style="border-top: 1px solid var(--border); justify-content: space-between">
+    <span class="muted"><i class="bi bi-broadcast"></i> {{ t("access.sessions", count=sessions | length) }}</span>
+    {% if sessions %}<button class="btn sm ghost" hx-post="/proxy/access/{{ acl.id }}/sessions/revoke" hx-swap="none" hx-confirm="{{ t('access.sessions_revoke_confirm') }}"><i class="bi bi-box-arrow-right"></i> {{ t("access.sessions_revoke") }}</button>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}

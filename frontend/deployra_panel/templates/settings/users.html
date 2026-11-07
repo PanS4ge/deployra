@@ -1,12 +1,20 @@
 {% extends "settings/_layout.html" %}
 {% block settings %}
 <div x-data="{ edit: null }">
+  {% if has(user, P.ALLOW_RISKY_SETTINGS) %}
+  <div class="card" style="margin-bottom: 16px"><div class="card-body row between" style="gap: 10px">
+    <span><i class="bi bi-shield-lock"></i> {{ t("account.require_label") }}</span>
+    <button class="btn sm {{ 'primary' if request.state.require_2fa else '' }}" hx-post="/settings/users/require-2fa" hx-swap="none">
+      {{ t("account.on") if request.state.require_2fa else t("account.off") }}</button>
+  </div></div>
+  {% endif %}
   <div class="grid grid-auto">
     {% for u in users %}{% set perms = parse(u.permissions) %}
     <div class="card">
       <div class="card-head">
         <img class="avatar" src="{{ gravatar(u.email, 64, panel.db.setting('gravatar_default', 'identicon')) }}" alt="" referrerpolicy="no-referrer">
         <div style="flex: 1; min-width: 0"><div class="name trunc">{{ u.name }} {{ u.surname }}</div><div class="small muted trunc">{{ u.email }}</div></div>
+        {% if u.totp_secret %}<span class="badge ok" title="2FA"><i class="bi bi-shield-check"></i></span>{% endif %}
         {% if u.scoped %}<span class="badge info">{{ t("servers.scoped_badge") }}</span>{% elif P.FULL_ACCESS in perms %}<span class="badge violet">{{ t("users.full_access") }}</span>{% endif %}
       </div>
       <div class="card-body row between">
@@ -14,6 +22,7 @@
         <div class="row" style="gap: 4px">
           {% if has(user, P.ALLOW_MODIFYING_USERS) %}<a class="btn sm" href="/settings/users/{{ u.id }}/servers" title="{{ t('servers.my_servers') }}"><i class="bi bi-hdd-stack"></i></a>{% endif %}
           {% if u.id == user.id or has(user, P.ALLOW_MODIFYING_USERS) %}<button class="btn sm" @click="edit = {{ u.id }}"><i class="bi bi-pencil"></i></button>{% endif %}
+          {% if u.totp_secret and u.id != user.id and has(user, P.FULL_ACCESS) %}<button class="btn sm" title="{{ t('account.reset_2fa') }}" hx-post="/settings/users/{{ u.id }}/2fa/reset" hx-swap="none" hx-confirm="{{ t('account.reset_2fa_confirm', email=u.email) }}" data-danger><i class="bi bi-shield-x"></i></button>{% endif %}
           {% if has(user, P.ALLOW_DELETING_USERS) and not u.undeletable and u.id != user.id %}<button class="btn sm danger" hx-post="/settings/users/{{ u.id }}/delete" hx-swap="none" hx-confirm="{{ t('users.delete_confirm', email=u.email) }}" data-danger data-math><i class="bi bi-trash"></i></button>{% endif %}
         </div>
       </div>
@@ -34,6 +43,7 @@
         <div class="field"><label>{{ t("common.last_name") }}</label><input class="input" name="surname" value="{{ u.surname or '' }}"></div>
         <div class="field"><label>{{ t("common.email") }}</label><input class="input" name="email" type="email" value="{{ u.email }}" autocomplete="username" required></div>
         <div class="field"><label>{{ t("common.password") }}</label><input class="input" name="password" type="password" autocomplete="new-password" placeholder="{{ t('common.leave_empty_to_keep') if u.id else t('users.min_password') }}"></div>
+        {% if u.id and u.id == user.id %}<div class="field"><label>{{ t("users.current_password") }}</label><input class="input" name="current_password" type="password" autocomplete="current-password"></div>{% endif %}
         <div class="field full">
           <label>{{ t("servers.mode") }}</label>
           <select class="select" name="scoped" {{ "disabled" if u.id == user.id or u.undeletable or not has(user, P.ALLOW_MODIFYING_USERS) }}>

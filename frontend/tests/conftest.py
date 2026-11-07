@@ -1,3 +1,7 @@
+import os
+
+os.environ.setdefault("DEPLOYRA_SCRYPT_N", "16384")  # testy: tańszy scrypt (produkcja 2^17)
+
 import re
 
 import pytest
@@ -46,7 +50,7 @@ def admin(client):
     """Konfiguruje panel i zwraca klienta zalogowanego jako administrator (z nagłówkiem CSRF)."""
     response = client.post(
         "/setup",
-        data={"name": "Ada", "surname": "Lovelace", "email": "admin@example.com", "password": "bardzo-tajne", "password_repeat": "bardzo-tajne",
+        data={"setup_code": client.app.state.panel.setup_code(), "name": "Ada", "surname": "Lovelace", "email": "admin@example.com", "password": "bardzo-tajne", "password_repeat": "bardzo-tajne",
               "base_domain": "example.com", "panel_domain": "deploy.example.com"},
         headers={"HX-Request": "true"},
     )  # fmt: skip

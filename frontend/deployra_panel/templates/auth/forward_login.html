@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>{{ host }} · {{ t("fwd.title") }}</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px;
+         background: #03050d; color: #e6e8ff; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+         background-image: radial-gradient(circle at 50% 15%, rgba(139,92,246,.22), transparent 45%),
+                           radial-gradient(circle at 85% 85%, rgba(34,211,238,.13), transparent 40%); }
+  .card { width: 100%; max-width: 380px; background: rgba(10,13,30,.86); border: 1px solid rgba(139,92,246,.3);
+          border-radius: 20px; padding: 32px 28px; box-shadow: 0 20px 60px rgba(0,0,0,.7), 0 0 40px rgba(139,92,246,.15); }
+  .logo { display: block; margin: 0 auto 10px; }
+  h1 { font-size: 1.3rem; margin: 6px 0 2px; text-align: center; font-weight: 750; letter-spacing: -.01em; }
+  .host { text-align: center; color: #94a3b8; font-size: .9rem; margin-bottom: 22px; word-break: break-all; }
+  label { display: block; font-size: .82rem; color: #a5b4fc; margin: 14px 0 6px; font-weight: 600; }
+  input { width: 100%; padding: 11px 13px; border-radius: 11px; border: 1px solid rgba(148,163,184,.25); background: rgba(2,4,12,.7);
+          color: #e6e8ff; font-size: 1rem; outline: none; }
+  input:focus { border-color: #8b5cf6; box-shadow: 0 0 0 3px rgba(139,92,246,.25); }
+  input.code { letter-spacing: .4em; text-align: center; font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+  button { width: 100%; margin-top: 22px; padding: 12px; border: 0; border-radius: 11px; font-size: 1rem; font-weight: 700; color: #fff;
+           cursor: pointer; background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
+  button:hover { filter: brightness(1.1); }
+  .err { margin: 0 0 6px; padding: 10px 12px; border-radius: 10px; background: rgba(251,113,133,.12); border: 1px solid rgba(251,113,133,.35);
+         color: #fecdd3; font-size: .88rem; }
+  .ok { margin: 0 0 6px; padding: 10px 12px; border-radius: 10px; background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.3);
+        color: #bbf7d0; font-size: .88rem; }
+  .alt { display: block; text-align: center; margin-top: 16px; color: #a5b4fc; font-size: .86rem; text-decoration: none; }
+  .alt:hover { text-decoration: underline; }
+  .foot { margin-top: 22px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.06); text-align: center; color: #64748b; font-size: .76rem; }
+</style>
+</head>
+<body>
+<main class="card">
+  <svg class="logo" viewBox="0 0 64 64" width="64" height="64" fill="none" aria-hidden="true">
+    <defs><radialGradient id="p" cx="38%" cy="32%" r="70%"><stop offset="0" stop-color="#f0abfc"/><stop offset=".45" stop-color="#8b5cf6"/><stop offset="1" stop-color="#1e1b4b"/></radialGradient></defs>
+    <circle cx="32" cy="32" r="15" fill="url(#p)"/><ellipse cx="32" cy="33" rx="27" ry="8.5" stroke="#22d3ee" stroke-opacity=".7" stroke-width="2.2" transform="rotate(-18 32 32)"/>
+  </svg>
+  <h1>{{ t("fwd.title") }}</h1>
+  <div class="host">{{ host }}</div>
+  {% if error %}<div class="err" role="alert">{{ error }}</div>{% endif %}
+  {% if notice %}<div class="ok" role="status">{{ notice }}</div>{% endif %}
+  {% if step == "totp" %}
+  <form method="post" action="/__deployra_auth/totp" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="pre" value="{{ pre }}">
+    <input type="hidden" name="rd" value="{{ rd }}">
+    <label for="code">{{ t("fwd.code") }}</label>
+    <input class="code" id="code" name="code" inputmode="numeric" pattern="[0-9 ]{6,7}" maxlength="7" required autofocus autocomplete="one-time-code">
+    <button type="submit">{{ t("fwd.verify") }}</button>
+  </form>
+  <a class="alt" href="/__deployra_auth/login?rd={{ rd | urlencode }}">{{ t("fwd.back") }}</a>
+  {% else %}
+  <form method="post" action="/__deployra_auth/login">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="rd" value="{{ rd }}">
+    <label for="username">{{ t("fwd.username") }}</label>
+    <input id="username" name="username" value="{{ username or '' }}" autocomplete="username" autocapitalize="none" spellcheck="false" required {{ "" if username else "autofocus" }}>
+    <label for="password">{{ t("fwd.password") }}</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required {{ "autofocus" if username else "" }}>
+    <button type="submit">{{ t("fwd.sign_in") }}</button>
+  </form>
+  {% if panel_login %}<a class="alt" href="{{ panel_login }}">{{ t("fwd.panel_account") }}</a>{% endif %}
+  {% endif %}
+  <div class="foot">Deployra</div>
+</main>
+</body>
+</html>

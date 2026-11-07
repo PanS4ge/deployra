@@ -22,6 +22,8 @@ from ..web import render
 router = APIRouter()
 _EP = re.compile(r"^(local|ct-\d{1,9})$")
 _CID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$")
+_USER = re.compile(r"^([A-Za-z0-9_.-]{1,32}(:[A-Za-z0-9_.-]{1,32})?)?$")
+_WORKDIR = re.compile(r"^(/[^\x00-\x1f]{0,255})?$")
 
 
 @router.get("/nodes/{node_id}/containers/{cid}/terminal")
@@ -32,29 +34,37 @@ def terminal_page(request: Request, cid: str, node: dict = Depends(node_or_404),
 
 @router.websocket("/nodes/{node_id}/containers/{cid}/terminal/ws")
 async def terminal_ws(websocket: WebSocket, node_id: int, cid: str, ep: str = "local", shell: str = "auto",
-                      cols: int = 120, rows: int = 32) -> None:  # fmt: skip
+                      cols: int = 120, rows: int = 32, user: str = "", workdir: str = "") -> None:  # fmt: skip
     panel: Panel = websocket.app.state.panel
     session = await run_in_threadpool(panel.sessions.load, websocket.cookies.get(SESSION_COOKIE))
     if not session or not has(session, Permission.ALLOW_CONTAINER_TERMINAL) or session.get("scoped"):
         await websocket.close(code=4401)
         return
-    await relay_terminal(websocket, panel, session, panel.node(node_id), cid, ep, shell, cols, rows)
+    await relay_terminal(websocket, panel, session, panel.node(node_id), cid, ep, shell, cols, rows, user, workdir)
 
 
 async def relay_terminal(websocket: WebSocket, panel: Panel, session: dict, node: dict | None, cid: str, ep: str, shell: str,
-                         cols: int, rows: int) -> None:  # fmt: skip
+                         cols: int, rows: int, user: str = "", workdir: str = "") -> None:  # fmt: skip
     """Przeglądarka ↔ węzeł (docker exec). Uprawnienia sprawdza wywołujący; tu origin i poprawność parametrów."""
     origin = websocket.headers.get("origin")
     if origin and urlparse(origin).netloc != websocket.headers.get("host"):
         await websocket.close(code=4403)  # obrona przed cross-site WebSocket hijacking
         return
-    if not node or not _EP.match(ep) or not _CID.match(cid) or shell not in ("auto", "sh", "bash", "ash"):
+    user, workdir = user.strip(), workdir.strip()
+    if (not node or not _EP.match(ep) or not _CID.match(cid) or shell not in ("auto", "sh", "bash", "ash") or not _USER.match(user)
+            or not _WORKDIR.match(workdir)):
         await websocket.close(code=4400)
         return
     client = panel.node_client(node)
-    path = f"/api/containers/{cid}/exec?" + urlencode({"shell": shell, "cols": max(cols, 10), "rows": max(rows, 2), "ep": ep})
+    query = {"shell": shell, "cols": max(cols, 10), "rows": max(rows, 2), "ep": ep, **({"user": user} if user else {}),
+             **({"workdir": workdir} if workdir else {})}  # fmt: skip
+    path = f"/api/containers/{cid}/exec?" + urlencode(query)
     await websocket.accept()
-    logger.info(f"Terminal: {session['email']} → {node['name']}/{ep}/{cid}")
+    logger.info(f"Terminal: {session['email']} → {node['name']}/{ep}/{cid}" + (f" ({user})" if user else ""))
+    from ..services import audit
+
+    await run_in_threadpool(audit.record, panel, "terminal", user=session, ip=websocket.client.host if websocket.client else "",
+                            target=f"{node['name']}/{cid}", exec_user=user or None)  # fmt: skip
     try:
         async with websockets.connect(client.ws_url(path), additional_headers=client.ws_headers(path), max_size=None,
                                       open_timeout=15) as remote:  # fmt: skip

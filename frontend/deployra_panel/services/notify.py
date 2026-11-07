@@ -153,6 +153,10 @@ def guess_kind(url: str) -> str:
 
 
 async def send(kind: str, config: dict[str, str], message: Message, client: httpx.AsyncClient) -> None:
+    if config.get("url"):  # adres podany przez użytkownika — bez usług metadanych chmury
+        from .netguard import check_url
+
+        await check_url(config["url"])
     if kind == "webhook":
         body = json.dumps(message.payload(), ensure_ascii=False).encode()
         headers = {"Content-Type": "application/json", "User-Agent": "Deployra"}
@@ -190,7 +194,7 @@ async def send(kind: str, config: dict[str, str], message: Message, client: http
     else:
         raise ValueError(t("notify.bad_kind"))
     if response.status_code >= 400:
-        raise RuntimeError(f"HTTP {response.status_code}: {response.text[:200]}")
+        raise RuntimeError(f"HTTP {response.status_code} {response.reason_phrase}".strip())  # bez treści: nie czytamy cudzych odpowiedzi
 
 
 def _send_mail(config: dict[str, str], message: Message) -> None:

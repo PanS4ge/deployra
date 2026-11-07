@@ -66,27 +66,31 @@ def parse_rd(rd: str) -> tuple[str, str] | None:
 
 def _site_acl(panel: Any, host: str) -> dict[str, Any] | None:
     """Lista dostępu z logowaniem Deployra, do której należy host (tylko włączone hosty proxy)."""
+    from .access_accounts import mode_of
+
     if not host:
         return None
     for site in panel.db.fetchall("SELECT * FROM sites WHERE kind = 'proxy' AND enabled = 1 AND access_list_id IS NOT NULL"):
         if host in {str(d).lower() for d in site.get("domains") or []}:
             acl = panel.db.get("access_lists", site["access_list_id"])
-            return acl if acl and acl.get("deployra_login") else None
+            return acl if mode_of(acl) == "deployra" else None
     return None
 
 
+site_acl = _site_acl
+
+
 def authorize(panel: Any, host: str, user_id: int | None) -> dict[str, Any] | None:
-    """Konto może wejść na host: istnieje i (lista dozwolonych jest pusta albo je zawiera)."""
+    """Konto panelu może wejść na host: lista wpuszcza konta panelu (wszystkie albo wybrane), konto nie jest „tylko przypisane”."""
+    from .access_accounts import panel_user_allowed
+
     if user_id is None:
         return None
     acl = _site_acl(panel, host)
     if not acl:
         return None
     user = panel.db.get("users", user_id)
-    if not user:
-        return None
-    allowed = [int(u) for u in acl.get("login_users") or []]
-    if allowed and int(user_id) not in allowed:
+    if not user or not panel_user_allowed(acl, user):
         return None
     return user
 
@@ -176,17 +180,18 @@ def start(panel: Any, user_id: int, rd: str) -> str | None:
 
 def panel_auth(panel: Any) -> PanelAuth | None:
     """Adresy panelu dla bramki: przez tunel (adres panelu w hubie WireGuard), bez tunelu — 127.0.0.1."""
-    domain = str(panel.db.setting("panel_domain") or "").strip().lower()
-    if not domain:
-        return None
+    domain = str(panel.db.setting("panel_domain") or "").strip().lower()  # bez domeny działa tylko logowanie kontami listy
     hub = panel.gateway() or {}
     address = str(hub.get("panel_address") or "").split("/")[0]
     if not address:
         edge = panel.edge_row()
         address = str(hub.get("hub_address") or "127.0.0.1") if edge and edge.get("secret") else "127.0.0.1"
+    from .access_accounts import gw_token
+
     host = f"[{address}]" if ":" in address else address
     base = f"http://{host}:{panel.config.port}"
     try:
-        return PanelAuth(verify=f"{base}{VERIFY_PATH}", callback=f"{base}{CALLBACK_PATH}", login=f"https://{domain}/login")
+        return PanelAuth(verify=f"{base}{VERIFY_PATH}", callback=f"{base}{CALLBACK_PATH}", login=f"https://{domain or 'localhost'}/login",
+                         base=base, gw_token=gw_token(panel))  # fmt: skip
     except ValidationError:
         return None

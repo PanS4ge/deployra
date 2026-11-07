@@ -128,6 +128,7 @@
       "no_previous": "no previous version to restore",
       "old_build_removed": "Removed old build {tags}",
       "other_endpoint": "the app runs on another endpoint — delete it and deploy again to move it",
+      "port_from_container": "Taking the container port from the running version: {port} (settings said {configured})",
       "removed": "App {slug} removed",
       "restoring": "Restoring the previous version {image}",
       "running": "✔ Container is running",
@@ -322,6 +323,15 @@
       "no_container": "No container {name}",
       "done": "✔ {name} runs {image}",
       "same_image": "✔ {name} already runs {image} (image unchanged)"
+    },
+    "lan": {
+      "bad_subnet": "bad subnet {subnet}: IPv4 only, at least /8, outside the tunnel network",
+      "no_tunnel": "the node is not in the Deployra-WG tunnel",
+      "applied": "Subnets behind the node: {subnets}"
+    },
+    "probe": {
+      "ip_only": "give an IP address",
+      "not_private": "route test only to private addresses and the node's subnets"
     }
   },
   "srv": {
@@ -398,6 +408,17 @@
       "single_line": "PostUp/PostDown commands must be single-line",
       "sync_failed": "wg syncconf failed: {error}",
       "up_failed": "wg-quick up failed: {error}"
+    },
+    "host": {
+      "path": "host path {path} gives access to the node's system",
+      "network": "network “{network}” gives the container the node's network",
+      "shared_network": "network “{network}” shares the network of another container",
+      "privileged": "{service}: privileged mode",
+      "mode": "{service}: {key}: {value}",
+      "caps": "{service}: extra kernel capabilities ({caps})",
+      "devices": "{service}: host devices",
+      "security_opt": "{service}: security protections disabled (security_opt)",
+      "denied": "A container with host access needs the “Host access from containers” permission: {problems}"
     }
   }
 }

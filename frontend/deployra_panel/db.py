@@ -17,7 +17,7 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 JSON_COLUMNS = {"domains", "target", "redirect", "locations", "users", "clients", "lan_subnets", "info", "login_users", "external_wg", "vulns", "items",
-                "ignored_ids"}  # fmt: skip
+                "ignored_ids", "ssh", "backup_codes", "details"}  # fmt: skip
 
 
 def now() -> str:

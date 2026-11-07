@@ -29,7 +29,8 @@ from .web import is_htmx, render, toast
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 PUBLIC_PREFIXES = ("/static/", "/hooks/", "/healthz", "/login", "/setup", "/language", "/favicon.ico", "/mcp",
                    "/minecraft/bridge/", "/minecraft/download/")  # plugin Minecrafta: podpis HMAC zamiast sesji
-FORWARD_PUBLIC = ("/auth/forward", "/auth/forward/callback")  # bramka i host aplikacji: bez sesji (dokładne ścieżki)
+TWOFA_FREE = {"account", "logout", "language", "static", "login", "healthz", "favicon.ico"}  # dostępne bez 2FA przy wymuszonym 2FA
+FORWARD_PUBLIC = ("/auth/forward", "/auth/forward/callback", "/auth/forward/login", "/auth/forward/totp", "/auth/forward/logout")  # bramka i host aplikacji: bez sesji (dokładne ścieżki)
 
 
 def create_app(config: Config | None = None, panel: Panel | None = None) -> FastAPI:
@@ -43,6 +44,11 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
 
         await run_in_threadpool(wg_peer.ensure_up, panel)
         await run_in_threadpool(panel.sessions.cleanup)
+        from .services import access_accounts
+
+        await run_in_threadpool(access_accounts.migrate_legacy, panel)  # stare hasła Basic list dostępu → konta list
+        if not await run_in_threadpool(panel.has_users):
+            await run_in_threadpool(panel.setup_code)  # kod do /setup trafia do logów przy starcie
         # zadania żyją w pamięci — to, co trwało w chwili restartu, zostało przerwane
         panel.db.execute("UPDATE apps SET status = 'error', last_error = ? WHERE status = 'deploying'", [i18n.t("msg.deploy_interrupted")])
         panel.db.execute("UPDATE certificates SET status = 'error', error = ? WHERE status = 'issuing'", [i18n.t("msg.cert_interrupted")])
@@ -79,6 +85,16 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
     app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
     @app.middleware("http")
+    async def audit_middleware(request: Request, call_next):
+        """Wewnątrz middleware sesji: zna już konto (request.state.user) i widzi status odpowiedzi."""
+        response = await call_next(request)
+        if request.method not in SAFE_METHODS and getattr(request.state, "user", None):
+            from .services import audit
+
+            await run_in_threadpool(audit.from_request, panel, request, response.status_code)
+        return response
+
+    @app.middleware("http")
     async def session_middleware(request: Request, call_next):
         request.state.user = None
         request.state.csrf = ""
@@ -89,17 +105,17 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
         if path.startswith("/static/") or path.startswith("/hooks/") or path == "/healthz" or path == "/favicon.ico":
             return await call_next(request)
 
-        # Sprawdzenie autoryzacji przez token API / MCP (nagłówek Bearer lub ?token= dla /mcp)
-        auth = request.headers.get("Authorization", "")
+        # Token API / MCP (nagłówek Bearer albo ?token=) działa tylko dla /mcp — reszta panelu wymaga sesji (i CSRF)
         raw_token = ""
-        if auth.startswith("Bearer "):
-            raw_token = auth.removeprefix("Bearer ").strip()
-        elif request.query_params.get("token") and path.startswith("/mcp"):
-            raw_token = request.query_params.get("token", "").strip()
+        if path.startswith("/mcp"):
+            auth = request.headers.get("Authorization", "")
+            raw_token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else request.query_params.get("token", "").strip()
 
         if raw_token:
             from .services.tokens import verify_token
             api_user = await run_in_threadpool(verify_token, panel, raw_token)
+            if api_user and api_user.get("scoped"):  # konta „tylko przypisane” nie mają dostępu do narzędzi MCP
+                return JSONResponse({"detail": i18n.t("servers.denied")}, status_code=403)
             if api_user:
                 request.state.user = api_user
                 request.state.is_token_auth = True
@@ -119,6 +135,12 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
                 token = request.headers.get("X-CSRF-Token", "")
                 if not hmac.compare_digest(token, session["csrf"]):
                     return JSONResponse({"detail": i18n.t("msg.csrf")}, status_code=403)
+            if (not session.get("totp_secret") and path.split("/")[1] not in TWOFA_FREE
+                    and await run_in_threadpool(panel.db.setting, "require_2fa")):
+                # administrator wymaga 2FA: bez włączonego 2FA zostaje tylko Moje konto (żeby je włączyć)
+                if request.method == "GET" and "text/event-stream" not in request.headers.get("accept", ""):
+                    return _redirect(request, "/account")
+                return JSONResponse({"detail": i18n.t("account.forced")}, status_code=403)
             if session.get("scoped") and not access.path_allowed(path):
                 # konto „tylko przypisane serwery”: cała reszta panelu jest zamknięta, nie tylko ukryta w menu
                 if request.method == "GET" and "text/event-stream" not in request.headers.get("accept", ""):
@@ -127,6 +149,20 @@ def create_app(config: Config | None = None, panel: Panel | None = None) -> Fast
         elif not (path in FORWARD_PUBLIC or any(path.startswith(p) for p in PUBLIC_PREFIXES)):
             return _redirect(request, f"/login?next={path}" if request.method == "GET" else "/login")
         return await call_next(request)
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        """Nagłówki bezpieczeństwa na każdej odpowiedzi panelu (trasa może ustawić własne, np. CSP ikon aplikacji)."""
+        response = await call_next(request)
+        headers = response.headers
+        headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        headers.setdefault("X-Content-Type-Options", "nosniff")
+        headers.setdefault("Referrer-Policy", "same-origin")
+        headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+        headers.setdefault("Content-Security-Policy", "frame-ancestors 'self'; object-src 'none'; base-uri 'self'")
+        if request.url.scheme == "https":
+            headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+        return response
 
     @app.exception_handler(LoginRequired)
     async def _login(request: Request, exc: LoginRequired) -> Response:

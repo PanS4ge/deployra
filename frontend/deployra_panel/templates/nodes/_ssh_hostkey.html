@@ -1,0 +1,17 @@
+{% if error %}
+<div class="callout err small"><i class="bi bi-plug"></i><div>{{ t("ssh.no_connection", error=error) }}</div></div>
+{% else %}
+<div class="stack small" style="gap: 8px">
+  <div><span class="muted">{{ t("ssh.fingerprint") }}:</span> <span class="mono">{{ fingerprint }}</span></div>
+  {% if trusted and trusted == fingerprint %}
+    <div class="badge ok"><i class="bi bi-shield-check"></i> {{ t("ssh.key_trusted") }}</div>
+  {% else %}
+    {% if trusted %}<div class="callout err"><i class="bi bi-exclamation-octagon"></i><div>{{ t("ssh.key_changed_warn", trusted=trusted) }}</div></div>{% endif %}
+    <div class="muted">{{ t("ssh.compare_hint") }} <code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code></div>
+    <form hx-post="/nodes/{{ node.id }}/ssh/hostkey/accept" hx-swap="none">
+      <input type="hidden" name="fingerprint" value="{{ fingerprint }}">
+      <button class="btn sm {{ 'danger' if trusted else 'primary' }}"><i class="bi bi-check2"></i> {{ t("ssh.accept_key") }}</button>
+    </form>
+  {% endif %}
+</div>
+{% endif %}

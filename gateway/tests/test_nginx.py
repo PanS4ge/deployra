@@ -290,3 +290,17 @@ def test_http3_capability_probe_and_apply(ctx):
 def test_deployra_user_header_cleared_without_login():
     conf = nginx_driver.render_site(Site(id=9, domains=["plain.example.com"], upstream=UP), None, cert_ready=False, ipv6=False)
     assert 'proxy_set_header X-Deployra-User "";' in conf
+
+
+def test_access_list_v2_login_lives_on_the_app_host():
+    """Lista dostępu 2.0: logowanie na hoście aplikacji, przez tunel do panelu, z tokenem bramki i prawdziwym IP."""
+    from deployra_common.schemas import PanelAuth
+
+    auth = PanelAuth(**PANEL, base="http://10.66.0.1:8080", gw_token="a" * 48)
+    site = Site(id=11, domains=["app.example.com"], upstream=UP)
+    conf = nginx_driver.render_site(site, AccessList(id=9, deployra_login=True), cert_ready=False, ipv6=False, auth=auth)
+    assert "auth_request /__deployra_auth;" in conf and "error_page 401 = @deployra_login;" in conf
+    assert "location ^~ /__deployra_auth/ {" in conf and "proxy_pass http://10.66.0.1:8080/auth/forward/;" in conf
+    assert 'proxy_set_header X-Deployra-Gw "' + "a" * 48 + '";' in conf and "proxy_set_header X-Real-IP $remote_addr;" in conf
+    assert "return 302 /__deployra_auth/login?rd=$deployra_rd;" in conf
+    assert "deploy.example.com/login" not in conf  # domena panelu nie jest potrzebna

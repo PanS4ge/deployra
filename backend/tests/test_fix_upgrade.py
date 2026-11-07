@@ -35,6 +35,51 @@ def test_healthy_new_version_removes_old_image(api, ctx, monkeypatch):
     assert running_image(ctx) == "php:8.2-apache" and removed == ["php:8.0-apache"]
 
 
+def app_container(ctx, name="app-errpage"):
+    return next(c for c in ctx.docker.api.containers_.values() if c["name"] == name)
+
+
+def test_failed_version_restores_the_exact_previous_container(api, ctx, monkeypatch):
+    """Powrót to ten sam kontener (z jego portem), a nie stary obraz odtworzony z (być może złych) ustawień."""
+    ctx.health_timeout, ctx.health_interval = 0.3, 0.05
+    assert deploy(api, spec("php:8.0-apache"))["job"]["status"] == "ok"
+    before = app_container(ctx)["id"]
+    monkeypatch.setattr(apps, "http_status", lambda url: None)  # nowa wersja nic nie odpowiada
+    result = deploy(api, spec("php:8.2-apache", verify=True, cleanup=True))
+    assert result["job"]["status"] == "error"
+    restored = app_container(ctx)
+    assert restored["id"] == before and restored["image"] == "php:8.0-apache" and restored["state"] == "running"
+    assert restored["host_config"]["restart_policy"] != {"Name": "no"}  # wraca polityka restartu
+    assert not any(c["name"].endswith(apps.PARKED_SUFFIX) for c in ctx.docker.api.containers_.values())
+
+
+def test_version_change_keeps_the_real_container_port(api, ctx, monkeypatch):
+    """Ustawienia mówią 20000, działający kontener ma 45996 → 80: nowa wersja dostaje 80, panel dostaje poprawkę."""
+    ctx.health_timeout, ctx.health_interval = 0.3, 0.05
+    assert deploy(api, spec("php:8.0-apache"))["job"]["status"] == "ok"
+    monkeypatch.setattr(apps, "http_status", lambda url: 200)
+    result = deploy(api, spec("php:8.2-apache", container_port=20000, verify=True, cleanup=True))
+    assert result["job"]["status"] == "ok", result["lines"]
+    assert app_container(ctx)["ports"] == {"80/tcp": 45996}
+    assert result["job"]["result"]["container_port"] == 80
+    assert any("20000" in line and "80" in line for line in result["lines"])
+
+
+def test_plain_redeploy_respects_a_changed_port(api, ctx):
+    """Zwykłe wdrożenie (bez zmiany wersji) bierze port z ustawień — użytkownik mógł go świadomie zmienić."""
+    assert deploy(api, spec("php:8.0-apache"))["job"]["status"] == "ok"
+    assert deploy(api, spec("php:8.0-apache", container_port=8080))["job"]["status"] == "ok"
+    assert app_container(ctx)["ports"] == {"8080/tcp": 45996}
+
+
+def test_crash_on_start_brings_back_the_previous_container(api, ctx):
+    assert deploy(api, spec("php:8.0-apache"))["job"]["status"] == "ok"
+    before = app_container(ctx)["id"]
+    ctx.docker.api.crash_images.add("broken:1")
+    assert deploy(api, spec("broken:1"))["job"]["status"] == "error"
+    assert app_container(ctx)["id"] == before and app_container(ctx)["state"] == "running"
+
+
 def test_takeover_with_cleanup_removes_backup(api, ctx, monkeypatch):
     ctx.health_timeout, ctx.health_interval = 0.3, 0.05
     monkeypatch.setattr(apps, "http_status", lambda url: 200)

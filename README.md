@@ -62,6 +62,7 @@ Add `DEPLOYRA_LANG=en` (in `deploy/.env` or in front of the commands) to get Eng
 git clone https://github.com/PanS4ge/deployra.git && cd deployra
 DEPLOYRA_LANG=en DEPLOYRA_PUBLIC_HOST=vps.example.com docker compose -f deploy/vps.compose.yml up -d
 docker logs deployra-wg | grep "Sync code"
+docker logs deployra-panel 2>&1 | grep "setup code"   # code for the first panel setup (/setup)
 ```
 
 Open the panel (e.g. via `ssh -L 8080:127.0.0.1:8080 vps`), finish the setup, then on **Tunnel** enter `127.0.0.1:51821`, the code,
@@ -219,12 +220,63 @@ is not a fix). `DEPLOYRA_VULN_CHECKS=off` turns off automatic scans (e.g. a pane
 Limits: the image's system packages (apt/apk, e.g. OpenSSL) are not scanned, and software without a version variable or a known tag
 is not recognised.
 
-## Deployra login in front of an app
+## Access lists and login in front of an app
 
-An access list with **Require Deployra login** protects any app with a panel account (forward auth through nginx `auth_request`),
-including apps without a login of their own. Access can be limited to selected users. After signing in, the panel redirects back
-with a one-time token and the app gets its own cookie (works on domains other than the panel's) and an `X-Deployra-User` header with
-the email. Needs HTTPS on the host and the panel domain set; it combines with Basic Auth passwords only in the “any condition” mode.
+An access list has three login modes (plus IP allow/deny rules and “any condition is enough”):
+
+| Mode | What users see | Protection |
+|---|---|---|
+| **No login** | IP rules only | — |
+| **Deployra login** | a sign-in page on the app host (`/__deployra_auth/login`) | list accounts and/or panel accounts, optional 2FA (TOTP), attempt limits, account lockout, IP ban on the gateway, revocable sessions |
+| **Browser prompt** | the classic nginx Basic Auth dialog | password only (no 2FA or limits) |
+
+**List accounts** are created when editing the list: username + password (a button generates a strong one), optionally 2FA — the
+panel shows the secret and the `otpauth://` link once, to hand over. The same accounts work in both modes (scrypt + apr1 hashes).
+
+Deployra login runs entirely on the app host, so it needs no public panel domain and works through any chain (internet → edge
+gateway → hub → node → WireGuard server). The gateway forwards `/__deployra_auth/…` to the panel through the tunnel with a gateway
+token; without it the panel refuses the request, so passwords can only be guessed through the gateway and its limits:
+- growing delay after 5 failures per account, a 15-minute lockout after 10 (alert “Access list account locked”),
+- 20 failures per hour from one address = a one-hour ban on the gateway,
+- `__Host-dpl_fs` cookie (HttpOnly, Secure, this host only); only a hash of the session token is stored; disabling an account,
+  changing its password or the list mode ends its sessions immediately; “Sign everyone out” on the list,
+- a JavaScript-free sign-in page with a strict CSP, a CSRF token and an `Origin` check.
+
+The app receives an `X-Deployra-User` header (account username or panel account email); the header is always cleared from clients.
+**Panel accounts can sign in too** (optionally only selected ones) keeps panel-account login, which needs the panel domain. Older
+lists with Basic passwords move to accounts automatically when the panel starts.
+
+## Proxy through a node (chain)
+
+A proxy host can target an **address behind a node** (e.g. a service `10.8.0.2:3923` in the network of a WireGuard server running on
+the node): internet → edge gateway → hub → node → WG server. When a host with **Through node** is saved, the panel adds the address's
+subnet (/24 by default) in three places: the hub (peer AllowedIPs), the node (live NAT, no tunnel restart) and the edge gateway
+(routes). NAT on the node doesn't assume an outgoing interface, so it also works for networks behind the WG server's `wg0` or a
+Docker bridge. **Route test** in the host form checks each hop: panel → node (API), node → target (TCP, with the interface used),
+gateway → target (HTTP as nginx sees it). **Config on gateways** shows what each gateway's nginx has on disk for the host, and saving
+a host names the gateway that didn't accept the config.
+
+## WebSSH and terminal
+
+The **container terminal** is in the app header (no detour through Files). It survives Cloudflare and nginx idle timeouts (ping every
+25 s), reconnects on its own, has copy/paste (Ctrl+Shift+C/V, right click), font size, user and start directory. On the node a
+terminal doesn't hold a pool thread, so several terminals at once don't choke the node.
+
+**WebSSH** (button in the node header; greyed out without SSH details) — a shell on the node server. Node settings → SSH: address
+(the tunnel address by default), username and password or a private key (encrypted, never sent back to the browser). The panel
+connects over SSH directly, so it's end-to-end encrypted even for nodes without the tunnel. Host key: **Check host key** and accept
+the fingerprint (compare with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`); the key is verified before the password is sent and
+a changed key aborts the connection. Opening a shell needs the **WebSSH** permission and re-confirming the password (and 2FA) every
+15 min; sessions close after 30 min idle; start and end go to the audit log.
+
+## Volume backups
+
+The **Volume backups** card in an app: schedule (cron), how many to keep, optionally stop the app during the backup. The node packs
+volumes, site files and the stack (as when moving), the panel encrypts the bundle (AES-256-GCM in chunks, key from the panel's
+`secret.key` — truncation or changes are detected when reading) and sends it to backup storage (Settings → Backup: S3/R2, SFTP, FTP,
+disk). **Restore** stops the app, loads the data and starts it. Without `secret.key` backups can't be read — keep it separately.
+Panel state can be backed up automatically every 6/12/24 h (Settings → Backup). Failed backups, scheduled tasks, expiring
+certificates and unreachable gateways have their own alerts.
 
 ## HTTP/3
 
@@ -410,8 +462,22 @@ with the panel's privileges. Reference and examples: [docs/plugins.md](docs/plug
   keys can't be swapped without the code. The old DH on primes < 100 with XOR is gone.
 - Every panel → gateway/node request is signed with HMAC-SHA256 (±60 s timestamp, nonce against replays); traffic goes through the WG tunnel.
 - The node and gateway APIs only listen on the tunnel address; the app port pool is reachable only from `wg0` (`DOCKER-USER` rule).
-- Passwords: salted scrypt. Sessions: httponly cookie + CSRF token. Secrets (Cloudflare tokens, keys) are AES-GCM encrypted in the database.
-- Terminal, raw nginx, tunnel and deletion are separate (risky) permissions.
+- Passwords: scrypt (N=2^17, older hashes upgraded at sign-in). Sessions: httponly cookie + CSRF token, a new session on every
+  sign-in, active sessions with sign-out in **My account**. Secrets are AES-GCM encrypted in the database.
+- **2FA** (TOTP + 10 backup codes) in **My account**; the administrator can require 2FA from everyone (Settings → Users).
+- Persistent sign-in limits: 10 failures per 15 min per address, a growing delay per account (no lockout a stranger could trigger);
+  the real client address also behind the edge gateway (gateway tunnel addresses are trusted proxies).
+- **First setup** (`/setup`) needs a code from the panel logs — nobody can create the administrator on a fresh install or after a reset.
+- Headers: `X-Frame-Options`, CSP `frame-ancestors`, `nosniff`, `Referrer-Policy`, HSTS over HTTPS.
+- **Audit log** (Settings → Audit log): sign-ins (failed too), every change (method, path, status — no form bodies), WebSSH,
+  terminal, access list sign-ins; filters and CSV export; alerts for sign-ins from a new address and failed sign-in spikes.
+- Risky permissions (granted only by an account with “risky permissions”): terminal, raw nginx, tunnel, deletion, editing accounts,
+  the database browser, **host access from containers** (system paths, `docker.sock`, host network, `privileged`, `cap_add` — compose
+  too) and **WebSSH**. Nobody without full access can change an administrator account; changing your own password needs the current one.
+- API tokens work only for `/mcp`, expire and never grant more than the account; a new token is shown once.
+- SSRF protection: notifications, URL monitors and remote databases can't reach cloud metadata services (169.254.169.254 etc.).
+- The gateway trusts `X-Forwarded-Proto` only from trusted proxies; node signatures from before a restart (unknown nonces) are refused;
+  the pairing lockout is per IP; the git token never appears on a command line.
 
 ## RAM usage
 

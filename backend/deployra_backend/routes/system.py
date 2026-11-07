@@ -15,7 +15,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.sse import EventSourceResponse
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from deployra_common.i18n import tr
 from deployra_common.jobs import Job
@@ -52,7 +52,7 @@ async def pair(request: Request, ctx: Context = Depends(get_ctx)) -> dict:
     except ValueError:
         raise HTTPException(400, tr("node.expected_json")) from None
     try:
-        return enroll.pair(ctx, ctx.pair_gate, body)
+        return enroll.pair(ctx, ctx.pair_gate, body, request.client.host if request.client else "?")
     except LookupError as exc:
         raise HTTPException(409, str(exc)) from None
     except PermissionError as exc:
@@ -207,6 +207,67 @@ def collect_node_ports(ctx: Context) -> list[dict[str, Any]]:
         pass
     ports.sort(key=lambda p: (p["port"], p["protocol"]))
     return ports
+
+
+class LanBody(BaseModel):
+    lan_subnets: list[str] = Field(default_factory=list, max_length=64)
+
+
+@router.put("/wg/lan")
+def set_lan(body: LanBody, ctx: Context = Depends(get_ctx)) -> dict:
+    """Podsieci za węzłem (np. sieć serwera WireGuard 10.8.0.0/24): NAT z tunelu na żywo, bez restartu tunelu."""
+    from ..services import wg_spoke
+
+    conf = ctx.state.get("wg")
+    if not isinstance(conf, dict) or not conf.get("subnet"):
+        raise HTTPException(409, tr("node.lan.no_tunnel"))
+    try:
+        subnets = wg_spoke.check_lan(conf, body.lan_subnets)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
+    new = {**conf, "lan_subnets": subnets}
+    ctx.state.update(wg=new)
+    applied = wg_spoke.apply_lan(conf, new, ctx.config.wg_iface)
+    return {"ok": True, "lan_subnets": subnets, "applied": applied}
+
+
+class ProbeBody(BaseModel):
+    host: str
+    port: int = Field(ge=1, le=65535)
+
+
+@router.post("/net/probe")
+async def probe(body: ProbeBody, ctx: Context = Depends(get_ctx)) -> dict:
+    """Test trasy: czy węzeł łączy się z adresem za sobą (TCP). Tylko adresy prywatne i podsieci tego węzła."""
+    import asyncio
+    import ipaddress
+    import socket
+    import time
+
+    try:
+        address = ipaddress.ip_address(body.host.strip("[]"))
+    except ValueError:
+        raise HTTPException(400, tr("node.probe.ip_only")) from None
+    conf = ctx.state.get("wg") if isinstance(ctx.state.get("wg"), dict) else {}
+    own = [ipaddress.ip_network(n, strict=False) for n in conf.get("lan_subnets") or []]
+    if not (address.is_private or any(address in n for n in own)) or address.is_loopback or address.is_link_local:
+        raise HTTPException(400, tr("node.probe.not_private"))
+
+    def connect() -> dict:
+        started = time.perf_counter()
+        try:
+            with socket.create_connection((str(address), body.port), timeout=4):
+                return {"ok": True, "ms": round((time.perf_counter() - started) * 1000, 1)}
+        except OSError as exc:
+            return {"ok": False, "error": exc.strerror or str(exc) or type(exc).__name__}
+
+    result = await asyncio.to_thread(connect)
+    try:
+        route = subprocess.run(["ip", "-o", "route", "get", str(address)], capture_output=True, text=True, timeout=5).stdout.split()
+        result["via"] = route[route.index("dev") + 1] if "dev" in route else None
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        result["via"] = None
+    return result
 
 
 @router.get("/ports")

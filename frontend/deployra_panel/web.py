@@ -218,6 +218,25 @@ def asset(path: str) -> str:
     return f"/static/{path}?v={cached[1]}"
 
 
+def _ssh_settings(node: dict) -> dict:
+    from .services import node_ssh
+
+    return node_ssh.settings(node)
+
+
+def _ssh_configured(node: dict) -> bool:
+    from .services import node_ssh
+
+    return node_ssh.configured(node)
+
+
+def _ssh_default_host(node: dict) -> str:
+    from .services import node_ssh
+
+    return node_ssh.default_host(None, node)
+
+
+templates.env.globals.update(ssh_settings=_ssh_settings, ssh_configured=_ssh_configured, ssh_default_host=_ssh_default_host)
 templates.env.globals.update(
     NAME=NAME, VERSION=__version__, P=Permission, PERM_LABELS=LABELS, has=has, gravatar=gravatar, now=time.time,
     update_offer=update_offer, vuln_banner=vuln_banner, app_badges=app_badges, t=tm, LANG=lang, LANGUAGES=catalog.names, JS_I18N=js_i18n, RUNTIMES=runtimes, RUNTIME_META=runtime_meta,
@@ -278,3 +297,23 @@ def refresh(message: str | None = None, level: str = "ok") -> Response:
     if message:
         flash(response, message, level)
     return response
+
+
+def host_access_denied(user: dict, problems: list[str]):
+    """Kontener z dostępem do hosta bez uprawnienia ALLOW_DOCKER_HOST → toast 403; None = wolno."""
+    from deployra_common.i18n import tr
+
+    from .permissions import Permission, has
+
+    if not problems or has(user, Permission.ALLOW_DOCKER_HOST):
+        return None
+    return toast(tr("srv.host.denied", problems="; ".join(problems[:5])), "err", status=403)
+
+
+def safe_next(value: str | None, default: str = "/") -> str:
+    """Adres powrotu tylko w obrębie panelu: ścieżka od „/”, bez „//”, backslashy i znaków sterujących
+    (przeglądarki traktują `/\\evil.com` jak `//evil.com`)."""
+    value = (value or "").strip()
+    if not value.startswith("/") or value.startswith("//") or "\\" in value or any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        return default
+    return value

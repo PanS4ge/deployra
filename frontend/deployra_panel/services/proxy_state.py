@@ -101,13 +101,17 @@ def build_state(panel: Any, gateway_id: int | None = None) -> ProxyState:
             )  # fmt: skip
         except ValidationError as exc:
             logger.warning(f"Stream #{row['id']} pominięty: {exc}")
+    from . import access_accounts
+
     acls = []
     for row in db.all("access_lists"):
+        mode = access_accounts.mode_of(row)
+        users = (access_accounts.htpasswd_users(panel, row["id"]) or list(row.get("users") or [])) if mode == "basic" else []
         acls.append(
             AccessList(
-                id=row["id"], name=row["name"], satisfy_any=bool(row["satisfy_any"]), pass_auth=bool(row["pass_auth"]),
-                deployra_login=bool(row.get("deployra_login")),
-                users=[AccessUser(**u) for u in row.get("users") or []],
+                id=row["id"], name=row["name"], satisfy_any=bool(row["satisfy_any"]), pass_auth=bool(row["pass_auth"]) and mode == "basic",
+                deployra_login=mode == "deployra",
+                users=[AccessUser(**u) for u in users],
                 clients=[AccessClient(**c) for c in row.get("clients") or []],
             )
         )  # fmt: skip
@@ -175,14 +179,11 @@ async def push(panel: Any) -> dict:
                 state = build_state(panel, gateway_id=gw["id"])
             try:
                 res = await client.put("/api/proxy", json=state.model_dump(mode="json"))
-                results.append(res)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — bramka nieosiągalna: zgłaszamy, zamiast udawać, że przyjęła
                 logger.warning(f"Błąd wysyłki proxy do bramki #{gw['id']}: {exc}")
-        result = results[0] if results else {"ok": False, "status": "no-gateway", "message": t("proxy.msg.no_gateway")}
-        for r in results:
-            if r.get("status") == "rejected":
-                result = r
-                break
+                res = {"ok": False, "status": "unreachable", "message": str(exc) or type(exc).__name__}
+            results.append({**res, "gateway": gateway_label(gw), "role": gw.get("role")})
+        result = combine(results)
     from .sync import push_edge_routes
 
     await push_edge_routes(panel)
@@ -193,6 +194,28 @@ async def push(panel: Any) -> dict:
             await cloudflared.sync(panel)
         except cloudflared.TunnelError as exc:
             result = {**result, "status": "pending", "ok": False, "message": f"Cloudflare Tunnel: {exc}"}
+    return result
+
+
+def gateway_label(gw: dict) -> str:
+    return str(gw.get("name") or gw.get("public_host") or f"#{gw.get('id')}")
+
+
+def combine(results: list[dict]) -> dict:
+    """Wyniki wszystkich bramek → jeden komunikat. Błąd którejkolwiek (odrzucona konfiguracja, brak połączenia,
+    brak potwierdzenia przeładowania) jest widoczny z nazwą bramki — host mógł działać na hubie, a nie na krawędzi."""
+    if not results:
+        return {"ok": False, "status": "no-gateway", "message": t("proxy.msg.no_gateway")}
+    bad = [r for r in results if r.get("status") not in ("applied", "written")]
+    rejected = next((r for r in bad if r.get("status") == "rejected"), None)
+    if rejected:
+        result = {**rejected, "message": f"{rejected['gateway']}: {rejected.get('message') or ''}".strip()}
+    elif bad:
+        detail = "; ".join(f"{r['gateway']}: {r.get('message') or r.get('status')}" for r in bad)
+        result = {"ok": False, "status": "pending", "message": detail}
+    else:
+        result = dict(results[0])
+    result["gateways"] = results
     return result
 
 
@@ -264,7 +287,9 @@ async def passthrough(panel: Any, sites: list[dict], nodes: dict[int, dict]) -> 
     for site in candidates:
         target = site["target"]
         if target.get("via_node") and nodes.get(int(target["via_node"])):
-            out[site["id"]] = nodes[int(target["via_node"])]["name"]
+            edge = panel.edge_row()
+            chain = [gateway_label(edge)] if edge and edge.get("secret") else []  # np. „oracle → Cezary”
+            out[site["id"]] = " → ".join([*chain, nodes[int(target["via_node"])]["name"]])
             continue
         try:
             address = ipaddress.ip_address(str(target.get("host") or "").strip("[]"))

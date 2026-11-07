@@ -85,6 +85,7 @@
         </button>
         <div class="card dropdown" style="min-width: 220px" x-show="open" x-cloak @click.outside="open = false" x-transition>
           <div class="item muted small">{{ user.email }}</div>
+          <a class="item" href="/account"><i class="bi bi-person-gear"></i> {{ t("account.title") }}{% if not user.totp_secret %} <span class="badge warn" style="margin-left: auto">2FA</span>{% endif %}</a>
           {% if not user.scoped %}<a class="item" href="/settings/users"><i class="bi bi-people"></i> {{ t("nav.users") }}</a>{% endif %}
           {% for code, name in LANGUAGES().items() if code != LANG() %}
           <a class="item" href="#" hx-post="/language" hx-vals='{"lang": "{{ code }}"}' hx-swap="none"><i class="bi bi-translate"></i> {{ name }}</a>

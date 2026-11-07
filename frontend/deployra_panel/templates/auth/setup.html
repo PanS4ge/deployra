@@ -4,6 +4,8 @@
   <form hx-post="/setup" hx-swap="none">
     <div class="card-head"><h2><i class="bi bi-person-badge"></i> {{ t("setup.admin_account") }}</h2></div>
     <div class="card-body form-grid">
+      <div class="field full"><label>{{ t("setup.code") }}</label><input class="input mono" name="setup_code" required autocomplete="off" placeholder="XXXX-XXXX-XXXX">
+        <div class="hint">{{ t("setup.code_hint") }}</div></div>
       <div class="field"><label>{{ t("common.first_name") }}</label><input class="input" name="name" autocomplete="given-name"></div>
       <div class="field"><label>{{ t("common.last_name") }}</label><input class="input" name="surname" autocomplete="family-name"></div>
       <div class="field full"><label>{{ t("setup.email_login") }}</label><input class="input" name="email" type="email" value="admin@{{ base }}" required></div>

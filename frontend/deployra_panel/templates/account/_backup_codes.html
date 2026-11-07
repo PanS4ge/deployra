@@ -1,0 +1,10 @@
+{% from "_macros.html" import copy_pill %}
+<div class="callout ok" style="margin-top: 6px">
+  <i class="bi bi-shield-check" style="font-size: 1.3rem"></i>
+  <div class="stack" style="gap: 8px; flex: 1">
+    <b>{{ t("account.enabled_now") if fresh else t("account.new_codes") }}</b>
+    <div class="small">{{ t("account.codes_hint") }}</div>
+    <pre class="code-block" style="columns: 2">{{ codes | join("\n") }}</pre>
+    {{ copy_pill(codes | join(" ")) }}
+  </div>
+</div>

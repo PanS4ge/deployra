@@ -122,28 +122,38 @@ def publish_code(ctx: Any, code: str | None) -> None:
 
 
 class PairingGate:
-    """Ogranicza zgadywanie kodu parowania."""
+    """Ogranicza zgadywanie kodu parowania: blokada per adres IP (obcy nie zablokuje parowania panelowi) i dużo wyższa
+    granica wspólna — przeciw zgadywaniu z wielu adresów naraz."""
+
+    GLOBAL_FACTOR = 10
 
     def __init__(self) -> None:
+        self._by_ip: dict[str, tuple[int, float]] = {}
         self.failures = 0
         self.locked_until = 0.0
 
-    def check(self) -> None:
-        if time.time() < self.locked_until:
+    def check(self, ip: str = "?") -> None:
+        now = time.time()
+        if now < self.locked_until or now < self._by_ip.get(ip, (0, 0.0))[1]:
             raise PermissionError(tr("node.pair_locked"))
 
-    def fail(self) -> None:
+    def fail(self, ip: str = "?") -> None:
+        count, _ = self._by_ip.get(ip, (0, 0.0))
+        count += 1
+        self._by_ip[ip] = (0, time.time() + LOCKOUT_SECONDS) if count >= MAX_FAILURES else (count, 0.0)
+        if len(self._by_ip) > 10_000:  # pamięć ograniczona: najstarsze wpisy znikają
+            self._by_ip.pop(next(iter(self._by_ip)))
         self.failures += 1
-        if self.failures >= MAX_FAILURES:
+        if self.failures >= MAX_FAILURES * self.GLOBAL_FACTOR:
             self.failures = 0
             self.locked_until = time.time() + LOCKOUT_SECONDS
 
 
-def pair(ctx: Any, gate: PairingGate, body: dict) -> dict:
+def pair(ctx: Any, gate: PairingGate, body: dict, ip: str = "?") -> dict:
     state = ctx.state
     if state.paired:
         raise LookupError(tr("node.already_paired"))
-    gate.check()
+    gate.check(ip)
     join = state.get("join")
     psk = join["pair_secret"] if join else state.get("pairing_code")
     if not psk:
@@ -153,7 +163,7 @@ def pair(ctx: Any, gate: PairingGate, body: dict) -> dict:
         if not wg.valid_key(request.get("x25519", "")):
             raise ValueError(tr("node.bad_key"))
     except ValueError:
-        gate.fail()
+        gate.fail(ip)
         raise PermissionError(tr("node.bad_code")) from None
     private, public = pairing.new_keypair()
     secret = pairing.derive_secret(private, request["x25519"], psk, PAIR_CONTEXT)

@@ -181,6 +181,8 @@ def _deployra_lines(auth: PanelAuth | None) -> list[str]:
 
 def _auth_locations(auth: PanelAuth, root: str) -> str:
     """Wewnętrzne lokalizacje logowania Deployra (raz na serwer): sprawdzenie, callback tokenu i przekierowanie."""
+    if auth.base and auth.gw_token:
+        return _auth_locations_v2(auth, root)
     return "\n".join(
         [
             "location = /__deployra_auth {",
@@ -202,6 +204,45 @@ def _auth_locations(auth: PanelAuth, root: str) -> str:
             # rd: bez query string (nginx nie koduje &), panel sprawdza, czy host należy do listy z logowaniem
             "location @deployra_login {",
             f"    return 302 {auth.login}?next=/auth/forward/start?rd=$scheme://$host$uri;",
+            "}",
+        ]
+    )
+
+
+def _auth_locations_v2(auth: PanelAuth, root: str) -> str:
+    """Lista dostępu 2.0: strona logowania na samym hoście aplikacji (/__deployra_auth/…), przekazywana do panelu przez
+    tunel. Panel przyjmuje te żądania tylko z tokenem bramki i dopiero wtedy ufa X-Real-IP (limity, bany)."""
+    gw = f'proxy_set_header X-Deployra-Gw "{auth.gw_token}";'
+    return "\n".join(
+        [
+            "location = /__deployra_auth {",
+            "    internal;",
+            f"    proxy_pass {auth.base}/auth/forward;",
+            "    proxy_method GET;",
+            "    proxy_pass_request_body off;",
+            '    proxy_set_header Content-Length "";',
+            "    proxy_set_header Host $host;",
+            "    proxy_set_header X-Deployra-Host $host;",
+            "    proxy_set_header X-Original-URI $request_uri;",
+            "    proxy_set_header Cookie $http_cookie;",
+            "    proxy_set_header X-Real-IP $remote_addr;",
+            f"    {gw}",
+            "}",
+            "location ^~ /__deployra_auth/ {",
+            "    auth_request off;",
+            "    auth_basic off;",
+            "    client_max_body_size 64k;",
+            f"    proxy_pass {auth.base}/auth/forward/;",
+            f"    include {root}/snippets/proxy.conf;",
+            "    proxy_set_header X-Forwarded-Proto $scheme;",
+            "    proxy_set_header X-Deployra-Host $host;",
+            '    proxy_set_header X-Deployra-User "";',
+            f"    {gw}",
+            "}",
+            # rd: sama ścieżka bez query (mapa $deployra_rd w nginx.conf) — nginx nie koduje znaków w adresie powrotu
+            "location @deployra_login {",
+            '    add_header Cache-Control "no-store" always;',
+            "    return 302 /__deployra_auth/login?rd=$deployra_rd;",
             "}",
         ]
     )
@@ -229,10 +270,8 @@ def _access_lines(acl: AccessList | None, root: str, auth: PanelAuth | None = No
 def _proxy_location(path: str, up: Upstream, site: Site, acl_lines: list[str], advanced: str = "", headers: list[str] = ()) -> str:
     body = [f"proxy_pass {_upstream_url(up)};", f"include {ROOT}/snippets/proxy.conf;"]
     body.append(f"proxy_set_header X-Forwarded-Proto {'$deployra_xfp' if site.trust_forwarded_proto else '$scheme'};")
-    if site.websockets:
-        body += ["proxy_set_header Upgrade $http_upgrade;", "proxy_set_header Connection $connection_upgrade;"]
-    else:
-        body.append('proxy_set_header Connection "";')
+    # Upgrade zawsze (mapa daje pusty Connection dla zwykłych żądań) — terminal i SSE panelu działają bez zaznaczania „websockets”
+    body += ["proxy_set_header Upgrade $http_upgrade;", "proxy_set_header Connection $connection_upgrade;"]
     if up.scheme == "https":
         body += ["proxy_ssl_server_name on;", "proxy_ssl_name $host;"]
     if site.caching:

@@ -75,7 +75,7 @@ class Sessions:
         if not sid or len(sid) > 100:
             return None
         row = self.db.fetchone(
-            "SELECT s.id AS sid, s.csrf, s.expires_at, u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?",
+            "SELECT s.id AS sid, s.csrf, s.expires_at, s.reauth_at, s.last_seen, u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?",
             [sid],
         )
         if not row:
@@ -83,37 +83,117 @@ class Sessions:
         if row["expires_at"] < time.time():
             self.db.delete("sessions", sid)
             return None
+        if time.time() - float(row.get("last_seen") or 0) > 300:  # ostatnia aktywność (co 5 min, nie przy każdym żądaniu)
+            self.db.execute("UPDATE sessions SET last_seen = ? WHERE id = ?", [time.time(), sid])
         return row
+
+    def of_user(self, user_id: int) -> list[dict[str, Any]]:
+        rows = self.db.fetchall("SELECT * FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY last_seen DESC", [user_id, time.time()])
+        return [{**r, "handle": handle(r["id"])} for r in rows]
+
+    def destroy_by_handle(self, user_id: int, value: str) -> bool:
+        """Wylogowanie jednej sesji z listy — po skrócie, bo prawdziwy identyfikator sesji nie trafia do przeglądarki."""
+        for row in self.db.fetchall("SELECT id FROM sessions WHERE user_id = ?", [user_id]):
+            if hmac.compare_digest(handle(row["id"]), value or ""):
+                self.db.delete("sessions", row["id"])
+                return True
+        return False
 
     def destroy(self, sid: str) -> None:
         self.db.delete("sessions", sid)
 
+    def mark_reauth(self, sid: str) -> None:
+        """Tożsamość potwierdzona przed chwilą (hasło / 2FA) — na kilka minut wolno ryzykowne akcje (np. WebSSH)."""
+        self.db.execute("UPDATE sessions SET reauth_at = ? WHERE id = ?", [time.time(), sid])
+
+    @staticmethod
+    def reauth_fresh(session: dict | None, seconds: int) -> bool:
+        return bool(session and session.get("reauth_at") and time.time() - float(session["reauth_at"]) < seconds)
+
     def destroy_for_user(self, user_id: int) -> None:
         self.db.execute("DELETE FROM sessions WHERE user_id = ?", [user_id])
+
+    def destroy_others(self, user_id: int, keep: str | None) -> None:
+        """Wszystkie sesje konta poza bieżącą (po zmianie własnego hasła)."""
+        self.db.execute("DELETE FROM sessions WHERE user_id = ? AND id != ?", [user_id, keep or ""])
 
     def cleanup(self) -> None:
         self.db.execute("DELETE FROM sessions WHERE expires_at < ?", [time.time()])
 
 
-class LoginLimiter:
-    """Max 10 nieudanych logowań na 15 minut z jednego IP."""
+def handle(sid: str) -> str:
+    return hashlib.sha256(("session:" + sid).encode()).hexdigest()[:20]
 
-    def __init__(self, limit: int = 10, window: int = 900) -> None:
-        self.limit, self.window = limit, window
+
+class LoginLimiter:
+    """Nieudane logowania: z jednego IP max `limit` na `window` sekund (twarda granica), a dla jednego konta rosnące
+    opóźnienie po `free` błędach — bez twardej blokady, żeby obcy nie mógł zablokować komuś konta.
+
+    Z bazą (`db`) próby przeżywają restart panelu; bez niej (testy, narzędzia) są w pamięci. `scope` oddziela liczniki
+    (panel, logowanie list dostępu)."""
+
+    MAX_DELAY = 10.0
+
+    def __init__(self, db: Database | None = None, limit: int = 10, window: int = 900, free: int = 5, scope: str = "panel") -> None:
+        self.db, self.limit, self.window, self.free, self.scope = db, limit, window, free, scope
         self._hits: dict[str, list[float]] = {}
         self._lock = threading.Lock()
 
+    def _key(self, kind: str, value: str) -> str:
+        return f"{self.scope}:{kind}:{(value or '?').strip().lower()[:150]}"
+
+    def _count(self, key: str) -> int:
+        cutoff = time.time() - self.window
+        if self.db is not None:
+            row = self.db.fetchone("SELECT COUNT(*) AS n FROM login_attempts WHERE akey = ? AND at > ?", [key, cutoff])
+            return int((row or {}).get("n") or 0)
+        with self._lock:
+            hits = [t for t in self._hits.get(key, []) if t > cutoff]
+            self._hits[key] = hits
+            return len(hits)
+
     def blocked(self, ip: str) -> bool:
-        with self._lock:
-            cutoff = time.time() - self.window
-            hits = [t for t in self._hits.get(ip, []) if t > cutoff]
-            self._hits[ip] = hits
-            return len(hits) >= self.limit
+        return self._count(self._key("ip", ip)) >= self.limit
 
-    def fail(self, ip: str) -> None:
-        with self._lock:
-            self._hits.setdefault(ip, []).append(time.time())
+    def delay(self, account: str | None) -> float:
+        """Sekundy do odczekania przed sprawdzeniem hasła tego konta (0 dla pierwszych `free` błędów)."""
+        if not account:
+            return 0.0
+        over = self._count(self._key("acct", account)) - self.free
+        return 0.0 if over < 0 else min(self.MAX_DELAY, 0.5 * 2**over)
 
-    def reset(self, ip: str) -> None:
+    def fail(self, ip: str, account: str | None = None) -> None:
+        keys = [self._key("ip", ip)] + ([self._key("acct", account)] if account else [])
+        now_ = time.time()
+        if self.db is not None:
+            for key in keys:
+                self.db.insert("login_attempts", akey=key, at=now_)
+            self.db.execute("DELETE FROM login_attempts WHERE at < ?", [now_ - 2 * self.window])
+            return
         with self._lock:
-            self._hits.pop(ip, None)
+            for key in keys:
+                self._hits.setdefault(key, []).append(now_)
+
+    def reset(self, ip: str, account: str | None = None) -> None:
+        keys = [self._key("ip", ip)] + ([self._key("acct", account)] if account else [])
+        if self.db is not None:
+            for key in keys:
+                self.db.execute("DELETE FROM login_attempts WHERE akey = ?", [key])
+            return
+        with self._lock:
+            for key in keys:
+                self._hits.pop(key, None)
+
+
+def client_ip(request: Any, trusted: set[str]) -> str:
+    """Adres klienta. Gdy połączenie przyszło od zaufanego proxy (bramka w tunelu, localhost), bierzemy z
+    X-Forwarded-For najbardziej prawy adres, który nie jest zaufanym proxy — klient może dopisać swoje wpisy na
+    początku nagłówka, ale nie na końcu (dopisuje go nginx)."""
+    peer = request.client.host if request.client else "?"
+    if peer not in trusted:
+        return peer
+    hops = [h.strip() for h in (request.headers.get("x-forwarded-for") or "").split(",") if h.strip()]
+    for hop in reversed(hops):
+        if hop not in trusted:
+            return hop
+    return peer

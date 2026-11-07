@@ -363,8 +363,91 @@ def v29(dialect: str) -> list[str]:
     return [f"ALTER TABLE vuln_findings ADD COLUMN owner {_types(dialect)['str']}"]
 
 
+def v30(dialect: str) -> list[str]:
+    """Bezpieczeństwo: wygasanie tokenów API i trwały licznik nieudanych logowań (restart panelu go nie kasuje)."""
+    t = _types(dialect)
+    i, s, r, tail = t["id"], t["str"], t["real"], t["tail"]
+    return [
+        f"ALTER TABLE api_tokens ADD COLUMN expires_at {r}",
+        f"CREATE TABLE login_attempts (id {i}, akey {s} NOT NULL, at {r} NOT NULL){tail}",
+        "CREATE INDEX idx_login_attempts_key ON login_attempts (akey, at)",
+    ]
+
+
+def v31(dialect: str) -> list[str]:
+    """Lista dostępu 2.0: tryb logowania (brak / Deployra / okienko nginx), własne konta listy i sesje logowania
+    Deployra po stronie serwera (do odwołania). Stare hasła Basic przenosi `access_accounts.migrate_legacy`."""
+    t = _types(dialect)
+    i, s, x, n, r, tail = t["id"], t["str"], t["text"], t["int"], t["real"], t["tail"]
+    return [
+        f"ALTER TABLE access_lists ADD COLUMN login_mode {s} NOT NULL DEFAULT 'none'",
+        f"ALTER TABLE access_lists ADD COLUMN session_hours {n}",
+        f"ALTER TABLE access_lists ADD COLUMN require_totp {n} NOT NULL DEFAULT 0",
+        f"ALTER TABLE access_lists ADD COLUMN allow_panel {n} NOT NULL DEFAULT 1",  # konta panelu też mogą wchodzić
+        "UPDATE access_lists SET login_mode = 'deployra' WHERE deployra_login = 1",
+        "UPDATE access_lists SET login_mode = 'basic' WHERE login_mode = 'none' AND users IS NOT NULL AND users <> '[]' AND users <> ''",
+        f"""CREATE TABLE access_accounts (
+            id {i}, acl_id {n} NOT NULL, username {s} NOT NULL, name {s}, password_hash {x}, htpasswd {x},
+            totp_secret {x}, totp_step {n}, enabled {n} NOT NULL DEFAULT 1, failed {n} NOT NULL DEFAULT 0, locked_until {r},
+            last_login_at {r}, last_login_ip {s}, created_at {s}
+        ){tail}""",
+        "CREATE UNIQUE INDEX idx_access_accounts_user ON access_accounts (acl_id, username)",
+        f"""CREATE TABLE forward_sessions (
+            id {s} PRIMARY KEY, acl_id {n}, account_id {n}, user_id {n}, host {s} NOT NULL, created_at {r},
+            expires_at {r} NOT NULL, last_seen {r}, ip {s}, user_agent {x}
+        ){tail}""",
+        "CREATE INDEX idx_forward_sessions_exp ON forward_sessions (expires_at)",
+    ]
+
+
+def v32(dialect: str) -> list[str]:
+    """WebSSH do węzła (ustawienia z zaszyfrowanymi sekretami i zaufanym kluczem hosta) i świeże potwierdzenie
+    tożsamości w sesji (hasło / 2FA przed ryzykownymi akcjami, np. powłoką na węźle)."""
+    t = _types(dialect)
+    return [f"ALTER TABLE nodes ADD COLUMN ssh {t['text']}", f"ALTER TABLE sessions ADD COLUMN reauth_at {t['real']}"]
+
+
+def v33(dialect: str) -> list[str]:
+    """2FA kont panelu (TOTP + kody zapasowe) i ostatnia aktywność sesji (lista „Aktywne sesje” w Moim koncie)."""
+    t = _types(dialect)
+    x, n, r = t["text"], t["int"], t["real"]
+    return [
+        f"ALTER TABLE users ADD COLUMN totp_secret {x}",
+        f"ALTER TABLE users ADD COLUMN totp_step {n}",
+        f"ALTER TABLE users ADD COLUMN backup_codes {x}",
+        f"ALTER TABLE sessions ADD COLUMN last_seen {r}",
+    ]
+
+
+def v34(dialect: str) -> list[str]:
+    """Dziennik zdarzeń (logowania, zmiany, WebSSH) — bez treści formularzy."""
+    t = _types(dialect)
+    i, s, x, n, r, tail = t["id"], t["str"], t["text"], t["int"], t["real"], t["tail"]
+    return [
+        f"""CREATE TABLE audit_log (
+            id {i}, at {r} NOT NULL, user_id {n}, user_email {s}, ip {s}, action {s} NOT NULL, target {s}, ok {n} NOT NULL DEFAULT 1,
+            method {s}, path {x}, status {n}, details {x}
+        ){tail}""",
+        "CREATE INDEX idx_audit_at ON audit_log (at)",
+        "CREATE INDEX idx_audit_user ON audit_log (user_id, action)",
+    ]
+
+
+def v35(dialect: str) -> list[str]:
+    """Kopie wolumenów aplikacji: jeden harmonogram na aplikację (cron, retencja, czy zatrzymać aplikację na czas kopii)."""
+    t = _types(dialect)
+    i, s, x, n, r, tail = t["id"], t["str"], t["text"], t["int"], t["real"], t["tail"]
+    return [
+        f"""CREATE TABLE volume_backups (
+            id {i}, app_id {n} NOT NULL, cron {s} NOT NULL, retention {n} NOT NULL DEFAULT 7, stop_app {n} NOT NULL DEFAULT 0,
+            enabled {n} NOT NULL DEFAULT 1, last_run_at {r}, last_status {s}, last_error {x}, last_size {n}, created_at {s}
+        ){tail}""",
+        "CREATE UNIQUE INDEX idx_volume_backups_app ON volume_backups (app_id)",
+    ]
+
+
 MIGRATIONS: list[tuple[int, Callable[[str], list[str]]]] = [
     (1, v1), (2, v2), (3, v3), (4, v4), (5, v5), (6, v6), (7, v7), (8, v8), (9, v9), (10, v10), (11, v11), (12, v12), (13, v13),
     (14, v14), (15, v15), (16, v16), (17, v17), (18, v18), (19, v19), (20, v20), (21, v21), (22, v22), (23, v23), (24, v24), (25, v25), (26, v26), (27, v27), (28, v28),
-    (29, v29),
+    (29, v29), (30, v30), (31, v31), (32, v32), (33, v33), (34, v34), (35, v35),
 ]

@@ -163,7 +163,11 @@ def test_callback_exchanges_one_time_token_for_host_cookie(admin, setup_login):
     response = client.get("/auth/forward/callback", params={"token": token}, headers={"Host": APP})
     assert response.status_code == 302 and response.headers["location"] == f"https://{APP}/panel"
     cookie_header = response.headers["set-cookie"]
-    assert cookie_header.startswith(f"{forward_auth.FORWARD_COOKIE}=")
+    assert cookie_header.startswith("__Host-dpl_fs=")  # sesja po stronie serwera (do odwołania), ciasteczko tylko tego hosta
+    raw = cookie_header.split(";")[0].split("=", 1)[1]
+    check = anon(admin)
+    check.cookies.set("__Host-dpl_fs", raw)
+    assert check.get("/auth/forward", headers={"X-Deployra-Host": APP}).headers["X-Deployra-User"] == "admin@example.com"
     assert "HttpOnly" in cookie_header and "Secure" in cookie_header and "samesite=lax" in cookie_header.lower()
     assert "Domain=" not in cookie_header  # ciasteczko tylko dla hosta aplikacji
     assert "dpl_session" not in cookie_header  # ciasteczko sesji panelu nie wycieka na host aplikacji
@@ -214,21 +218,18 @@ def test_panel_auth_addresses_follow_tunnel_and_domain(admin, setup_login, monke
 def test_access_list_form_saves_login_options(admin, setup_login):
     panel = setup_login["panel"]
     page = admin.get(f"/proxy/access/{setup_login['acl']}", headers={"HX-Request": ""}).text
-    assert 'name="deployra_login"' in page and 'name="login_users"' in page and "bob@example.com" in page
+    assert 'name="login_mode"' in page and 'name="login_users"' in page and "bob@example.com" in page
     saved = admin.post("/proxy/access/save", data={
-        "id": str(setup_login["acl"]), "name": "Deployra", "satisfy_any": "1", "deployra_login": "1",
-        "login_users": [str(setup_login["bob"]), "9999"],
+        "id": str(setup_login["acl"]), "name": "Deployra", "satisfy_any": "1", "login_mode": "deployra", "allow_panel": "1",
+        "login_users": [str(setup_login["bob"]), "9999"], "session_hours": "8",
     })  # fmt: skip
     assert saved.status_code == 204, saved.text
     row = panel.db.get("access_lists", setup_login["acl"])
-    assert row["deployra_login"] == 1 and row["login_users"] == [setup_login["bob"]]  # nieznane konta pominięte
-    # hasło Basic razem z logowaniem Deployra tylko w trybie „wystarczy jeden warunek”
-    conflict = admin.post("/proxy/access/save", data={
-        "id": str(setup_login["acl"]), "name": "Deployra", "deployra_login": "1", "users": "bob:tajne-haslo",
-    })  # fmt: skip
-    assert conflict.status_code == 400
-    assert panel.db.get("access_lists", setup_login["acl"])["deployra_login"] == 1  # poprzedni stan bez zmian
-    off = admin.post("/proxy/access/save", data={"id": str(setup_login["acl"]), "name": "Deployra", "login_users": [str(setup_login["bob"])]})
-    assert off.status_code == 204
+    assert row["login_mode"] == "deployra" and row["deployra_login"] == 1 and row["login_users"] == [setup_login["bob"]]  # nieznane pominięte
+    assert row["session_hours"] == 8
+    basic = admin.post("/proxy/access/save", data={"id": str(setup_login["acl"]), "name": "Deployra", "login_mode": "basic",
+                                                   "login_users": [str(setup_login["bob"])]})  # fmt: skip
+    assert basic.status_code == 204
     row = panel.db.get("access_lists", setup_login["acl"])
-    assert row["deployra_login"] == 0 and row["login_users"] == []
+    assert row["login_mode"] == "basic" and row["deployra_login"] == 0 and row["login_users"] == []  # tryby się wykluczają
+

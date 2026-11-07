@@ -8,3 +8,5 @@ cryptography>=42
 loguru>=0.7
 # opcjonalnie, tylko dla DEPLOYRA_DB=mysql://…
 pymysql>=1.1
+pyyaml>=6
+asyncssh>=2.17  # WebSSH do węzłów

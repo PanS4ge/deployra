@@ -15,7 +15,11 @@ PAGES = [
 def test_setup_redirect_and_login_flow(client):
     assert client.get("/").headers["location"] == "/setup"
     assert client.get("/setup").status_code == 200
-    client.post("/setup", data={"email": "a@b.pl", "password": "bardzo-tajne", "password_repeat": "bardzo-tajne"})
+    weak = client.post("/setup", data={"email": "a@b.pl", "password": "bardzo-tajne", "password_repeat": "bardzo-tajne"})
+    assert weak.status_code == 403  # bez kodu z logów nikt obcy nie założy administratora
+    code = client.app.state.panel.setup_code()
+    client.post("/setup", data={"setup_code": code.lower(), "email": "a@b.pl", "password": "bardzo-tajne", "password_repeat": "bardzo-tajne"})
+    assert client.app.state.panel.setup_code(create=False) is None  # kod znika po założeniu konta
     client.cookies.clear()
     assert client.get("/apps").headers["location"].startswith("/login")
     assert client.get("/setup").status_code in (303, 204)  # po konfiguracji setup jest zamknięty

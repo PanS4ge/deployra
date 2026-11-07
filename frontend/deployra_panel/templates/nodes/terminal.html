@@ -5,22 +5,35 @@
 <script src="/static/vendor/addon-fit.js"></script>
 {% endblock %}
 {% set epa = "" if ep == "local" else "?ep=" ~ ep %}
-{% block crumbs %}{% if back %}<div class="crumbs"><a href="/servers">{{ t("servers.my_servers") }}</a> / <a href="{{ back }}">{{ cid }}</a> /</div>{% else %}<div class="crumbs"><a href="/nodes/{{ node.id }}">{{ node.name }}</a> / <a href="/nodes/{{ node.id }}/containers/{{ cid }}{{ epa }}">{{ cid }}</a> /</div>{% endif %}{% endblock %}
-{% block heading %}Terminal{% endblock %}
+{% set ssh = ssh_mode is defined and ssh_mode %}
+{% block crumbs %}{% if back %}<div class="crumbs"><a href="/servers">{{ t("servers.my_servers") }}</a> / <a href="{{ back }}">{{ cid }}</a> /</div>{% elif ssh %}<div class="crumbs"><a href="/nodes/{{ node.id }}">{{ node.name }}</a> /</div>{% else %}<div class="crumbs"><a href="/nodes/{{ node.id }}">{{ node.name }}</a> / <a href="/nodes/{{ node.id }}/containers/{{ cid }}{{ epa }}">{{ cid }}</a> /</div>{% endif %}{% endblock %}
+{% block heading %}{{ heading or "Terminal" }}{% endblock %}
 {% block actions %}
-<select class="select" id="shell" style="width: auto">
+<span class="badge" id="term-state"><i class="bi bi-circle-fill"></i> <span>…</span></span>
+{% if not ssh %}
+<select class="select" id="shell" style="width: auto" title="{{ t('terminal.shell') }}">
   <option value="auto">{{ t("terminal.auto") }}</option><option value="sh">sh</option><option value="bash">bash</option><option value="ash">ash</option>
 </select>
+{% if not back %}
+<input class="input" id="term-user" style="width: 110px" placeholder="{{ t('terminal.user') }}" title="{{ t('terminal.user_hint') }}" autocomplete="off" spellcheck="false">
+<input class="input" id="term-workdir" style="width: 140px" placeholder="{{ t('terminal.workdir') }}" autocomplete="off" spellcheck="false">
+{% endif %}
+{% endif %}
+<button class="btn sm ghost" id="font-down" title="A−"><i class="bi bi-zoom-out"></i></button>
+<button class="btn sm ghost" id="font-up" title="A+"><i class="bi bi-zoom-in"></i></button>
 <button class="btn sm" id="reconnect"><i class="bi bi-arrow-repeat"></i> {{ t("terminal.reconnect") }}</button>
 {% endblock %}
 {% block content %}
 <div class="card"><div class="card-body"><div id="term" class="terminal"></div></div></div>
-<div class="small muted">{{ t("terminal.hint") }}</div>
+<div class="small muted">{{ t("terminal.hint") }} · Ctrl+Shift+C / Ctrl+Shift+V</div>
 <script>
 (function () {
   const el = document.getElementById("term");
+  const stateEl = document.getElementById("term-state");
+  const L = window.I18N || {};
+  let fontSize = Number(localStorage.getItem("dpl_term_font") || 14);
   const term = new Terminal({
-    cursorBlink: true, fontSize: 14, scrollback: 5000,
+    cursorBlink: true, fontSize, scrollback: 10000, allowProposedApi: false,
     fontFamily: 'ui-monospace, "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace',
     theme: { background: "#02030a", foreground: "#cdd3ff", cursor: "#a78bfa", selectionBackground: "#8b5cf655",
              magenta: "#f472b6", cyan: "#22d3ee", blue: "#60a5fa", green: "#34d399", red: "#fb7185", yellow: "#fbbf24" },
@@ -29,40 +42,91 @@
   term.loadAddon(fit);
   term.open(el);
   fit.fit();
-  let ws = null;
   const enc = new TextEncoder();
+  let ws = null, ended = false, manual = false, retry = 0, retryTimer = null, pingTimer = null;
+
+  function state(kind, text) {
+    stateEl.className = "badge " + ({ on: "ok", wait: "warn", off: "err" }[kind] || "");
+    stateEl.querySelector("span").textContent = text;
+  }
+  function val(id) { const x = document.getElementById(id); return x ? x.value.trim() : ""; }
+  function send(data) { if (ws && ws.readyState === 1) ws.send(data); }
 
   function connect() {
-    if (ws) ws.close();
+    clearTimeout(retryTimer);
+    if (ws) { manual = true; ws.close(); }
+    manual = false; ended = false;
     term.reset();
-    const shell = document.getElementById("shell").value;
-    const params = new URLSearchParams({ ep: "{{ ep }}", shell, cols: term.cols, rows: term.rows });
+    state("wait", L.term_connecting || "…");
+    const params = new URLSearchParams({ ep: "{{ ep or 'local' }}", cols: term.cols, rows: term.rows });
+    {% if not ssh %}params.set("shell", val("shell") || "auto");
+    if (val("term-user")) params.set("user", val("term-user"));
+    if (val("term-workdir")) params.set("workdir", val("term-workdir"));{% endif %}
     const proto = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(`${proto}://${location.host}{{ ws_path or ("/nodes/" ~ node.id ~ "/containers/" ~ cid ~ "/terminal/ws") }}?${params}`);
     ws.binaryType = "arraybuffer";
-    ws.onopen = () => term.focus();
+    ws.onopen = () => {
+      retry = 0; state("on", L.term_connected || "online"); term.focus();
+      clearInterval(pingTimer);
+      pingTimer = setInterval(() => send(JSON.stringify({ type: "ping" })), 25000); // Cloudflare zrywa bezczynne WS po ~100 s
+      send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+    };
     ws.onmessage = (e) => {
       if (typeof e.data === "string") {
         try {
           const msg = JSON.parse(e.data);
-          if (msg.type === "exit") term.write(`\r\n\x1b[35m[${I18N.session_ended}]\x1b[0m\r\n`);
-          if (msg.type === "error") term.write(`\r\n\x1b[31m${msg.message}\x1b[0m\r\n`);
+          if (msg.type === "exit") { ended = true; term.write(`\r\n\x1b[35m[${L.session_ended}] ${L.term_enter_again || ""}\x1b[0m\r\n`); }
+          else if (msg.type === "error") { ended = true; term.write(`\r\n\x1b[31m${msg.message}\x1b[0m\r\n${L.term_error_hint || ""}\r\n`); }
+          else if (msg.type === "hostkey") { term.write(`\r\n\x1b[33m${msg.message}\x1b[0m\r\n`); }
         } catch (_) { term.write(e.data); }
       } else {
         term.write(new Uint8Array(e.data));
       }
     };
-    ws.onclose = (e) => { if (e.code >= 4400) term.write(`\r\n\x1b[31m[${e.code === 4401 ? I18N.denied_permission : I18N.denied_request}]\x1b[0m\r\n`); };
+    ws.onclose = (e) => {
+      clearInterval(pingTimer);
+      if (e.code >= 4400) {
+        ended = true; state("off", L.term_closed || "offline");
+        term.write(`\r\n\x1b[31m[${e.code === 4401 ? L.denied_permission : (e.code === 4428 ? (L.term_reauth || L.denied_permission) : L.denied_request)}]\x1b[0m\r\n`);
+        return;
+      }
+      state("off", L.term_closed || "offline");
+      if (manual || ended) return;
+      const wait = Math.min(15000, 1000 * 2 ** retry++); // zerwane połączenie (restart węzła, sieć) — ponawiamy z narastającą przerwą
+      term.write(`\r\n\x1b[33m[${L.term_retry || "…"} ${Math.round(wait / 1000)} s]\x1b[0m\r\n`);
+      retryTimer = setTimeout(connect, wait);
+    };
   }
 
-  term.onData((d) => { if (ws && ws.readyState === 1) ws.send(enc.encode(d)); });
-  const resize = () => {
-    fit.fit();
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-  };
-  window.addEventListener("resize", resize);
+  term.onData((d) => {
+    if (ended && (d === "\r" || d === "\n")) { connect(); return; } // Enter po zakończonej sesji = nowa sesja
+    send(enc.encode(d));
+  });
+  term.attachCustomKeyEventHandler((ev) => {
+    if (ev.type !== "keydown" || !ev.ctrlKey || !ev.shiftKey) return true;
+    if (ev.code === "KeyC") { const s = term.getSelection(); if (s) navigator.clipboard.writeText(s).catch(() => {}); return false; }
+    if (ev.code === "KeyV") { navigator.clipboard.readText().then((t) => send(enc.encode(t))).catch(() => {}); return false; }
+    return true;
+  });
+  el.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    const s = term.getSelection();
+    if (s) { navigator.clipboard.writeText(s).catch(() => {}); term.clearSelection(); }
+    else navigator.clipboard.readText().then((t) => send(enc.encode(t))).catch(() => {});
+  });
+  const resize = () => { try { fit.fit(); } catch (_) {} send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows })); };
+  new ResizeObserver(() => resize()).observe(el);
+  function setFont(size) {
+    fontSize = Math.max(9, Math.min(28, size)); term.options.fontSize = fontSize;
+    try { localStorage.setItem("dpl_term_font", String(fontSize)); } catch (_) {}
+    resize();
+  }
+  document.getElementById("font-up").addEventListener("click", () => setFont(fontSize + 1));
+  document.getElementById("font-down").addEventListener("click", () => setFont(fontSize - 1));
   document.getElementById("reconnect").addEventListener("click", connect);
-  document.getElementById("shell").addEventListener("change", connect);
+  const shellEl = document.getElementById("shell");
+  if (shellEl) shellEl.addEventListener("change", connect);
+  ["term-user", "term-workdir"].forEach((id) => { const x = document.getElementById(id); if (x) x.addEventListener("keydown", (e) => { if (e.key === "Enter") connect(); }); });
   connect();
 })();
 </script>

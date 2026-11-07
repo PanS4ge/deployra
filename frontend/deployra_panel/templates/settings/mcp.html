@@ -36,11 +36,17 @@
       <h3><i class="bi bi-plus-circle"></i> {{ t("mcp.new_token") }}</h3>
     </div>
     <div class="card-body">
-      <form class="stack" method="post" action="/settings/mcp/tokens" hx-boost="false">
-        <input type="hidden" name="csrf" value="{{ csrf }}">
+      <form class="stack" hx-post="/settings/mcp/tokens" hx-swap="none">
         <div class="field">
           <label>{{ t("mcp.token_name_label") }}</label>
           <input class="input" name="name" placeholder="np. Claude Desktop, Cursor, Antigravity" required maxlength="60">
+        </div>
+        <div class="field">
+          <label>{{ t("mcp.expires") }}</label>
+          <select class="select" name="days">
+            <option value="30">30 {{ t("mcp.days") }}</option><option value="90" selected>90 {{ t("mcp.days") }}</option>
+            <option value="365">365 {{ t("mcp.days") }}</option><option value="0">{{ t("mcp.never") }}</option>
+          </select>
         </div>
         <button class="btn primary" type="submit">
           <i class="bi bi-key"></i> {{ t("mcp.create_token_btn") }}
@@ -130,12 +136,10 @@
           <td class="mono small">{{ tk.prefix }}</td>
           <td>{{ tk.user_email or "—" }}</td>
           <td class="small muted">{% if tk.last_used_at %}{{ tk.last_used_at | ago }}{% else %}{{ t("mcp.never_used") }}{% endif %}</td>
-          <td class="small muted">{{ tk.created_at }}</td>
+          <td class="small muted">{{ tk.created_at }}{% if tk.expires_at %}<div class="{{ 'err' if tk.expires_at < now_ts else 'dim' }}">{{ t("mcp.expires_at", date=tk.expires_at | dt) }}</div>{% endif %}</td>
           <td>
-            <form method="post" action="/settings/mcp/tokens/{{ tk.id }}/delete" hx-boost="false" onsubmit="return confirm('{{ t('mcp.delete_confirm', name=tk.name) }}')">
-              <input type="hidden" name="csrf" value="{{ csrf }}">
-              <button class="btn icon sm ghost danger" title="{{ t('common.delete') }}"><i class="bi bi-trash"></i></button>
-            </form>
+            <button class="btn icon sm ghost danger" title="{{ t('common.delete') }}" hx-post="/settings/mcp/tokens/{{ tk.id }}/delete" hx-swap="none"
+                    hx-confirm="{{ t('mcp.delete_confirm', name=tk.name) }}" data-danger><i class="bi bi-trash"></i></button>
           </td>
         </tr>
         {% else %}

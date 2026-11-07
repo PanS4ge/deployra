@@ -7,12 +7,13 @@
   {% if lists %}
   <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>{{ t("common.name") }}</th><th>{{ t("nav.users") }}</th><th>{{ t("access.ip_rules") }}</th><th>{{ t("access.mode") }}</th><th>{{ t("dns.hosts") }}</th><th></th></tr></thead>
+    <thead><tr><th>{{ t("common.name") }}</th><th>{{ t("access.login_mode") }}</th><th>{{ t("access.accounts") }}</th><th>{{ t("access.ip_rules") }}</th><th>{{ t("access.mode") }}</th><th>{{ t("dns.hosts") }}</th><th></th></tr></thead>
     <tbody>
     {% for a in lists %}
       <tr>
         <td class="name"><a href="/proxy/access/{{ a.id }}">{{ a.name }}</a></td>
-        <td>{{ (a.users or []) | length }}</td>
+        <td>{% set m = modes.get(a.id, "none") %}<span class="badge {{ 'violet' if m == 'deployra' else ('warn' if m == 'basic' else '') }}">{{ t("access.mode_" ~ m) }}</span></td>
+        <td>{{ counts.get(a.id, 0) or (a.users or []) | length }}</td>
         <td>{{ (a.clients or []) | length }}</td>
         <td class="small">{{ t("access.any") if a.satisfy_any else t("access.all") }}</td>
         <td>{{ used.get(a.id, 0) }}</td>

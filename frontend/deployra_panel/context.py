@@ -30,7 +30,10 @@ class Panel:
         self.db.migrate()
         self.sealer = Sealer(config.data_dir / "secret.key")
         self.sessions = Sessions(self.db, config.session_hours)
-        self.limiter = LoginLimiter()
+        self.limiter = LoginLimiter(self.db)
+        # logowanie kontami list dostępu: 20 błędów na godzinę z adresu = ban na bramce, rosnące opóźnienie per konto
+        self.fwd_limiter = LoginLimiter(self.db, limit=20, window=3600, free=5, scope="fwd")
+        self._trusted: tuple[float, set[str]] = (0.0, set())
         self.jobs = PersistentJobRegistry(self.db, origin=f"panel {__version__}")
         self.updates = UpdateAgent(config.update_dir)
         self.default_language: str | None = self.db.setting("language") or config.language or None  # odświeżane przy zapisie ustawień
@@ -44,6 +47,51 @@ class Panel:
 
     def has_users(self) -> bool:
         return bool(self.db.scalar("SELECT COUNT(*) FROM users"))
+
+    def setup_code(self, create: bool = True) -> str | None:
+        """Kod do pierwszej konfiguracji (/setup): bez niego obcy nie założy konta administratora na świeżej instalacji
+        ani po resecie. Leży w katalogu danych (0600) i jest w logach kontenera."""
+        import os
+        import secrets
+
+        from loguru import logger
+
+        path = self.config.data_dir / "setup.code"
+        if path.exists():
+            return path.read_text(encoding="utf-8").strip()
+        if not create:
+            return None
+        alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # bez 0/O i 1/I
+        code = "-".join("".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(3))
+        path.write_text(code, encoding="utf-8")
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+        logger.warning(t("setup.code_log", code=code))
+        return code
+
+    def drop_setup_code(self) -> None:
+        (self.config.data_dir / "setup.code").unlink(missing_ok=True)
+
+    def trusted_proxies(self) -> set[str]:
+        """Zaufane proxy: z konfiguracji (DEPLOYRA_TRUSTED_PROXIES) + adresy tunelowe bramek (hub i brzegowa), które
+        przekazują ruch do panelu — bez tego wszyscy za bramką brzegową mieliby jeden adres (i wspólny limit logowań)."""
+        import time
+        from urllib.parse import urlsplit
+
+        at, cached = self._trusted
+        if time.time() - at < 60:
+            return cached
+        found = {p.strip() for p in self.config.trusted_proxies.split(",") if p.strip() and p.strip() != "*"}
+        for gw in self.db.fetchall("SELECT hub_address, api_url FROM gateway"):
+            if gw.get("hub_address"):
+                found.add(str(gw["hub_address"]).split("/")[0])
+            host = urlsplit(str(gw.get("api_url") or "")).hostname
+            if host:
+                found.add(host)
+        self._trusted = (time.time(), found)
+        return found
 
     # --- powiadomienia ----------------------------------------------------------------
 

@@ -161,6 +161,9 @@
           <label class="label">{{ t("backup.retention") }}</label>
           <input class="input" type="number" name="retention" min="1" max="100" value="{{ config.retention or 10 }}">
           <div class="small dim" style="margin-top: 4px">{{ t("backup.retention_hint") }}</div>
+          <label class="label" style="margin-top: 10px">{{ t("backup.auto_hours") }}</label>
+          <select class="select" name="auto_hours">{% for h, label in [(0, t("backup.auto_off")), (6, "6 h"), (12, "12 h"), (24, "24 h"), (168, "7 × 24 h")] %}
+            <option value="{{ h }}" {{ "selected" if (config.auto_hours or 0) == h }}>{{ label }}</option>{% endfor %}</select>
         </div>
         <div style="display: flex; align-items: center; padding-top: 20px">
           <label class="checkbox-label">
